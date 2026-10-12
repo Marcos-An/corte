@@ -1,0 +1,151 @@
+import {clipSpeed,clipDuration} from '../src/clip-time.mjs';
+import {adjustmentFilter} from '../src/color-adjustments.mjs';
+import {audioFadeFilter} from '../src/audio-envelope.mjs';
+import {shapeAss} from '../src/shapes.mjs';
+import {keyframeExpression,pointsOf,animated} from '../src/keyframes.mjs';
+import {projectCaptions,toAss} from '../src/captions.mjs';
+import {existsSync} from 'node:fs';
+import { spawn } from 'node:child_process';
+import { mkdtemp, mkdir, rm, writeFile, rename, stat } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { createRequire } from 'node:module';
+import {packagedTool} from './runtime.mjs';
+import { ASPECTS, validateProject, layerOrder, transitionAt, duration } from '../src/project.mjs';
+const require=createRequire(import.meta.url);
+export function binaries() {
+  const unpack=p=>p?.replace(/app\.asar([\\/])/,'app.asar.unpacked$1');
+  return {ffmpeg:packagedTool('ffmpeg',unpack(require('ffmpeg-static'))),ffprobe:packagedTool('ffprobe',unpack(require('ffprobe-static').path))};
+}
+export function run(file,args,{signal,onData,env=process.env,timeout=180000,maxOutput=2e6}={}) {
+  return new Promise((resolve,reject)=>{
+    let stdout='',stderr='',settled=false;
+    const child=spawn(file,args,{windowsHide:true,shell:false,env,signal});
+    const timer=setTimeout(()=>{child.kill();finish(new Error('Tempo limite atingido. Tente um vídeo menor.'));},timeout);
+    function finish(error){if(settled)return;settled=true;clearTimeout(timer);error?reject(error):resolve({stdout,stderr});}
+    child.stdout.on('data',data=>{stdout+=data;if(stdout.length>maxOutput){child.kill();finish(new Error('Resposta excedeu o limite.'));}onData?.(String(data));});
+    child.stderr.on('data',data=>{stderr=(stderr+data).slice(-12000);});
+    child.on('error',error=>finish(error.name==='AbortError'?new Error('Operação cancelada.'):error));
+    child.on('close',code=>finish(code===0?null:new Error(signal?.aborted?'Operação cancelada.':`Processamento falhou (${code}). ${stderr.slice(-1800)}`)));
+  });
+}
+export function parseProbe(result) {
+  const v=result.streams?.find(s=>s.codec_type==='video'), duration=Number(result.format?.duration ?? v?.duration);
+  if(!v&&result.streams?.some(s=>s.codec_type==='audio')&&Number.isFinite(duration)&&duration>0&&duration<=21600)return {kind:'audio',duration,width:0,height:0,hasAudio:true};
+  if(!v || !Number.isFinite(duration) || duration<=0 || duration>21600 || !Number.isInteger(v.width) || !Number.isInteger(v.height)) throw new Error('Arquivo sem vídeo válido ou duração não suportada (máximo 6 horas).');
+  const rotation=Number(v.tags?.rotate || v.side_data_list?.find(s=>s.rotation)?.rotation || 0);
+  return {duration,width:Math.abs(rotation)%180===90?v.height:v.width,height:Math.abs(rotation)%180===90?v.width:v.height,hasAudio:result.streams.some(s=>s.codec_type==='audio')};
+}
+export async function probe(file) {const {stdout}=await run(binaries().ffprobe,['-v','error','-show_streams','-show_format','-of','json',file]);const result=JSON.parse(stdout);
+ if(/\.(png|jpe?g|webp)$/i.test(file)){
+  const v=result.streams?.find(s=>s.codec_type==='video');if(!v||!['png','mjpeg','webp'].includes(v.codec_name)||!Number.isInteger(v.width)||!Number.isInteger(v.height)||v.width<2||v.height<2||v.width>16384||v.height>16384)throw Error('Imagem inválida.');
+  return {kind:'image',duration:5,width:v.width,height:v.height,hasAudio:false};
+ }
+ return parseProbe(result);}
+export function sampleTimes(duration,step=2,max=60) {
+  if(!Number.isFinite(duration)||duration<=0||!Number.isFinite(step)||step<=0||!Number.isInteger(max)||max<1)throw new Error('Amostragem inválida.');
+  const actualStep=Math.max(step,duration/max);const result=[];for(let i=0;i<max && i*actualStep<duration;i++)result.push(Number((i*actualStep).toFixed(3)));return result;
+}
+export async function frame(file,time,out,signal) {
+  await rm(out,{force:true});
+  await run(binaries().ffmpeg,['-hide_banner','-loglevel','error','-y','-ss',String(time),'-i',file,'-frames:v','1','-vf','scale=480:-2',out],{signal});
+  const image=await stat(out).catch(error=>{if(error.code==='ENOENT')return null;throw error;});
+  if(!image?.size)throw new Error('Nenhum frame disponível nesse instante. A análise não pode reutilizar uma imagem anterior.');
+}
+export function dimensions(aspect,height=720) {
+  if(!ASPECTS.includes(aspect) || ![720,1080].includes(height))throw new Error('Formato ou resolução inválidos.');
+  const [w,h]=aspect.split(':').map(Number);return w>=h?{width:Math.round(height*w/h/2)*2,height}:{width:height,height:Math.round(height*h/w/2)*2};
+}
+function tempoFilter(speed){const filters=[];while(speed<.5){filters.push('atempo=0.5');speed/=.5;}while(speed>2){filters.push('atempo=2');speed/=2;}if(speed!==1)filters.push('atempo='+speed);return filters.length?filters.join(',')+',':'';}
+export function buildSegmentArgs(c,a,input,out,aspect,height=720) {
+  validateProject({version:1,name:'Render',aspect,assets:[a],clips:[c]});
+  const speed=clipSpeed(c),timing=speed===1?'':`trim=duration=${c.out-c.in},setpts=(PTS-STARTPTS)/${speed},`,audioTiming=speed===1?'':`atrim=duration=${c.out-c.in},asetpts=PTS-STARTPTS,${tempoFilter(speed)}`;
+  const size=dimensions(aspect,height),r=c.crop,bg=c.background==='color'?c.backgroundColor.replace('#','0x'):'black';
+  const filter=`${timing}${adjustmentFilter(c.adjustments)}crop=iw*${r.w}:ih*${r.h}:iw*${r.x}:ih*${r.y},scale=${size.width}:${size.height}:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=${size.width}:${size.height}:(ow-iw)/2:(oh-ih)/2:${bg},setsar=1,fps=30,format=yuv420p`;
+  const args=['-hide_banner','-loglevel','error','-y',...(a.kind==='image'?['-loop','1']:['-ss',String(c.in)]),'-i',input];
+  if(!a.hasAudio)args.push('-f','lavfi','-i','anullsrc=channel_layout=stereo:sample_rate=48000');
+  let vf=c.background==='blur'?['-filter_complex',`[0:v]${timing}${adjustmentFilter(c.adjustments)}crop=iw*${r.w}:ih*${r.h}:iw*${r.x}:ih*${r.y},split=2[bg][fg];[bg]scale=${size.width}:${size.height}:force_original_aspect_ratio=increase,crop=${size.width}:${size.height},gblur=sigma=${size.width*.015}[blur];[fg]scale=${size.width}:${size.height}:force_original_aspect_ratio=decrease:force_divisible_by=2[front];[blur][front]overlay=(W-w)/2:(H-h)/2,setsar=1,fps=30,format=yuv420p[v]`]:['-vf',filter];
+  if(a.kind==='image'){
+    const source=`[0:v]${timing}format=rgba,${adjustmentFilter(c.adjustments,true)}crop=iw*${r.w}:ih*${r.h}:iw*${r.x}:ih*${r.y}`,front=`scale=${size.width}:${size.height}:force_original_aspect_ratio=decrease:force_divisible_by=2[front]`,canvas=`color=c=${bg}:s=${size.width}x${size.height}:r=30,format=rgba[base]`;
+    const layers=c.background==='blur'?`${source},split=2[bg][fg];[bg]scale=${size.width}:${size.height}:force_original_aspect_ratio=increase,crop=${size.width}:${size.height},gblur=sigma=${size.width*.015}[blur];${canvas};[base][blur]overlay=format=auto[canvas];[fg]${front}`:`${source},${front};${canvas};[base]null[canvas]`;
+    vf=['-filter_complex',`${layers};[canvas][front]overlay=(W-w)/2:(H-h)/2:format=auto,setsar=1,fps=30,format=yuv420p[v]`];
+  }
+  args.push('-t',String(clipDuration(c)),'-map',a.kind==='image'||c.background==='blur'?'[v]':'0:v:0','-map',a.hasAudio?'0:a:0':'1:a:0',...vf,'-af',`${audioTiming}volume=${c.volume}${audioFadeFilter(c,clipDuration(c))},aresample=48000,apad`,'-c:v','libx264','-preset','fast','-crf','20','-c:a','aac','-ar','48000','-ac','2','-movflags','+faststart',out);
+  return args;
+}
+export async function renderProject(project,registry,destination,{height=720,signal,onProgress=()=>{}}={}) {
+  validateProject(project);if(!project.clips.length)throw new Error('A timeline está vazia.');
+  for(const c of [...project.clips,...(project.music||[]),...(project.imageLayers||[]),...(project.videoLayers||[])])if(!registry.get(c.assetId)?.path)throw new Error('Mídia ausente. Importe ou relocalize o arquivo.');
+  if([...registry.values()].some(a=>path.resolve(a.path)===path.resolve(destination)))throw new Error('A exportação não pode substituir uma mídia original.');
+  dimensions(project.aspect,height);
+  const temp=await mkdtemp(path.join(tmpdir(),'corte-render-'));const partial=path.join(path.dirname(destination),`.corte-${crypto.randomUUID()}.mp4`);
+  try {
+    for(let i=0;i<project.clips.length;i++) {
+      const c=project.clips[i],a=project.assets.find(a=>a.id===c.assetId);
+      await run(binaries().ffmpeg,buildSegmentArgs(c,a,registry.get(c.assetId).path,path.join(temp,`${i}.mp4`),project.aspect,height),{signal,timeout:1800000});
+      onProgress({stage:'render',completed:i+1,total:project.clips.length});
+    }
+    await writeFile(path.join(temp,'concat.txt'),project.clips.map((_,i)=>`file '${i}.mp4'`).join('\n'));
+    await run(binaries().ffmpeg,['-hide_banner','-loglevel','error','-y','-f','concat','-safe','1','-i',path.join(temp,'concat.txt'),'-c','copy','-movflags','+faststart',partial],{signal,timeout:1800000});
+    if(project.transitions?.length){
+      const overlays=[],fx={dissolve:'fade',fade:'fadeblack',slide:'slideleft'};let cut=0;
+      for(let i=0;i<project.clips.length-1;i++){
+        const left=project.clips[i],right=project.clips[i+1];cut+=clipDuration(left);const t=project.transitions.find(t=>t.leftId===left.id&&t.rightId===right.id);if(!t)continue;
+        const at=transitionAt(project,cut),files=[];
+        for(const [side,c,time] of [['left',left,at.leftTime],['right',right,at.rightTime]]){
+          const a=project.assets.find(a=>a.id===c.assetId),out=path.join(temp,`transition-${i}-${side}.mp4`),start=time-t.duration/2*clipSpeed(c);
+          await run(binaries().ffmpeg,buildSegmentArgs({...c,in:a.kind==='image'?0:start,out:a.kind==='image'?t.duration*clipSpeed(c):start+t.duration*clipSpeed(c)},a,registry.get(a.id).path,out,project.aspect,height),{signal,timeout:1800000});files.push(out);
+        }
+        const merged=path.join(temp,`transition-${i}.mp4`),effect=t.type==='fade'?`[a]fade=t=out:st=0:d=${t.duration/2}[blackA];[b]fade=t=in:st=${t.duration/2}:d=${t.duration/2}[blackB];[blackA][blackB]blend=all_expr='if(lt(T,${t.duration/2}),A,B)'[v]`:`[a][b]xfade=transition=${fx[t.type]}:duration=${t.duration}:offset=0[v]`;
+        await run(binaries().ffmpeg,['-hide_banner','-loglevel','error','-y','-i',files[0],'-i',files[1],'-filter_complex',`[0:v]settb=AVTB,setpts=PTS-STARTPTS[a];[1:v]settb=AVTB,setpts=PTS-STARTPTS[b];${effect}`,'-map','[v]','-t',String(t.duration),'-an','-c:v','libx264','-preset','fast','-crf','20','-pix_fmt','yuv420p',merged],{signal,timeout:1800000});
+        overlays.push({path:merged,start:at.start,end:at.end});onProgress({stage:'transition',completed:overlays.length,total:project.transitions.length});
+      }
+      const args=['-hide_banner','-loglevel','error','-y','-i',partial],filters=[];let previous='0:v';
+      for(const [i,t] of overlays.entries()){
+        args.push('-i',t.path);filters.push(`[${i+1}:v]setpts=PTS-STARTPTS+${t.start}/TB[t${i}]`);filters.push(`[${previous}][t${i}]overlay=enable='gte(t,${t.start})*lt(t,${t.end})':eof_action=pass[j${i}]`);previous=`j${i}`;
+      }
+      const transitioned=path.join(temp,'transitioned.mp4');args.push('-filter_complex',filters.join(';'),'-map',`[${previous}]`,'-map','0:a','-c:v','libx264','-preset','fast','-crf','20','-pix_fmt','yuv420p','-c:a','copy',transitioned);
+      await run(binaries().ffmpeg,args,{signal,timeout:1800000});await rename(transitioned,partial);
+    }
+    const music=(project.music||[]).filter(c=>c.start<duration(project));
+    if(music.length){const mixed=path.join(temp,'mixed.mp4'),args=['-hide_banner','-loglevel','error','-y','-i',partial];for(const c of music)args.push('-ss',String(c.in),'-t',String(c.out-c.in),'-i',registry.get(c.assetId).path);const filters=music.map((c,i)=>`[${i+1}:a]aresample=48000,volume=${c.volume}${audioFadeFilter(c,c.out-c.in)},adelay=${Math.round(c.start*1000)}:all=1[m${i}]`);filters.push(`[0:a]${music.map((_,i)=>`[m${i}]`).join('')}amix=inputs=${music.length+1}:duration=first:normalize=0,alimiter=limit=0.95:latency=1[a]`);args.push('-filter_complex',filters.join(';'),'-map','0:v:0','-map','[a]','-c:v','copy','-c:a','aac','-movflags','+faststart',mixed);await run(binaries().ffmpeg,args,{signal,timeout:1800000});await rename(mixed,partial);}
+    const captions=projectCaptions(project),size=dimensions(project.aspect,height),output=path.join(temp,'composition.mp4');
+    const packed=process.resourcesPath&&path.join(process.resourcesPath,'fonts'),fonts=packed&&existsSync(packed)?packed:path.resolve(import.meta.dirname,'../vendor/fonts');
+    const escape=v=>v.replace(/\\/g,'/').replace(/:/g,'\\:').replace(/'/g,"\\'");
+    const args=['-hide_banner','-loglevel','error','-y','-i',partial],filters=[];let input=0,previous='0:v';
+    if([...(project.imageLayers||[]),...(project.videoLayers||[]),...(project.shapeLayers||[]),...(project.textLayers||[])].some(t=>animated(t))){
+      filters.push('[0:v]setpts=PTS-STARTPTS[montage]');previous='montage';
+    }
+    for(const id of layerOrder(project)){
+      const text=project.textLayers?.find(t=>t.id===id),words=id==='@captions'?captions:text?[text]:null;
+      const shape=project.shapeLayers?.find(t=>t.id===id);
+      if(words||shape){
+        if(words&&!words.length)continue;
+        const ass=path.join(temp,`text-${filters.length}.ass`),next=`layer${filters.length}`;
+        await writeFile(ass,shape?shapeAss(shape,size.width,size.height):toAss(words,size.width,size.height,project.captionStyle));
+        filters.push(`[${previous}]ass='${escape(ass)}':fontsdir='${escape(fonts)}'[${next}]`);previous=next;
+      }else{
+        const t=[...(project.imageLayers||[]),...(project.videoLayers||[])].find(t=>t.id===id),a=project.assets.find(a=>a.id===t.assetId);
+        const w=Math.max(2,Math.round(size.width*t.width/100/2)*2),h=Math.max(2,Math.round(w*a.height/a.width/2)*2),next=`layer${filters.length}`;
+        args.push(...(a.kind==='image'?['-loop','1',...(animated(t)?['-framerate','30']:[])]:['-ss',String(t.in),'-t',String(t.end-t.start)]),'-i',registry.get(t.assetId).path);input++;
+        if(animated(t)){
+          const maxSize=Math.max(...pointsOf(t).map(p=>p.size)),sizeExpr=keyframeExpression(t,'size','T'),opacity=keyframeExpression(t,'opacity','T'),x=keyframeExpression(t,'x'),y=keyframeExpression(t,'y');
+          const maxW=Math.max(2,Math.round(size.width*maxSize/100/2)*2),maxH=Math.max(2,Math.round(maxW*a.height/a.width/2)*2),diagonal=Math.ceil(Math.hypot(maxW,maxH))+4;
+          // Keep one fixed frame size: rotate/geq cache input geometry, so a variable scale upstream can freeze the rendered size.
+          const sx=`(X-${diagonal}/2)*${maxSize}/(${sizeExpr})+${diagonal}/2`,sy=`(Y-${diagonal}/2)*${maxSize}/(${sizeExpr})+${diagonal}/2`;
+          filters.push(`[${input}:v]fps=30,${a.kind==='image'?'':`setpts=PTS-STARTPTS+${t.start}/TB,`}scale=${maxW}:${maxH},format=rgba,pad=${diagonal}:${diagonal}:(ow-iw)/2:(oh-ih)/2:color=0x00000000,geq=r='r(${sx},${sy})':g='g(${sx},${sy})':b='b(${sx},${sy})':a='alpha(${sx},${sy})*(${opacity})/100',rotate=${t.rotation}*PI/180:ow=${diagonal}:oh=${diagonal}:c=none[img${input}]`);
+          filters.push(`[${previous}][img${input}]overlay=x='${size.width}*(${x})/100-w/2':y='${size.height}*(${y})/100-h/2':enable='gte(t,${t.start})*lt(t,${t.end})':eof_action=pass[${next}]`);
+        }else{
+          filters.push(`[${input}:v]${a.kind==='image'?'':`setpts=PTS-STARTPTS+${t.start}/TB,`}scale=${w}:${h},format=rgba,colorchannelmixer=aa=${t.opacity/100},rotate=${t.rotation}*PI/180:ow=rotw(${t.rotation}*PI/180):oh=roth(${t.rotation}*PI/180):c=none[img${input}]`);
+          filters.push(`[${previous}][img${input}]overlay=x=${size.width*t.x/100}-w/2:y=${size.height*t.y/100}-h/2:enable='gte(t,${t.start})*lt(t,${t.end})':eof_action=pass[${next}]`);
+        }previous=next;
+      }
+    }
+    if(filters.length){
+      args.push('-filter_complex',filters.join(';'),'-map',`[${previous}]`,'-map','0:a','-t',String(duration(project)),'-c:v','libx264','-preset','fast','-crf','20','-pix_fmt','yuv420p','-c:a','copy','-movflags','+faststart',output);
+      await run(binaries().ffmpeg,args,{signal,timeout:1800000});await rename(output,partial);
+    }
+    if(signal?.aborted)throw new Error('Operação cancelada.');
+    await rename(partial,destination);return {path:destination};
+  } finally {await rm(temp,{recursive:true,force:true});await rm(partial,{force:true});}
+}

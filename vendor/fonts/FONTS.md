@@ -1,0 +1,51 @@
+# Fontes embutidas
+
+Google Fonts (estáticas, peso 400, subset latin, via Fontsource). Licenças OFL-1.1 (texto em OFL.txt) ou Apache-2.0.
+
+- Anton — Anton-Regular.ttf — OFL-1.1
+- Bebas Neue — BebasNeue-Regular.ttf — OFL-1.1
+- Oswald — Oswald-Regular.ttf — OFL-1.1
+- Archivo Black — ArchivoBlack-Regular.ttf — OFL-1.1
+- Staatliches — Staatliches-Regular.ttf — OFL-1.1
+- Fjalla One — FjallaOne-Regular.ttf — OFL-1.1
+- Russo One — RussoOne-Regular.ttf — OFL-1.1
+- Passion One — PassionOne-Regular.ttf — OFL-1.1
+- Alfa Slab One — AlfaSlabOne-Regular.ttf — OFL-1.1
+- Bowlby One — BowlbyOne-Regular.ttf — OFL-1.1
+- Bungee — Bungee-Regular.ttf — OFL-1.1
+- Titan One — TitanOne-Regular.ttf — OFL-1.1
+- Lilita One — LilitaOne-Regular.ttf — OFL-1.1
+- Black Ops One — BlackOpsOne-Regular.ttf — OFL-1.1
+- Ultra — Ultra-Regular.ttf — Apache-2.0
+- Poppins — Poppins-Regular.ttf — OFL-1.1
+- Inter — Inter-Regular.ttf — OFL-1.1
+- Roboto — Roboto-Regular.ttf — OFL-1.1
+- Lato — Lato-Regular.ttf — OFL-1.1
+- Work Sans — WorkSans-Regular.ttf — OFL-1.1
+- Barlow — Barlow-Regular.ttf — OFL-1.1
+- Archivo Narrow — ArchivoNarrow-Regular.ttf — OFL-1.1
+- Playfair Display — PlayfairDisplay-Regular.ttf — OFL-1.1
+- DM Serif Display — DMSerifDisplay-Regular.ttf — OFL-1.1
+- Abril Fatface — AbrilFatface-Regular.ttf — OFL-1.1
+- Lora — Lora-Regular.ttf — OFL-1.1
+- Libre Baskerville — LibreBaskerville-Regular.ttf — OFL-1.1
+- Cinzel — Cinzel-Regular.ttf — OFL-1.1
+- Pacifico — Pacifico-Regular.ttf — OFL-1.1
+- Lobster — Lobster-Regular.ttf — OFL-1.1
+- Caveat — Caveat-Regular.ttf — OFL-1.1
+- Dancing Script — DancingScript-Regular.ttf — OFL-1.1
+- Permanent Marker — PermanentMarker-Regular.ttf — Apache-2.0
+- Kaushan Script — KaushanScript-Regular.ttf — OFL-1.1
+- Satisfy — Satisfy-Regular.ttf — Apache-2.0
+- Great Vibes — GreatVibes-Regular.ttf — OFL-1.1
+- Amatic SC — AmaticSC-Regular.ttf — OFL-1.1
+- Bangers — Bangers-Regular.ttf — OFL-1.1
+- Luckiest Guy — LuckiestGuy-Regular.ttf — Apache-2.0
+- Chewy — Chewy-Regular.ttf — Apache-2.0
+- Shrikhand — Shrikhand-Regular.ttf — OFL-1.1
+- Righteous — Righteous-Regular.ttf — OFL-1.1
+- Monoton — Monoton-Regular.ttf — OFL-1.1
+- Press Start 2P — PressStart2P-Regular.ttf — OFL-1.1
+- Space Mono — SpaceMono-Regular.ttf — OFL-1.1
+- IBM Plex Mono — IBMPlexMono-Regular.ttf — OFL-1.1
+- Special Elite — SpecialElite-Regular.ttf — Apache-2.0

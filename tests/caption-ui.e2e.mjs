@@ -1,0 +1,56 @@
+import assert from 'node:assert/strict';
+import path from 'node:path';
+import { mkdtemp, rm, readFile, copyFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { createRequire } from 'node:module';
+import { binaries, run, probe } from '../desktop/media.mjs';
+const require=createRequire(import.meta.url);
+const {_electron:electron}=require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const dir=await mkdtemp(path.join(tmpdir(),'corte-e2e-'));
+const root=path.resolve(import.meta.dirname,'..');
+await run(binaries().ffmpeg,['-hide_banner','-loglevel','error','-y','-f','lavfi','-i','testsrc2=size=640x360:rate=30','-f','lavfi','-i','sine=frequency=440:sample_rate=48000','-t','4','-c:v','libx264','-pix_fmt','yuv420p','-c:a','aac',path.join(dir,'source.mp4')]);
+await copyFile(path.join(dir,'source.mp4'),path.join(dir,'second.mp4'));await copyFile(path.join(dir,'source.mp4'),path.join(dir,'third.mp4'));
+let app;
+try {
+ app=await electron.launch({executablePath:process.env.CORTE_TEST_APP||require('electron'),args:[...(process.env.CORTE_TEST_APP?[]:[root]),`--user-data-dir=${path.join(dir,'appdata')}`],env:{...process.env,ELECTRON_RUN_AS_NODE:''}});
+ const page=await app.firstWindow();await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setBounds({width:1200,height:800}));const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.getByRole('button',{name:'Importar vídeos',exact:true}).waitFor({timeout:15000});
+ assert.equal(await page.evaluate(async()=> (await document.fonts.load('16px Anton')).length),1,'bundled caption font loads for preview');
+ await page.getByRole('button',{name:'Configurações',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('#settings-dialog').open,{},{timeout:3000}).catch(async e=>{console.log('Settings status:',await page.locator('#toast').textContent());throw e;});
+ assert.equal(await page.locator('header #connect').count(),0,'ChatGPT login belongs in settings, not header');
+ assert.equal(await page.locator('#settings-dialog #connect').count(),1);
+ await app.evaluate(({ipcMain})=>{ipcMain.removeHandler('editor:status');ipcMain.removeHandler('editor:login');global.testConnected=false;global.testHold=false;global.testReady=new Promise(r=>global.testWaiting=r);ipcMain.handle('editor:status',()=>{if(global.testHold){global.testHold=false;global.testWaiting();return new Promise(r=>global.testRelease=r);}return {ok:true,value:{connected:global.testConnected}};});ipcMain.handle('editor:login',()=>{global.testConnected=true;return {ok:true,value:{connected:true}};});});
+ await page.locator('#settings-close').click();await page.locator('#settings').click();await page.waitForFunction(()=>document.querySelector('#connection-label').textContent==='Não conectado');await app.evaluate(()=>{global.testHold=true;});await page.locator('#settings-close').click();await page.locator('#settings').click();await app.evaluate(()=>global.testReady);
+ await page.locator('#connect').click();await page.waitForFunction(()=>document.querySelector('#connection-label').textContent==='ChatGPT conectado');
+ await app.evaluate(()=>global.testRelease({ok:true,value:{connected:false}}));await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+ assert.equal(await page.locator('#connection-label').textContent(),'ChatGPT conectado','older status cannot overwrite successful login');
+ assert.equal(await page.locator('#connect').isDisabled(),true);
+ assert.equal(await page.locator('#api-key').getAttribute('type'),'password');
+ await page.locator('#api-key').fill('sk-'+ 'x'.repeat(40));await page.locator('#api-save').click();await page.waitForFunction(()=>document.querySelector('#api-status').textContent.includes('cadastrada'));assert.equal(await page.locator('#api-key').inputValue(),'');
+ await page.locator('#api-key').fill('sk-'+ 'y'.repeat(40));await page.locator('#api-save').click();assert.equal(await page.locator('#api-key').inputValue(),'');await page.locator('#api-remove').click();await page.waitForFunction(()=>document.querySelector('#api-status').textContent.includes('removida'));await page.screenshot({path:path.resolve(root,'../../work/settings-ui.png')});await page.locator('#settings-close').click();
+ await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});},path.join(dir,'source.mp4'));
+ await page.getByRole('button',{name:'Importar vídeos',exact:true}).click();await page.waitForFunction(()=>document.querySelectorAll('.timeline-clip').length===1);
+ await page.locator('#nav-captions').click();assert.equal(await page.locator('#media-grid').isVisible(),false);assert.equal(await page.locator('#captions-panel').isVisible(),true);
+ assert.equal(await page.locator('#prompt').isVisible(),false,'AI does not occupy captions');
+ await page.locator('#generate-captions').click();await page.waitForFunction(()=>document.querySelector('#settings-dialog').open);assert.equal(await page.locator('#api-key').evaluate(e=>e===document.activeElement),true,'missing key focuses API configuration');assert.equal(await page.locator('.caption-block').count(),0);
+ await page.locator('#api-key').fill('sk-'+ 'z'.repeat(40));await page.locator('#api-save').click();await page.locator('#settings-close').click();
+ assert.equal(await page.locator('#caption-dialog').count(),0,'no caption confirmation dialog');
+ // Mock only the external provider boundary; actual project, IPC and rendering remain real.
+ await app.evaluate(({ipcMain})=>{ipcMain.removeHandler('editor:transcribe');ipcMain.handle('editor:transcribe',(_,p)=>({ok:true,value:[{assetId:p.assets[0].id,provider:'openai',model:'gpt-4o-transcribe-diarize',words:[{start:.2,end:1.5,text:'Olá mundo'},{start:2,end:3,text:'Segundo trecho'}]}]}));});
+ await page.locator('#generate-captions').click();await page.waitForFunction(()=>document.querySelectorAll('.caption-block').length===2);
+ const text=page.getByLabel('Texto da legenda 1',{exact:true});await text.fill('Texto revisado');await text.dispatchEvent('change');assert.equal(await page.locator('.caption-block').first().textContent(),'Texto revisado');
+ await page.locator('#caption-font').selectOption('Arial');await page.locator('#caption-position').selectOption('top');
+ await page.locator('.caption-block').first().click();assert.equal(await page.locator('#playhead-time').inputValue(),'0.20');
+ await page.getByLabel('Fim da legenda 1',{exact:true}).fill('1.25');await page.getByLabel('Fim da legenda 1',{exact:true}).dispatchEvent('change');
+ assert.ok(Math.abs(await page.locator('.caption-block').first().evaluate(e=>parseFloat(e.style.width))-16*1.05)<.001);
+ 
+ await app.evaluate(({ipcMain})=>{ipcMain.removeHandler('editor:transcribe');ipcMain.handle('editor:transcribe',()=>({ok:false,error:'Falha controlada da API'}));});
+ await page.locator('#generate-captions').click();await page.waitForFunction(()=>document.querySelector('#busy-message').hidden);assert.equal(await page.locator('.caption-block').count(),2);assert.equal(await page.locator('.caption-block').first().textContent(),'Texto revisado');
+ await page.locator('#nav-media').click();assert.equal(await page.locator('#media-grid').isVisible(),true);assert.equal(await page.locator('#captions-panel').isVisible(),false);
+ assert.equal(await page.locator('#prompt').isVisible(),false);await page.locator('#nav-ai').click();assert.equal(await page.locator('#prompt').isVisible(),true);assert.equal(await page.locator('#media-grid').isVisible(),false);assert.equal(await page.locator('#captions-panel').isVisible(),false);
+ await page.locator('#nav-captions').click();
+ await app.evaluate(({ipcMain})=>{ipcMain.removeHandler('editor:transcribe');ipcMain.handle('editor:transcribe',()=>new Promise(r=>global.testTranscribeRelease=r));ipcMain.removeHandler('editor:cancel');ipcMain.handle('editor:cancel',()=>{global.testTranscribeRelease({ok:true,value:[]});return {ok:true,value:true};});});
+ await page.locator('#generate-captions').click();await page.locator('#cancel').waitFor({state:'visible'});await page.locator('#cancel').click();await page.waitForFunction(()=>document.querySelector('#busy-message').hidden);assert.equal(await page.locator('.caption-block').count(),2,'cancel preserves captions');
+ assert.deepEqual(errors,[]);await page.locator('#nav-captions').click();await page.screenshot({path:path.resolve(root,'../../work/captions-ui.png')});console.log('PASS caption module, timeline selection, text/timing/style and settings');
+}finally{if(app){await app.evaluate(({dialog})=>{dialog.showMessageBoxSync=()=>1;});await app.close();}await rm(dir,{recursive:true,force:true});}

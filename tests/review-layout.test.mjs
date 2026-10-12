@@ -1,0 +1,2 @@
+import test from 'node:test';import assert from 'node:assert/strict';import * as ui from '../src/editor-experience.mjs';
+test('montage preview fits available space without distortion, in landscape and portrait',()=>{assert.deepEqual(ui.previewSize(800,400,1280,720),{width:711,height:400});assert.deepEqual(ui.previewSize(800,400,720,1280),{width:225,height:400});assert.deepEqual(ui.previewSize(0,0,720,1280),{width:0,height:0});});

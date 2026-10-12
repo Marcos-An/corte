@@ -1,0 +1,4 @@
+yt-dlp 2026.08.19 — official standalone Windows x64 executable.
+Source: https://github.com/yt-dlp/yt-dlp/releases
+Published SHA256 (yt-dlp.exe): 66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7a
+Bundled Python; runtime uses Corte/Electron in Node mode. Windows execution not validated on this Mac.

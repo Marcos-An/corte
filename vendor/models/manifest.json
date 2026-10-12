@@ -1,0 +1,80 @@
+{
+  "model": "Xenova/clip-vit-base-patch32",
+  "revision": "d15189d7028b43f1d3e65039190477f6af591c2a",
+  "files": [
+    {
+      "path": "Xenova/clip-vit-base-patch32/config.json",
+      "sha256": "493ef57ff783e42d1530c91b53469b7fdf8db8a9c1408e86998fcb7899a4f495"
+    },
+    {
+      "path": "Xenova/clip-vit-base-patch32/preprocessor_config.json",
+      "sha256": "6f638fb9401a6d6296feff533ee7efe657b787c49f954f82f5906b36ef2a1b1f"
+    },
+    {
+      "path": "Xenova/clip-vit-base-patch32/onnx/vision_model_quantized.onnx",
+      "sha256": "583fd1110a514667812fee7d684952aaf82a99b959760c8d7dca7e0ab9839299"
+    },
+    {
+      "path": "Xenova/clip-vit-base-patch32/LICENSE",
+      "sha256": "987e63b32f6c89ff5160e429458a872ff048e6860b590a3912e938f9da8f14db"
+    },
+    {
+      "path": "onnx-community/whisper-small_timestamped/LICENSE",
+      "sha256": "b5d65a59060e68c4ff940e1eddfa6f94b2d68fdf58ed7f4dd57721c997e35e9d"
+    },
+    {
+      "path": "onnx-community/whisper-small_timestamped/added_tokens.json",
+      "sha256": "9715fd2243b6f06a5858b5e32950d2853f73dd5bc201aafcf76f5082a2d8acd1"
+    },
+    {
+      "path": "onnx-community/whisper-small_timestamped/config.json",
+      "sha256": "457854d452f17661e197d74aee12b8e74fb75ba30ebfaa7426d0d61ea1e08a18"
+    },
+    {
+      "path": "onnx-community/whisper-small_timestamped/generation_config.json",
+      "sha256": "f538b28220c6a6d6f1af1458d4141cacb4ef4963df3de98a19490440c412ddf0"
+    },
+    {
+      "path": "onnx-community/whisper-small_timestamped/normalizer.json",
+      "sha256": "bf1c507dc8724ca9cf9903640dacfb69dae2f00edee4f21ceba106a7392f26dd"
+    },
+    {
+      "path": "onnx-community/whisper-small_timestamped/preprocessor_config.json",
+      "sha256": "a6a76d28c93edb273669eb9e0b0636a2bddbb1272c3261e47b7ca6dfdbac1b8d"
+    },
+    {
+      "path": "onnx-community/whisper-small_timestamped/quantize_config.json",
+      "sha256": "b3c4c46d19751453cf47929fc25828e39f6e46025d9d66840e4f85047640b268"
+    },
+    {
+      "path": "onnx-community/whisper-small_timestamped/special_tokens_map.json",
+      "sha256": "e67ae3a0aaa99abcd9f187138e12db1f65c16a14761c50ef10eef2c174a7a691"
+    },
+    {
+      "path": "onnx-community/whisper-small_timestamped/tokenizer.json",
+      "sha256": "27fc476bfe7f17299480be2273fc0608e4d5a99aba2ab5dec5374b4482d1a566"
+    },
+    {
+      "path": "onnx-community/whisper-small_timestamped/tokenizer_config.json",
+      "sha256": "2a4c4281cf9f51ac6ccc406fdc711a087afe6530f671fa7b80953edc498275ce"
+    },
+    {
+      "path": "onnx-community/whisper-small_timestamped/vocab.json",
+      "sha256": "50d6a919f0a0601d56a04eb583c780d18553aa388254ba3158eb6a00f13e2c1a"
+    },
+    {
+      "path": "onnx-community/whisper-small_timestamped/onnx/decoder_model_merged_quantized.onnx",
+      "sha256": "c831996a6d5a535cf17447b0d7ecc36da6b72696e6fb906852ba6136b9199abb"
+    },
+    {
+      "path": "onnx-community/whisper-small_timestamped/onnx/encoder_model_quantized.onnx",
+      "sha256": "9f5635b596e6084045c7426ca6f6f99db8ce606ea895397c3b4a3c0aa3f9b070"
+    }
+  ],
+  "speech": {
+    "model": "onnx-community/whisper-small_timestamped",
+    "revision": "65caa70f294b46e1c33ff820aae6b16d048ab818",
+    "dtype": "q8",
+    "license": "MIT"
+  }
+}

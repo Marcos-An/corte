@@ -1,0 +1,57 @@
+import {clipDuration} from './clip-time.mjs';
+// Coordinates are measured from the current ruler rectangle, including scroll.
+export function timelinePointerTime(clientX,left,zoom,total){
+ return Math.max(0,Math.min(total,(clientX-left)/zoom));
+}
+export function playbackStart(position,total,removal){
+ const start=position>=total-.02?0:position;
+ return removal&&start>=removal.start&&start<removal.end?removal.end:start;
+}
+export function editorPanel(current,requested){return current===requested?null:requested;}
+
+export function scopeProject(project,clipId){
+ if(!clipId)return structuredClone(project);
+ const c=project.clips.find(c=>c.id===clipId);if(!c)throw Error('Selecione um trecho válido.');
+ return {...structuredClone(project),clips:[structuredClone(c)],transitions:[]};
+}
+export function validateScopedPlan(project,plan,clipId){
+ if(!clipId)return plan;scopeProject(project,clipId);
+ if(!Array.isArray(plan?.operations)||plan.operations.some(op=>op.clipId!==clipId||['move','set_aspect'].includes(op.type)))throw Error('A IA tentou editar fora do trecho escolhido. Nenhuma alteração foi aplicada.');
+ return plan;
+}
+export function dragCrop(crop,dx,dy,width,height){
+ const clamp=(v,max)=>Math.max(0,Math.min(max,v));
+ return {...crop,x:clamp(crop.x-dx/width*crop.w,1-crop.w),y:clamp(crop.y-dy/height*crop.h,1-crop.h)};
+}
+
+export function nextClipTime(project,position){let end=0;for(const c of project.clips){end+=clipDuration(c);if(end>position+.001)return end;}return end;}
+
+export function previewSize(width,height,videoWidth,videoHeight){const scale=Math.max(0,Math.min(width/videoWidth,height/videoHeight));return {width:Math.round(videoWidth*scale),height:Math.round(videoHeight*scale)};}
+
+// Positions are percentages of the canvas. Each anchor of the moving box (center, then edges, as
+// offsets from its center) may lock onto any line; the nearest one within the threshold wins.
+export function snapAxis(value,offsets,lines,threshold){
+ let best=null;
+ for(const o of offsets)for(const line of lines){const d=Math.abs(line-o-value);if(d<=threshold&&(!best||d<best.d))best={d,value:line-o,guide:line};}
+ return best?{value:best.value,guide:best.guide}:{value,guide:null};
+}
+export function snapPoint(x,y,targets,thresholdX,thresholdY,offsets={x:[0],y:[0]}){
+ const sx=snapAxis(x,offsets.x,targets.x,thresholdX),sy=snapAxis(y,offsets.y,targets.y,thresholdY);
+ return {x:Math.round(sx.value*10)/10,y:Math.round(sy.value*10)/10,guides:{x:sx.guide,y:sy.guide}};
+}
+
+// Overlapping items share one fixed-height row: each gets the first lane free at its start,
+// and lanes are counted per overlapping group, so a lone item always keeps the full height.
+export function assignLanes(items){
+ const sorted=[...items].sort((a,b)=>a.start-b.start||a.end-b.end),result=new Map();
+ let group=[],groupEnd=-Infinity;
+ const close=()=>{const lanes=Math.max(1,...group.map(g=>result.get(g.id).lane+1));for(const g of group)result.get(g.id).lanes=lanes;group=[];};
+ for(const item of sorted){
+  if(item.start>=groupEnd&&group.length)close();
+  const ends=[];for(const g of group){const r=result.get(g.id);ends[r.lane]=Math.max(ends[r.lane]??-Infinity,g.end);}
+  let lane=0;while(ends[lane]!==undefined&&ends[lane]>item.start)lane++;
+  result.set(item.id,{lane,lanes:1});group.push(item);groupEnd=Math.max(groupEnd,item.end);
+ }
+ if(group.length)close();
+ return result;
+}

@@ -1,0 +1,30 @@
+const {contextBridge,ipcRenderer}=require('electron');
+const invoke=async(channel,...args)=>{const r=await ipcRenderer.invoke(channel,...args);if(!r.ok)throw new Error(r.error);return r.value;};
+contextBridge.exposeInMainWorld('editor',{
+  musicAdopt:id=>invoke('editor:music-adopt',id),
+  musicCancel:()=>invoke('editor:music-cancel'),
+  musicSearch:(query,kind)=>invoke('editor:music-search',query,kind),
+  musicReplay:id=>invoke('editor:music-replay',id),
+  musicPrepare:id=>invoke('editor:music-prepare',id),
+  recordingArm:()=>invoke('editor:recording-arm'),
+  recordingDisarm:()=>invoke('editor:recording-disarm'),
+  recordingSave:(bytes,mime)=>invoke('editor:recording-save',bytes,mime),
+  importMedia:kind=>invoke('editor:import',kind),
+  relink:assetId=>invoke('editor:relink',assetId),
+  saveProject:(project,history)=>invoke('editor:save',project,history),
+  openProject:()=>invoke('editor:open'),
+  onOpenProject:listener=>{const handler=()=>listener();ipcRenderer.on('editor:open-project',handler);return ()=>ipcRenderer.removeListener('editor:open-project',handler);},
+  exportProject:(project,height)=>invoke('editor:export',project,height),
+  status:()=>invoke('editor:status'),
+  login:()=>invoke('editor:login'),
+  analyze:(project,prompt,step,clipId)=>invoke('editor:analyze',project,prompt,step,clipId),
+  apiStatus:()=>invoke('editor:api-status'),
+  apiSave:key=>invoke('editor:api-save',key),
+  apiClipboard:()=>invoke('editor:api-clipboard'),
+  apiRemove:()=>invoke('editor:api-remove'),
+  captionEstimate:project=>invoke('editor:caption-estimate',project),
+  transcribe:project=>invoke('editor:transcribe',project),
+  cancel:()=>invoke('editor:cancel'),
+  setDirty:dirty=>invoke('editor:dirty',dirty),
+  onProgress:listener=>{const handler=(_,p)=>listener(p);ipcRenderer.on('editor:progress',handler);return ()=>ipcRenderer.removeListener('editor:progress',handler);}
+});

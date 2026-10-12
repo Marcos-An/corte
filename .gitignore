@@ -1,0 +1,80 @@
+# Public source allowlist: do not publish arbitrary workspace files.
+/*
+!/.gitignore
+!/README.md
+!/package.json
+!/package-lock.json
+!/src/
+!/desktop/
+!/tests/
+!/build-resources/
+!/vendor/
+
+# Development artifacts and private application state.
+node_modules/
+release/
+validation/
+sketches/
+cache/
+chatgpt/
+music/
+narrations/
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
+auth.json
+credentials/
+.credentials
+*credentials*.json
+*credentials*.txt
+*.pem
+*.key
+*.p12
+*.pfx
+*.enc
+*.corte
+
+# Keep test code and reviewed text fixtures, not recordings or generated media.
+/tests/*
+!/tests/*.mjs
+!/tests/fixtures-legacy-text-ass.json
+
+# Keep app icon outputs; exclude design experiments and large duplicate exports.
+/build-resources/*
+!/build-resources/icon.png
+!/build-resources/icon.ico
+!/build-resources/icon.icns
+
+# Dependency provenance/licenses only; tools and model weights are not Git assets.
+/vendor/*
+!/vendor/fonts/
+!/vendor/models/
+!/vendor/windows/
+!/vendor/darwin-arm64/
+/vendor/models/**
+!/vendor/models/manifest.json
+!/vendor/models/Xenova/
+!/vendor/models/Xenova/clip-vit-base-patch32/
+!/vendor/models/Xenova/clip-vit-base-patch32/LICENSE
+!/vendor/models/onnx-community/
+!/vendor/models/onnx-community/whisper-small_timestamped/
+!/vendor/models/onnx-community/whisper-small_timestamped/LICENSE
+/vendor/windows/*
+!/vendor/windows/*.LICENSE
+!/vendor/windows/*.README
+/vendor/darwin-arm64/*
+!/vendor/darwin-arm64/*.LICENSE
+!/vendor/darwin-arm64/*.README
+/vendor/fonts/*
+!/vendor/fonts/*.ttf
+!/vendor/fonts/*.txt
+!/vendor/fonts/FONTS.md
+# Local-only exploratory harnesses reference personal media paths.
+/tests/caption-live.mjs
+/tests/quality.e2e.mjs
+# Preserve the output directory for tests, never its local artifacts.
+!/validation/
+/validation/**
+!/validation/.gitkeep
