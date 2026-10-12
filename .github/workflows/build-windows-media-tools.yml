@@ -1,0 +1,63 @@
+name: Build GPL Windows media tools
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  media-tools:
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            make
+            curl
+            tar
+            xz
+            diffutils
+            perl
+            python
+            mingw-w64-x86_64-gcc
+      - name: Compile isolated, pinned sources
+        shell: msys2 {0}
+        env:
+          CORTE_BUILD_JOBS: 4
+        run: bash vendor/distribution/build-windows.sh
+      - name: Verify native codecs, subtitles and license
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          ff=vendor/windows/ffmpeg.exe
+          probe=vendor/windows/ffprobe.exe
+          "$ff" -L 2>&1 | tee license-result.txt
+          if grep -q 'not legally redistributable' license-result.txt; then exit 1; fi
+          "$ff" -v error -y -f lavfi -i color=blue:s=320x320:r=30 -f lavfi -i sine=frequency=600 -t 1 -c:v libx264 -c:a aac fixture.mp4
+          printf '[Script Info]\nScriptType: v4.00+\nPlayResX: 320\nPlayResY: 320\n[V4+ Styles]\nFormat: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding\nStyle: Default,Arial,30,&H0000FF00,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,1,0,5,10,10,10,1\n[Events]\nFormat: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text\nDialogue: 0,0:00:00.00,0:00:01.00,Default,,0,0,0,,GPL QA\n' > captions.ass
+          "$ff" -v error -y -i fixture.mp4 -vf "ass=captions.ass" -c:v libx264 -c:a aac caption.mp4
+          "$probe" -v error -show_entries format=duration -of default=nw=1 caption.mp4
+          "$ff" -v error -y -i caption.mp4 -frames:v 1 -f rawvideo -pix_fmt rgb24 frame.raw
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('frame.raw').read_bytes()
+          assert sum(p[i+1]>p[i]+30 and p[i+1]>p[i+2]+30 for i in range(0,len(p),3))>20, 'ASS glyphs missing'
+          PY
+          for tool in "$ff" "$probe"; do x86_64-w64-mingw32-objdump -p "$tool" | grep 'DLL Name:'; done > imports.txt
+          if grep -iE 'msys-|libgcc|libstdc\+\+|libwinpthread' imports.txt; then exit 1; fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: windows-gpl-media-tools
+          if-no-files-found: error
+          path: |
+            vendor/windows/ffmpeg.exe
+            vendor/windows/ffprobe.exe
+            vendor/windows/ffmpeg.LICENSE
+            vendor/windows/ffprobe.LICENSE
+            vendor/distribution/ffmpeg-windows-sources.tar.gz
+            license-result.txt
+            imports.txt

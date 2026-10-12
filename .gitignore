@@ -78,3 +78,17 @@ credentials/
 !/validation/
 /validation/**
 !/validation/.gitkeep
+# Distribution recipes/notices are public; downloaded sources stay release assets.
+!/vendor/distribution/
+/vendor/distribution/*
+!/vendor/distribution/*.md
+!/vendor/distribution/*.json
+!/vendor/distribution/*.sh
+!/vendor/distribution/*.LICENSE
+# Explicit opt-in native build workflow, no credentials or automatic publishing.
+!/.github/
+/.github/*
+!/.github/workflows/
+/.github/workflows/*
+!/.github/workflows/build-windows-media-tools.yml
+!/vendor/distribution/*.sha256
