@@ -35,7 +35,7 @@ make -j"$JOBS"
 make install
 ln -sf pkgconf.exe "$PREFIX/bin/pkg-config.exe"
 cd "$WORK/src/zlib-1.3.1"
-make -f win32/Makefile.gcc -j"$JOBS" PREFIX=x86_64-w64-mingw32- libz.a
+make -f win32/Makefile.gcc -j"$JOBS" PREFIX=x86_64-w64-mingw32- AR=ar libz.a
 cp libz.a "$PREFIX/lib/"
 cp zlib.h zconf.h "$PREFIX/include/"
 cat > "$PREFIX/lib/pkgconfig/zlib.pc" <<PC
