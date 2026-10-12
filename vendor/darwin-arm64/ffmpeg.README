@@ -1,0 +1,6 @@
+Corte controlled FFmpeg 6.1.1, Apple Silicon arm64.
+GNU GPL version 3 or later; compiled without nonfree components.
+Source commit: e38092ef9395d7049f871ef4d5411eb410e283e0 (n6.1.1).
+Recipe and checksums: ../distribution/build-macos.sh and source-checksums.sha256.
+Sources and dependency licenses: ../distribution/ffmpeg-macos-sources.tar.gz.
+Includes libx264, libass, FreeType, FriBidi and HarfBuzz; links only macOS system libraries.

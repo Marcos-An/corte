@@ -1,0 +1,27 @@
+{
+  "ffmpegVersion": "6.1.1",
+  "sourceCommit": "e38092ef9395d7049f871ef4d5411eb410e283e0",
+  "license": "GPL-3.0-or-later",
+  "mac": {
+    "ffmpeg": {
+      "sha256": "d7db04755c1c4b391f8328bc4810de0d30f3fc5e2d835f5670f21e104884cba6"
+    },
+    "ffprobe": {
+      "sha256": "9a1213301d5c2a330459a69dd1993281da470bf81fcf0f1fee13ddf2c0110ddc"
+    },
+    "sources": {
+      "sha256": "41b520080b1c07fddcf9cae6d7c4afa5ef653d3f2a3d7fdbb6e665a0a3f7fc6b"
+    }
+  },
+  "win": {
+    "ffmpeg": {
+      "sha256": "1ac15922c13255dcd4a7f22563f2e965755d59aeba528ee96f7869295830d01c"
+    },
+    "ffprobe": {
+      "sha256": "87b372fe0ccc9ec2b355005cff85f091850d4acd973d93abcd541f4e150b9d2b"
+    },
+    "sources": {
+      "sha256": "cfe64943df574930b423bff9cce1219c6c1c9111d51d3e0c09375b064c85b79f"
+    }
+  }
+}

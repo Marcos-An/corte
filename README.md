@@ -4,9 +4,15 @@ Editor desktop de vídeo com Electron, edição não destrutiva e assistência p
 
 ## Download
 
-Ainda não há instalador desta versão publicado neste repositório. O código atual contém melhorias posteriores aos pacotes locais antigos. Os instaladores serão distribuídos pela seção **Releases**, depois de gerar e validar os pacotes de cada plataforma.
+Pré-release **0.5.4**: [downloads e notas da versão](https://github.com/Marcos-An/corte/releases/tag/v0.5.4).
 
-Não confunda o ZIP do código-fonte com um aplicativo pronto para instalar. Windows físico e assinatura/notarização dos pacotes ainda precisam de validação para distribuição.
+- **macOS Apple Silicon (arm64):** arquivo `.dmg` ou `.zip`. Não há pacote Intel nesta versão.
+- **Windows x64:** instalador `Corte.Setup.0.5.4.exe`.
+- Pacotes **sem assinatura digital/notarização**; macOS/Windows podem mostrar avisos de segurança. Não desative a proteção do sistema inteiro.
+
+O aplicativo empacotado foi validado no Mac com mídia sintética, salvar/reabrir e exportação real. As ferramentas Windows passaram por testes nativos de H.264/AAC, probe e legendas; instalação e interface completas no Windows físico ainda não foram validadas. Esta versão é beta, não uma certificação de estabilidade.
+
+A Release inclui fontes correspondentes das ferramentas GPL e `SHA256SUMS`. O ZIP automático do código-fonte não é um aplicativo instalável.
 
 ## Editor
 
@@ -53,7 +59,7 @@ A edição básica usa as dependências instaladas por npm. Fontes e ícones est
 Binários de ferramentas, modelos ONNX e instaladores **não são versionados**. Antes de usar inferência/transcrição local ou empacotar, prepare os arquivos esperados:
 
 - Modelos em `vendor/models`: veja `vendor/models/manifest.json` para o modelo CLIP, revisão e hashes fixados. A transcrição local usa `onnx-community/whisper-small_timestamped` com arquivos de configuração/tokenizer e modelos ONNX quantizados na estrutura esperada pelo Transformers.js.
-- Ferramentas de cada plataforma em `vendor/darwin-arm64` e `vendor/windows`: veja os arquivos `.README` e `.LICENSE` incluídos para procedência. As ferramentas efetivamente incluídas no pacote são definidas em `package.json`.
+- Ferramentas de cada plataforma em `vendor/darwin-arm64` e `vendor/windows`: veja os arquivos `.README` e `.LICENSE` incluídos para procedência. As ferramentas efetivamente incluídas no pacote são definidas em `package.json`. As receitas isoladas, versões/hash fixados e fontes correspondentes estão documentadas em `vendor/distribution/README.md`; o workflow manual compila e testa as ferramentas no Windows nativo.
 - `yt-dlp` é necessário para a integração não oficial de música. Essa integração pode falhar por faixa ou mudança do serviço; não usa login/cookies/bypass. Disponibilidade da faixa não concede licença para reutilizá-la.
 
 Obtenha arquivos somente das fontes oficiais indicadas, respeite as licenças e confira hashes quando houver. Este repositório não inclui um provisionador automático completo de todas essas dependências. Não publique dados de autenticação para resolver dependências ausentes.
@@ -71,6 +77,10 @@ Build bem-sucedido não comprova instalação, assinatura, reprodução ou expor
 npm test
 npm run check
 node tests/ai-complex.e2e.mjs
+# Depois de gerar os dois pacotes:
+node tests/distribution.integration.mjs
+# Testar o app empacotado no Mac:
+CORTE_TEST_APP="$PWD/release/mac-arm64/Corte.app/Contents/MacOS/Corte" node tests/ai-complex.e2e.mjs
 ```
 
 A suíte inclui testes do modelo/histórico, validação de planos e MP4 reais com medidas de pixels/PCM. E2Es usam Electron/Playwright e fontes sintéticas temporárias. Alguns testes exploratórios antigos dependem de mídia/artefatos locais, que não fazem parte do repositório.
@@ -79,6 +89,6 @@ A suíte inclui testes do modelo/histórico, validação de planos e MP4 reais c
 
 ## Licenças
 
-As dependências, fontes, modelos e ferramentas têm licenças próprias; avisos/proveniência disponíveis em `vendor`. Revise os requisitos de redistribuição de FFmpeg e de todos os arquivos empacotados antes de publicar instaladores.
+As dependências, fontes, modelos e ferramentas têm licenças próprias; avisos/proveniência disponíveis em `vendor`. FFmpeg/FFprobe 6.1.1 são executáveis separados, compilados com componentes GPL e sem `--enable-nonfree`. Textos GPL e fontes correspondentes acompanham os pacotes e a Release; veja `vendor/distribution/README.md`. Essa verificação técnica não constitui parecer jurídico sobre todos os usos do aplicativo.
 
 A licença de uso do código autoral do Corte ainda será definida. Repositório público não deve ser interpretado como concessão de licença MIT/Apache ou de direitos sobre músicas/mídias de terceiros.
