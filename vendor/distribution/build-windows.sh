@@ -30,7 +30,7 @@ for name in pkgconf-2.1.1.tar.xz x264-31e19f9.tar.gz freetype-2.13.2.tar.xz frib
   tar -xf "$WORK/archives/$name"
 done
 cd "$WORK/src/pkgconf-2.1.1"
-./configure --host=x86_64-w64-mingw32 --prefix="$PREFIX" --disable-shared --enable-static
+CPPFLAGS=-DPKGCONFIG_IS_STATIC ./configure --host=x86_64-w64-mingw32 --prefix="$PREFIX" --disable-shared --enable-static
 make -j"$JOBS"
 make install
 ln -sf pkgconf.exe "$PREFIX/bin/pkg-config.exe"
