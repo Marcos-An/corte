@@ -7,7 +7,7 @@ import {binaries,run} from '../desktop/media.mjs';
 const require=createRequire(import.meta.url),{_electron}=require('playwright');
 const root=path.resolve(import.meta.dirname,'..'),dir=await mkdtemp(path.join(tmpdir(),'corte-save-reopen-'));
 const source=path.join(dir,'source.mp4'),file=path.join(dir,'edited.CORTE');let app;
-const launch=async(initialFile=null)=>{app=await _electron.launch({executablePath:process.env.CORTE_TEST_APP||require('electron'),args:[...(process.env.CORTE_TEST_APP?[]:[root]),`--user-data-dir=${path.join(dir,'profile')}`,...(initialFile?[initialFile]:[])],env:{...process.env,ELECTRON_RUN_AS_NODE:''}});const page=await app.firstWindow();await page.locator('#nav-media').waitFor();return page;};
+const launch=async(initialFile=null)=>{app=await _electron.launch({executablePath:process.env.CORTE_TEST_APP||require('electron'),args:[...(process.env.CORTE_TEST_APP?[]:[root]),`--user-data-dir=${path.join(dir,'profile')}`,...(initialFile?[initialFile]:[])],env:{...process.env,ELECTRON_RUN_AS_NODE:''}});const page=await app.firstWindow();await page.locator('.history-entry').first().waitFor({state:'attached'});return page;};
 const close=async()=>{await app.evaluate(({dialog})=>dialog.showMessageBoxSync=()=>1);await app.close();app=null;};
 const open=async page=>{await app.evaluate(({dialog},file)=>dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]}),file);await app.evaluate(({Menu})=>Menu.getApplicationMenu().getMenuItemById('open-project').click());await page.waitForFunction(()=>document.querySelectorAll('.timeline-clip').length===2);};
 try{

@@ -115,9 +115,10 @@ jobs:
           if [ "$CORTE_DISTRIBUTION_PLATFORM" = mac ]; then
             export CORTE_TEST_APP="$PWD/release/mac-arm64/Corte.app/Contents/MacOS/Corte"
           else
-            export CORTE_TEST_APP="$PWD/release/win-unpacked/Corte.exe"
+            export CORTE_TEST_APP="$(node -p "require('node:path').resolve('release/win-unpacked/Corte.exe')")"
           fi
-          node tests/ai-complex.e2e.mjs
+          node -e "if(!require('node:fs').existsSync(process.env.CORTE_TEST_APP))throw Error('Packaged executable not found')"
+          DEBUG=pw:browser node tests/ai-complex.e2e.mjs
       - name: Verify and collect final assets
         run: |
           mkdir -p release/assets
@@ -141,7 +142,7 @@ jobs:
           if [ "$CORTE_DISTRIBUTION_PLATFORM" = mac ]; then
             export CORTE_TEST_APP="$PWD/release/mac-arm64/Corte.app/Contents/MacOS/Corte"
           else
-            export CORTE_TEST_APP="$PWD/release/win-unpacked/Corte.exe"
+            export CORTE_TEST_APP="$(node -p "require('node:path').resolve('release/win-unpacked/Corte.exe')")"
           fi
           node tests/project-save.e2e.mjs
           node tests/save-reopen.e2e.mjs
