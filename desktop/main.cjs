@@ -116,7 +116,7 @@ if(primary)app.whenReady().then(async()=>{
  handler('recording-save',async(bytes,mime)=>{if(abort)throw Error('Aguarde a operação atual.');const file=await saveRecording(bytes,mime,path.join(app.getPath('userData'),'narrations'));try{return await register(file);}catch(e){await fs.rm(file,{force:true});throw e;}});
  handler('busy',value=>{rendererBusy=value===true;return true;});
  handler('dirty',value=>{dirty=value===true;return true;});
- handler('update-status',()=>updates?.status()||{phase:'unavailable',platform:process.platform});
+ handler('update-status',()=>updates?.status()||{phase:'unavailable',platform:process.platform,installedVersion:app.getVersion()});
  handler('update-check',()=>{if(!updates)throw Error('Atualizações automáticas estão disponíveis no Corte instalado para Windows.');return updates.check();});
  handler('update-install',()=>{if(!updates)throw Error('Atualização automática indisponível.');return updates.install();});
  const workArea=screen.getPrimaryDisplay().workArea;
@@ -135,7 +135,7 @@ if(primary)app.whenReady().then(async()=>{
   const manifest=JSON.parse(await fs.readFile(path.join(__dirname,'../vendor/models/manifest.json'),'utf8'));
   process.env.CORTE_MODEL_PATH=modelStorePath(app.getPath('userData'),manifest);
   const {autoUpdater}=require('electron-updater');autoUpdater.logger=null;autoUpdater.disableWebInstaller=true;
-  updates=createUpdates({updater:autoUpdater,prepare:async()=>{process.env.CORTE_MODEL_PATH=await preserveModels({bundled:path.join(process.resourcesPath,'models'),userData:app.getPath('userData'),manifest});},blocked:()=>dirty||savingProject||!!abort||rendererBusy||activeOperations>0||microphoneArmedUntil>Date.now(),notify:state=>{if(!window.isDestroyed())window.webContents.send('editor:update',state);}});
+  updates=createUpdates({updater:autoUpdater,installedVersion:app.getVersion(),prepare:async()=>{process.env.CORTE_MODEL_PATH=await preserveModels({bundled:path.join(process.resourcesPath,'models'),userData:app.getPath('userData'),manifest});},blocked:()=>dirty||savingProject||!!abort||rendererBusy||activeOperations>0||microphoneArmedUntil>Date.now(),notify:state=>{if(!window.isDestroyed())window.webContents.send('editor:update',state);}});
  }
  await window.loadFile(path.join(__dirname,'../src/index.html'));window.show();
  if(updates){void updates.check();updateTimer=setInterval(()=>void updates.check(),6*60*60*1000);updateTimer.unref();}

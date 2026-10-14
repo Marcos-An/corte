@@ -1,8 +1,8 @@
 // electron-updater owns HTTPS, checksums, differential downloads and installation.
-export function createUpdates({updater,prepare,blocked,notify=()=>{}}){
- let state={phase:'idle'},checking=false,installing=false;
- const publish=(phase,extra={})=>{state={phase,...extra};notify({...state});};
- updater.autoDownload=true;updater.autoInstallOnAppQuit=false;updater.allowPrerelease=true;updater.allowDowngrade=false;
+export function createUpdates({updater,prepare,blocked,installedVersion,notify=()=>{}}){
+ let state={phase:'idle',installedVersion},checking=false,installing=false;
+ const publish=(phase,extra={})=>{state={phase,installedVersion,...extra};notify({...state});};
+ updater.autoDownload=true;updater.autoInstallOnAppQuit=true;updater.allowPrerelease=true;updater.allowDowngrade=false;
  updater.on('checking-for-update',()=>publish('checking'));
  updater.on('update-not-available',()=>publish('current'));
  updater.on('update-available',info=>publish('downloading',{version:info.version,percent:0}));

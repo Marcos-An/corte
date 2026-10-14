@@ -863,8 +863,9 @@ $('menu-position').addEventListener('change',()=>{
  renderTimeline();layoutGuides();
 });
 function renderUpdate(){
- const {phase,version,percent=0}=updateState;
- const labels={idle:'Atualizações automáticas ativadas.',preparing:'Preparando a IA local para futuras atualizações…',checking:'Verificando atualizações…',current:'Corte atualizado.',downloading:`Baixando atualização ${version||''} · ${percent}%`,ready:`Atualização ${version||''} pronta.${dirty?' Salve seu projeto antes de reiniciar.':''}`,error:'Não foi possível atualizar. Confira sua conexão e o espaço livre e tente novamente.',unavailable:'Atualização automática disponível no aplicativo instalado para Windows. Mac: atualização manual por enquanto.'};
+ const {phase,version,installedVersion,percent=0}=updateState;
+ $('installed-version').textContent=installedVersion?`Versão instalada: ${installedVersion}`:'Versão instalada: verificando…';
+ const labels={idle:'Atualizações automáticas ativadas.',preparing:'Preparando a IA local para futuras atualizações…',checking:'Verificando atualizações…',current:'Corte atualizado.',downloading:`Baixando atualização ${version||''} · ${percent}%`,ready:`Atualização ${version||''} baixada. Será instalada automaticamente ao fechar o Corte.${dirty?' Salve seu projeto antes de fechar.':''}`,error:'Não foi possível atualizar. Confira sua conexão e o espaço livre e tente novamente.',unavailable:'Atualização automática disponível no aplicativo instalado para Windows. Mac: atualização manual por enquanto.'};
  $('update-status').textContent=labels[phase]||labels.idle;
  $('check-update').disabled=['unavailable','preparing','checking','downloading','ready'].includes(phase);
  $('update-notice').hidden=!['preparing','downloading','ready','error'].includes(phase);
