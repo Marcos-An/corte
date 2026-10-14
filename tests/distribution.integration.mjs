@@ -13,10 +13,10 @@ assert.ok(!selected||['mac','win'].includes(selected),'supported audit platform'
 const locations=selected?allLocations.filter(([p])=>p===selected):allLocations;
 const digest=b=>createHash('sha256').update(b).digest('hex'),report=[];
 for(const [platform,resources] of locations){
- const archive=path.join(resources,'app.asar'),files=asar.listPackage(archive).map(f=>f.replace(/\\/g,'/').replace(/^\//,''));
+ const archive=path.join(resources,'app.asar'),extract=name=>asar.extractFile(archive,name.split('/').join(path.sep)),files=asar.listPackage(archive).map(f=>f.replace(/\\/g,'/').replace(/^\//,''));
  assert.ok(!files.some(f=>/^node_modules\/(ffmpeg-static\/ffmpeg(?:\.exe)?$|ffprobe-static\/bin\/)/.test(f)),platform+': unused npm tools are forbidden');
  assert.ok(!files.some(f=>/(?:^|\/)(?:auth\.json|\.env(?:\.|$)|openai-key\.enc|.*\.corte|Cookies)(?:$|\/)/i.test(f)),platform+': private state is forbidden');
- for(const dir of ['src','desktop'])for(const file of await readdir(path.join(root,dir),{recursive:true,withFileTypes:true})){if(!file.isFile())continue;const name=path.relative(root,path.join(file.parentPath||file.path,file.name)).split(path.sep).join('/');assert.equal(digest(asar.extractFile(archive,name)),digest(await readFile(path.join(root,name))),platform+': source mismatch '+name);}
+ for(const dir of ['src','desktop'])for(const file of await readdir(path.join(root,dir),{recursive:true,withFileTypes:true})){if(!file.isFile())continue;const name=path.relative(root,path.join(file.parentPath||file.path,file.name)).split(path.sep).join('/');assert.equal(digest(extract(name)),digest(await readFile(path.join(root,name))),platform+': source mismatch '+name);}
  const manifest=JSON.parse(await readFile(path.join(resources,'distribution/manifest.json'),'utf8'));
  const sourceName=`ffmpeg-${platform==='mac'?'macos':'windows'}-sources.tar.gz`,sourceFile=path.join(resources,'distribution',sourceName);
  assert.ok(manifest[platform].sources?.sha256,platform+': corresponding source hash is required');
@@ -42,11 +42,11 @@ for(const [platform,resources] of locations){
  for(const [name,hash] of Object.entries(seed.extraTools[platform]))assert.equal(digest(await readFile(path.join(resources,'tools',name))),hash,platform+': preserved tool '+name);
  for(const file of ['ffmpeg.LICENSE','ffprobe.LICENSE'])assert.ok((await readFile(path.join(resources,'tools',file),'utf8')).includes('GNU GENERAL PUBLIC LICENSE'));
  const pinnedModels=JSON.parse(await readFile(path.join(root,'vendor/models/manifest.json'),'utf8'));
- assert.deepEqual(JSON.parse(asar.extractFile(archive,'vendor/models/manifest.json')),pinnedModels,'embedded model manifest');
+ assert.deepEqual(JSON.parse(extract('vendor/models/manifest.json')),pinnedModels,'embedded model manifest');
  if(process.env.CORTE_DISTRIBUTION_UPDATE==='1')assert.equal(existsSync(path.join(resources,'models')),false,'update must not include AI weights');
  else{const clipManifest=JSON.parse(await readFile(path.join(resources,'models/manifest.json'),'utf8'));assert.deepEqual(clipManifest,pinnedModels);for(const item of clipManifest.files)assert.equal(digest(await readFile(path.join(resources,'models',item.path))),item.sha256,'bundled CLIP integrity');}
 
- for(const f of files.filter(f=>/\.(?:mjs|cjs|js|json|html|md)$/.test(f)&&!f.startsWith('node_modules/'))){const text=asar.extractFile(archive,f).toString('utf8');assert.ok(!/\b(?:sk-(?:proj-)?[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,})/.test(text),platform+': potential credential in '+f);}
- report.push({platform,version:JSON.parse(asar.extractFile(archive,'package.json')).version,files:files.length,tools:'hashes verified',source:'identical',privateState:'not detected',runtime:platform==='win'?'not executed':'tool license and linking verified'});
+ for(const f of files.filter(f=>/\.(?:mjs|cjs|js|json|html|md)$/.test(f)&&!f.startsWith('node_modules/'))){const text=extract(f).toString('utf8');assert.ok(!/\b(?:sk-(?:proj-)?[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,})/.test(text),platform+': potential credential in '+f);}
+ report.push({platform,version:JSON.parse(extract('package.json')).version,files:files.length,tools:'hashes verified',source:'identical',privateState:'not detected',runtime:platform==='win'?'not executed':'tool license and linking verified'});
 }
 console.log(JSON.stringify(report,null,2));
