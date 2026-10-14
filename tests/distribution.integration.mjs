@@ -21,9 +21,9 @@ for(const [platform,resources] of locations){
  const sourceName=`ffmpeg-${platform==='mac'?'macos':'windows'}-sources.tar.gz`,sourceFile=path.join(resources,'distribution',sourceName);
  assert.ok(manifest[platform].sources?.sha256,platform+': corresponding source hash is required');
  assert.equal(digest(await readFile(sourceFile)),manifest[platform].sources.sha256,platform+': corresponding sources integrity');
- const entries=execFileSync('tar',['-tzf',sourceFile],{encoding:'utf8'}).trim().split('\n');
+ const entries=execFileSync('tar',['-tzf',path.basename(sourceFile)],{cwd:path.dirname(sourceFile),encoding:'utf8'}).trim().split('\n');
  assert.ok(entries.every(name=>name.startsWith('archives/')&&!name.split('/').includes('..')),'source archive paths');
- const entry=name=>execFileSync('tar',['-xzOf',sourceFile,'archives/'+name],{maxBuffer:64*1024*1024});
+ const entry=name=>execFileSync('tar',['-xzOf',path.basename(sourceFile),'archives/'+name],{cwd:path.dirname(sourceFile),maxBuffer:64*1024*1024});
  const recipe=`build-${platform==='mac'?'macos':'windows'}.sh`;
  // Native Windows checkout may use CRLF; archive/input checksums below remain byte-exact.
  const text=b=>b.toString('utf8').replace(/\r\n/g,'\n');
