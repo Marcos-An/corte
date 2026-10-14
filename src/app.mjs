@@ -9,7 +9,7 @@ import {createTextScene} from './text-scene.mjs';
 import {FONTS,FONT_CATEGORIES} from './fonts.mjs';
 import {TEXT_PRESETS,ENTER_ANIMATIONS,EXIT_ANIMATIONS,presetOf,fullLook,textAppearance} from './text-style.mjs';
 import {editCaption,addCaptionAt,alignCaptions} from './caption-editing.mjs';
-import {assignLanes,timelinePointerTime,playbackStart,editorPanel,validateScopedPlan,dragCrop,nextClipTime,previewSize} from './editor-experience.mjs';
+import {assignLanes,timelineEdgeSpeed,timelinePointerTime,playbackStart,editorPanel,validateScopedPlan,dragCrop,nextClipTime,previewSize} from './editor-experience.mjs';
 import {removeTimelineRange,initialRange,moveRange} from './range-selection.mjs';
 import {captionEntries,captionStyle} from './captions.mjs';
 import {transitionRoom,setMotion,createProject,addAsset,addClip,addMusic,editMusic,addTextLayer,editTextLayer,remapWordStyles,addImageLayer,editImageLayer,addVideoLayer,editVideoLayer,addShapeLayer,editShapeLayer,editProject,History,layerOrder,moveLayer,setKeyframe,transitionLimit,setTransition,transitionAt,duration,clipAt,applyPlan} from './project.mjs';
@@ -958,11 +958,22 @@ $('timeline-scroll').addEventListener('wheel',e=>{
 $('playhead-time').addEventListener('change',()=>{stop();seek($('playhead-time').value);});
 for(const id of ['ruler','playhead'])$(id).addEventListener('pointerdown',e=>{
  if(busy||e.button!==0)return;e.preventDefault();stop();
- const target=e.currentTarget,read=ev=>seek(timelinePointerTime(ev.clientX,$('ruler').getBoundingClientRect().left,zoom,timelineDuration()));
- target.setPointerCapture(e.pointerId);const before=position;read(e);
- const cleanup=()=>{target.removeEventListener('pointermove',read);target.removeEventListener('pointerup',end);target.removeEventListener('pointercancel',cancel);};
- const end=()=>cleanup(),cancel=()=>{cleanup();seek(before);};
- target.addEventListener('pointermove',read);target.addEventListener('pointerup',end);target.addEventListener('pointercancel',cancel);
+ const target=e.currentTarget,scroll=$('timeline-scroll'),before=position,beforeScroll=scroll.scrollLeft;
+ let x=e.clientX,frame=0,last=performance.now();
+ const read=()=>seek(timelinePointerTime(x,$('ruler').getBoundingClientRect().left,zoom,timelineDuration()));
+ const move=ev=>{x=ev.clientX;read();};
+ const cleanup=()=>{cancelAnimationFrame(frame);target.removeEventListener('pointermove',move);target.removeEventListener('pointerup',cleanup);target.removeEventListener('pointercancel',cancel);target.removeEventListener('lostpointercapture',cleanup);};
+ const cancel=()=>{cleanup();scroll.scrollLeft=beforeScroll;seek(before);};
+ const tick=now=>{
+  if(busy){cleanup();return;}
+  const rect=scroll.getBoundingClientRect(),left=rect.left+document.querySelector('.track-sidebar').offsetWidth;
+  const previous=scroll.scrollLeft;scroll.scrollLeft+=timelineEdgeSpeed(x,left,rect.left+scroll.clientWidth)*Math.min(50,now-last)/1000;last=now;
+  if(scroll.scrollLeft!==previous)read();
+  frame=requestAnimationFrame(tick);
+ };
+ target.setPointerCapture(e.pointerId);read();
+ target.addEventListener('pointermove',move);target.addEventListener('pointerup',cleanup);target.addEventListener('pointercancel',cancel);target.addEventListener('lostpointercapture',cleanup);
+ frame=requestAnimationFrame(tick);
 });
 $('playhead').addEventListener('keydown',e=>{if(busy||!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();e.stopPropagation();stop();seek(e.key==='Home'?0:e.key==='End'?timelineDuration():position+(e.key==='ArrowLeft'?-1:1)*(e.shiftKey?1:.1));});
 $('context-close').onclick=()=>showModule(null);

@@ -55,3 +55,11 @@ export function assignLanes(items){
  if(group.length)close();
  return result;
 }
+
+export function timelineEdgeSpeed(x,left,right){
+ const band=48,max=720;
+ if(right-left<=band*2)return 0;
+ if(x<left+band)return -max*Math.min(1,Math.max(0,(left+band-x)/band));
+ if(x>right-band)return max*Math.min(1,Math.max(0,(x-right+band)/band));
+ return 0;
+}

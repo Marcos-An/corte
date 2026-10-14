@@ -35,3 +35,7 @@ test('overlapping text blocks share the row in lanes and a lone block keeps the 
  assert.deepEqual(Object.fromEntries(lanes),{a:{lane:0,lanes:3},b:{lane:1,lanes:3},c:{lane:2,lanes:3},d:{lane:0,lanes:3},e:{lane:0,lanes:1}});
  assert.deepEqual(Object.fromEntries(assignLanes([{id:'x',start:0,end:2},{id:'y',start:2,end:3}])),{x:{lane:0,lanes:1},y:{lane:0,lanes:1}},'touching blocks do not overlap');
 });
+test('playhead edge scrolling is proportional, bounded and inactive in the center/narrow viewport',async()=>{
+ const {timelineEdgeSpeed}=await import('../src/editor-experience.mjs');
+ assert.equal(timelineEdgeSpeed(500,100,900),0);assert.equal(timelineEdgeSpeed(100,100,900),-720);assert.equal(timelineEdgeSpeed(900,100,900),720);assert.equal(timelineEdgeSpeed(124,100,900),-360);assert.equal(timelineEdgeSpeed(876,100,900),360);assert.equal(timelineEdgeSpeed(-200,100,900),-720);assert.equal(timelineEdgeSpeed(1300,100,900),720);assert.equal(timelineEdgeSpeed(105,100,110),0);
+});

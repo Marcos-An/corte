@@ -146,6 +146,7 @@ jobs:
           fi
           node tests/project-save.e2e.mjs
           node tests/save-reopen.e2e.mjs
+          node tests/playhead-scroll.e2e.mjs
           node tests/updater-download.integration.mjs
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
