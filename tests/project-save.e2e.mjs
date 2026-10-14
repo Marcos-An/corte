@@ -6,10 +6,12 @@ import {createRequire} from 'node:module';
 import {binaries,run,probe} from '../desktop/media.mjs';
 import {saveProjectFile} from '../desktop/storage.mjs';
 import {createProject,addAsset,addClip,addTextLayer} from '../src/project.mjs';
+// Windows treats even an empty ELECTRON_RUN_AS_NODE as Node mode. Omit the variable entirely.
+const electronEnv=Object.fromEntries(Object.entries(process.env).filter(([key])=>key!=='ELECTRON_RUN_AS_NODE'));
 const require=createRequire(import.meta.url),{_electron}=require('playwright'),root=path.resolve(import.meta.dirname,'..'),dir=await mkdtemp(path.join(tmpdir(),'corte-save-ux-'));let app;
 const file=path.join(dir,'original.corte'),copy=path.join(dir,'copy.corte'),source=path.join(dir,'source.mp4');
 const read=async f=>JSON.parse(await readFile(f,'utf8'));
-const launch=async f=>{app=await _electron.launch({executablePath:process.env.CORTE_TEST_APP||require('electron'),args:[...(process.env.CORTE_TEST_APP?[]:[root]),`--user-data-dir=${dir}/profile`,f],env:{...process.env,ELECTRON_RUN_AS_NODE:''}});const page=await app.firstWindow();await page.waitForFunction(()=>document.querySelectorAll('.timeline-clip').length===1);return page;};
+const launch=async f=>{app=await _electron.launch({executablePath:process.env.CORTE_TEST_APP||require('electron'),args:[...(process.env.CORTE_TEST_APP?[]:[root]),`--user-data-dir=${dir}/profile`,f],env:electronEnv});const page=await app.firstWindow();await page.waitForFunction(()=>document.querySelectorAll('.timeline-clip').length===1);return page;};
 const close=async()=>{try{await app.evaluate(({dialog})=>dialog.showMessageBoxSync=()=>1);}catch{}await app.close().catch(()=>{});app=null;};
 try{
  await run(binaries().ffmpeg,['-v','error','-y','-f','lavfi','-i','color=blue:s=320x320:r=30','-t','4','-c:v','libx264',source]);const a={id:'a',name:'source.mp4',...await probe(source)};const p=addTextLayer(addClip(addAsset(createProject('Base'),a),'a','c'),{id:'t',text:'Original',start:0,end:3,style:{font:'Arial',size:8,color:'#ffffff',position:'center',preset:'clean'}});await saveProjectFile(file,p,new Map([['a',{path:source}]]));let page=await launch(file);

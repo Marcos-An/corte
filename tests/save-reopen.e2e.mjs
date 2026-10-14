@@ -4,10 +4,12 @@ import {mkdtemp,readFile,rename,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {createRequire} from 'node:module';
 import {binaries,run} from '../desktop/media.mjs';
+// Windows treats even an empty ELECTRON_RUN_AS_NODE as Node mode. Omit the variable entirely.
+const electronEnv=Object.fromEntries(Object.entries(process.env).filter(([key])=>key!=='ELECTRON_RUN_AS_NODE'));
 const require=createRequire(import.meta.url),{_electron}=require('playwright');
 const root=path.resolve(import.meta.dirname,'..'),dir=await mkdtemp(path.join(tmpdir(),'corte-save-reopen-'));
 const source=path.join(dir,'source.mp4'),file=path.join(dir,'edited.CORTE');let app;
-const launch=async(initialFile=null)=>{app=await _electron.launch({executablePath:process.env.CORTE_TEST_APP||require('electron'),args:[...(process.env.CORTE_TEST_APP?[]:[root]),`--user-data-dir=${path.join(dir,'profile')}`,...(initialFile?[initialFile]:[])],env:{...process.env,ELECTRON_RUN_AS_NODE:''}});const page=await app.firstWindow();await page.locator('.history-entry').first().waitFor({state:'attached'});return page;};
+const launch=async(initialFile=null)=>{app=await _electron.launch({executablePath:process.env.CORTE_TEST_APP||require('electron'),args:[...(process.env.CORTE_TEST_APP?[]:[root]),`--user-data-dir=${path.join(dir,'profile')}`,...(initialFile?[initialFile]:[])],env:electronEnv});const page=await app.firstWindow();await page.locator('.history-entry').first().waitFor({state:'attached'});return page;};
 const close=async()=>{await app.evaluate(({dialog})=>dialog.showMessageBoxSync=()=>1);await app.close();app=null;};
 const open=async page=>{await app.evaluate(({dialog},file)=>dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]}),file);await app.evaluate(({Menu})=>Menu.getApplicationMenu().getMenuItemById('open-project').click());await page.waitForFunction(()=>document.querySelectorAll('.timeline-clip').length===2);};
 try{
@@ -20,7 +22,7 @@ try{
  page=await launch(file);await page.waitForFunction(()=>document.querySelectorAll('.timeline-clip').length===2,{},{timeout:8000});assert.equal(await page.locator('#project-name').inputValue(),'Edição salva');assert.equal(await page.locator('.text-block').count(),1);assert.equal(await page.locator('.history-entry').count(),entries);await page.locator('#playhead-time').fill('1');await page.locator('#playhead-time').dispatchEvent('change');await page.waitForFunction(()=>document.querySelector('.scene-text')?.textContent==='Texto alterado');await page.waitForFunction(()=>document.querySelector('#source-video').readyState>=2);
  await page.locator('#project-name').fill('Não descartar');await page.locator('#project-name').dispatchEvent('change');
  const {spawn}=await import('node:child_process');const confirmation=page.waitForEvent('dialog');
- const secondary=spawn(process.env.CORTE_TEST_APP||require('electron'),[...(process.env.CORTE_TEST_APP?[]:[root]),`--user-data-dir=${path.join(dir,'profile')}`,file],{env:{...process.env,ELECTRON_RUN_AS_NODE:''},stdio:'ignore'});
+ const secondary=spawn(process.env.CORTE_TEST_APP||require('electron'),[...(process.env.CORTE_TEST_APP?[]:[root]),`--user-data-dir=${path.join(dir,'profile')}`,file],{env:electronEnv,stdio:'ignore'});
  const exited=new Promise((resolve,reject)=>{secondary.once('error',reject);secondary.once('exit',code=>code===0?resolve():reject(Error('Secondary exit '+code)));});
  const cancel=await confirmation;await cancel.dismiss();await exited;assert.equal(await page.locator('#project-name').inputValue(),'Não descartar','system open must not discard unsaved edits');
  const accepted=page.waitForEvent('dialog');await app.evaluate(({app},file)=>app.emit('open-file',{preventDefault(){}},file),file);const confirm=await accepted;await confirm.accept();await page.waitForFunction(()=>document.querySelector('#project-name').value==='Edição salva'&&document.querySelector('#busy-message').hidden);

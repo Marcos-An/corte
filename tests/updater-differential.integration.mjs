@@ -7,6 +7,8 @@ import {createHash} from 'node:crypto';
 import {mkdtemp,mkdir,writeFile,stat,copyFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {createRequire} from 'node:module';
+// Windows treats even an empty ELECTRON_RUN_AS_NODE as Node mode. Omit the variable entirely.
+const electronEnv=Object.fromEntries(Object.entries(process.env).filter(([key])=>key!=='ELECTRON_RUN_AS_NODE'));
 const require=createRequire(import.meta.url),{_electron}=require('playwright');
 const old=process.env.CORTE_TEST_OLD_UPDATE,next=process.env.CORTE_TEST_NEW_UPDATE;
 if(!old||!next)throw Error('Informe CORTE_TEST_OLD_UPDATE e CORTE_TEST_NEW_UPDATE com dois pacotes NSIS locais.');
@@ -24,7 +26,7 @@ const server=createServer(async(req,res)=>{
 try{
  await writeFile(path.join(dir,'package.json'),JSON.stringify({name:'corte-delta-test',version:version(old),main:'main.cjs'}));await writeFile(path.join(dir,'dev-app-update.yml'),'updaterCacheDirName: '+path.basename(dir)+'\n');
  await writeFile(path.join(dir,'main.cjs'),`const {app,BrowserWindow}=require('electron');app.setPath('userData',${JSON.stringify(path.join(dir,'profile'))});app.whenReady().then(async()=>{const {NsisUpdater}=require(${JSON.stringify(require.resolve('electron-updater'))});const updater=new NsisUpdater({provider:'generic',url:${JSON.stringify('http://127.0.0.1:'+server.address().port)},useMultipleRangeRequest:false});updater.forceDevUpdateConfig=true;updater.autoInstallOnAppQuit=false;updater.disableWebInstaller=true;updater.logger=null;global.updater=updater;const window=new BrowserWindow({show:false});await window.loadURL('about:blank');});`);
- app=await _electron.launch({executablePath:require('electron'),args:[dir],env:{...process.env,ELECTRON_RUN_AS_NODE:''}});await app.firstWindow();cache=await app.evaluate(async()=>{const h=await global.updater.getOrCreateDownloadHelper();return h.cacheDir;});
+ app=await _electron.launch({executablePath:require('electron'),args:[dir],env:electronEnv});await app.firstWindow();cache=await app.evaluate(async()=>{const h=await global.updater.getOrCreateDownloadHelper();return h.cacheDir;});
  await mkdir(cache,{recursive:true});await copyFile(old,path.join(cache,require('builder-util-runtime').CURRENT_APP_INSTALLER_FILE_NAME));
  await app.evaluate(async()=>{const result=await global.updater.checkForUpdates();await result.downloadPromise;});
  const file=await app.evaluate(()=>global.updater.installerPath),actual=createHash('sha512');for await(const b of createReadStream(file))actual.update(b);assert.equal(actual.digest('base64'),sha512);assert.ok(rangeRequests>0);assert.ok(downloadedBytes<size,'differential download must reuse bytes from installed package');
