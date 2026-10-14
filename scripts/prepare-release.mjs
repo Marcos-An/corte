@@ -20,6 +20,7 @@ async function verify(platform){
  for(const [name,hash] of Object.entries(seed.extraTools[platform]))await verifyFile(root+`vendor/${platform==='mac'?'darwin-arm64':'windows'}/${name}`,hash);
  const models=JSON.parse(await readFile(root+'vendor/models/manifest.json'));for(const f of models.files)await verifyFile(root+'vendor/models/'+f.path,f.sha256);
 }
+export function windowsBootstrapArgs(zip,mac){return ['x',zip,'-o'+mac,'-y','Corte.app/Contents/Resources/models/*','Corte.app/Contents/Resources/distribution/*'];}
 async function prepare(platform){
  try{await verify(platform);console.log('Dependências em cache verificadas.');return;}catch{}
  const seed=JSON.parse(await readFile(root+'scripts/release-bootstrap.json')),work=await mkdtemp(path.join(tmpdir(),'corte-bootstrap-'));
@@ -27,7 +28,7 @@ async function prepare(platform){
  try{
  const download=async asset=>{run('gh',['release','download',seed.tag,'--repo',seed.repo,'--pattern',asset.name,'--dir',work]);const file=path.join(work,asset.name);await verifyFile(file,asset.sha256);return file;};
  const zip=await download(seed.macZip),mac=path.join(work,'mac');await mkdir(mac);
- if(platform==='mac')run('ditto',['-x','-k',zip,mac]);else run('7z',['x',zip,'-o'+mac,'-y']);
+ if(platform==='mac')run('ditto',['-x','-k',zip,mac]);else run('7z',windowsBootstrapArgs(zip,mac));
  const resources=path.join(mac,'Corte.app/Contents/Resources');
  const models=JSON.parse(await readFile(root+'vendor/models/manifest.json'));
  for(const f of models.files){const to=path.join(root,'vendor/models',f.path);await mkdir(path.dirname(to),{recursive:true});await cp(path.join(resources,'models',f.path),to);}

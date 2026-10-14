@@ -91,3 +91,7 @@ test('workflow stdin imports helpers without treating dash as a CLI file',async(
  const result=spawnSync(process.execPath,['--input-type=module','-'],{input:urls.map(u=>`await import(${JSON.stringify(u)});`).join('\n')+'\nconsole.log("helpers imported");',encoding:'utf8'});
  assert.equal(result.status,0,result.stderr);assert.match(result.stdout,/helpers imported/);
 });
+test('Windows bootstrap extracts only regular resource trees, never macOS framework symlinks',async()=>{
+ const {windowsBootstrapArgs}=await import('../scripts/prepare-release.mjs');const args=windowsBootstrapArgs('base.zip','out');
+ assert.deepEqual(args,['x','base.zip','-oout','-y','Corte.app/Contents/Resources/models/*','Corte.app/Contents/Resources/distribution/*']);
+});
