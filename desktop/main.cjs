@@ -4,7 +4,17 @@ const fs=require('node:fs/promises');
 app.setName('Corte');
 protocol.registerSchemesAsPrivileged([{scheme:'corte-media',privileges:{standard:true,secure:true,supportFetchAPI:true,stream:true,corsEnabled:true}}]);
 let window,registry=new Map(),abort=null,dirty=false,loginRunning=false;
-app.whenReady().then(async()=>{
+let updates=null,updateTimer=null,activeOperations=0,rendererBusy=false;
+let pendingProject=null,projectReady=false,activeProjectFile=null,savingProject=false,sourcePaths=new Map();
+function projectArgument(argv){return argv.slice(1).find(file=>path.isAbsolute(file)&&file.toLowerCase().endsWith('.corte'));}
+function deliverProject(){if(projectReady&&pendingProject&&window&&!window.isDestroyed()){window.show();window.focus();window.webContents.send('editor:open-project',pendingProject.token);}}
+function requestProject(file){if(typeof file!=='string'||!path.isAbsolute(file)||!file.toLowerCase().endsWith('.corte'))return;pendingProject={file,token:crypto.randomUUID()};deliverProject();}
+const primary=app.requestSingleInstanceLock();
+if(!primary)app.quit();
+app.on('second-instance',(_event,argv)=>requestProject(projectArgument(argv)));
+app.on('open-file',(event,file)=>{event.preventDefault();requestProject(file);});
+requestProject(projectArgument(process.argv));
+if(primary)app.whenReady().then(async()=>{
  const {saveRecording,microphoneAllowed}=await import('./recording.mjs');let microphoneArmedUntil=0;
  const core=await import('../src/project.mjs'),media=await import('./media.mjs'),ai=await import('./ai.mjs'),storage=await import('./storage.mjs'),stream=await import('./stream.mjs');
  const cache=path.join(app.getPath('userData'),'cache'),home=path.join(app.getPath('userData'),'chatgpt');await fs.mkdir(cache,{recursive:true});
@@ -15,7 +25,9 @@ app.whenReady().then(async()=>{
  function authorized(p){core.validateProject(p);for(const a of p.assets){const r=registry.get(a.id);if(!r)throw new Error(`Mídia ausente: ${a.name}. Relocalize o arquivo.`);for(const key of ['duration','width','height','hasAudio','kind'])if((key==='kind'?(a[key]||'video'):a[key])!==(key==='kind'?(r.asset[key]||'video'):r.asset[key]))throw new Error('Os dados da mídia não correspondem ao arquivo importado.');}return p;}
  function handler(name,fn){ipcMain.handle(`editor:${name}`,async(event,...args)=>{
    if(event.sender!==window?.webContents || event.senderFrame!==window.webContents.mainFrame)return {ok:false,error:'Origem não autorizada.'};
-   try{return {ok:true,value:await fn(...args)};}catch(error){return {ok:false,error:error.message || 'Não foi possível concluir.'};}
+   const blocking=!['dirty','busy','ready','update-status','update-check','update-install','status','api-status','cancel'].includes(name);
+   if(blocking)activeOperations++;
+   try{return {ok:true,value:await fn(...args)};}catch(error){return {ok:false,error:error.message || 'Não foi possível concluir.'};}finally{if(blocking)activeOperations--;}
  });}
  async function register(file,assetId,expected){
    if(!storage.allowedMedia(file))throw new Error('Formato não suportado. Use vídeo, áudio ou imagem PNG, JPEG ou WebP.');
@@ -48,17 +60,40 @@ app.whenReady().then(async()=>{
    const picked=await dialog.showOpenDialog(window,{title:`Localizar ${asset.name}`,properties:['openFile'],filters:[{name:asset.kind==='image'?'Imagem':'Mídia',extensions:asset.kind==='image'?['png','jpg','jpeg','webp']:['mp4','mov','mkv','webm','m4v','avi','mp3','m4a','wav','ogg','flac','aac','png','jpg','jpeg','webp']}]});
    return picked.canceled?null:register(picked.filePaths[0],asset.id,asset);
  });
- handler('save',async(p,history)=>{
-   core.validateProject(p);const picked=await dialog.showSaveDialog(window,{title:'Salvar projeto editável',defaultPath:`${p.name.replace(/[<>:"/\\|?*]/g,'_')}.corte`,filters:[{name:'Projeto Corte',extensions:['corte']}]});
-   if(picked.canceled)return null;await storage.saveProjectFile(picked.filePath,p,registry,history);dirty=false;return {name:path.basename(picked.filePath)};
+ handler('save',async(p,history,mode='save')=>{
+   if(!['save','as','portable'].includes(mode))throw Error('Modo de salvamento inválido.');
+   if(abort||savingProject)throw Error('Aguarde a operação atual.');
+   core.validateProject(p);savingProject=true;
+   try{
+    const sources=new Map([...sourcePaths].map(([id,file])=>[id,{path:file}]));for(const [id,entry] of registry)sources.set(id,entry);
+    const name=p.name.replace(/[<>:"/\\|?*]/g,'_').trim()||'Projeto';
+    if(mode==='portable'){
+     const picked=await dialog.showOpenDialog(window,{title:'Escolha onde criar a cópia portátil (inclui as mídias)',properties:['openDirectory','createDirectory']});if(picked.canceled)return null;
+     const folder=path.join(picked.filePaths[0],`${name}-portatil-${crypto.randomUUID().slice(0,8)}`);
+     const file=await storage.savePortableProject(folder,p,registry,history);return {name:path.basename(folder),file,portable:true};
+    }
+    let file=mode==='save'?activeProjectFile:null;
+    if(!file){
+     const picked=await dialog.showSaveDialog(window,{title:mode==='as'?'Salvar projeto como…':'Salvar projeto editável',defaultPath:activeProjectFile||`${name}.corte`,filters:[{name:'Projeto Corte',extensions:['corte']}]});if(picked.canceled)return null;
+     file=picked.filePath;if(!path.extname(file))file+='.corte';
+     if(file!==picked.filePath){
+      const exists=await fs.stat(file).then(()=>true,e=>{if(e.code==='ENOENT')return false;throw e;});
+      if(exists){const choice=await dialog.showMessageBox(window,{type:'warning',buttons:['Cancelar','Substituir'],defaultId:0,cancelId:0,message:`O arquivo ${path.basename(file)} já existe. Substituir?`});if(choice.response!==1)return null;}
+     }
+    }
+    await storage.saveProjectFile(file,p,sources,history);activeProjectFile=file;dirty=false;return {name:path.basename(file),file};
+   }finally{savingProject=false;}
  });
- handler('open',async()=>{
-   if(abort)throw new Error('Aguarde a operação atual.');
-   const picked=await dialog.showOpenDialog(window,{title:'Abrir projeto',properties:['openFile'],filters:[{name:'Projeto Corte',extensions:['corte']}]});if(picked.canceled)return null;
-   const data=await storage.readProjectFile(picked.filePaths[0]),assets=[];
+ handler('ready',()=>{projectReady=true;deliverProject();return null;});
+ handler('open',async token=>{
+   if(abort||savingProject)throw new Error('Aguarde a operação atual.');
+   let file;
+   if(token){if(token!==pendingProject?.token)throw new Error('Solicitação de abertura inválida.');file=pendingProject.file;pendingProject=null;}
+   else{const picked=await dialog.showOpenDialog(window,{title:'Abrir projeto',properties:['openFile'],filters:[{name:'Projeto Corte',extensions:['corte']}]});if(picked.canceled)return null;file=picked.filePaths[0];}
+   const data=await storage.readProjectFile(file),assets=[];
    const savedAssets=[...new Map((data.history?data.history.entries.flatMap(e=>e.state.assets):data.project.assets).map(a=>[a.id,a])).values()];
    for(const asset of savedAssets){const source=data.sources.find(s=>s.assetId===asset.id);try{if(!source?.path)throw new Error();assets.push(await register(source.path,asset.id,asset));}catch{registry.delete(asset.id);assets.push({...asset,missing:true,url:null,thumbnail:null});}}
-   dirty=false;return {project:data.project,history:data.history,assets};
+   activeProjectFile=file;sourcePaths=new Map(data.sources.map(s=>[s.assetId,s.path]));dirty=false;return {project:data.project,history:data.history,assets,file};
  });
  handler('export',async(p,height)=>{
    authorized(p);if(abort)throw new Error('Já há uma operação em andamento.');
@@ -79,18 +114,30 @@ app.whenReady().then(async()=>{
  handler('recording-arm',()=>{if(abort)throw Error('Aguarde a operação atual.');microphoneArmedUntil=Date.now()+15000;return true;});
  handler('recording-disarm',()=>{microphoneArmedUntil=0;return true;});
  handler('recording-save',async(bytes,mime)=>{if(abort)throw Error('Aguarde a operação atual.');const file=await saveRecording(bytes,mime,path.join(app.getPath('userData'),'narrations'));try{return await register(file);}catch(e){await fs.rm(file,{force:true});throw e;}});
+ handler('busy',value=>{rendererBusy=value===true;return true;});
  handler('dirty',value=>{dirty=value===true;return true;});
+ handler('update-status',()=>updates?.status()||{phase:'unavailable',platform:process.platform});
+ handler('update-check',()=>{if(!updates)throw Error('Atualizações automáticas estão disponíveis no Corte instalado para Windows.');return updates.check();});
+ handler('update-install',()=>{if(!updates)throw Error('Atualização automática indisponível.');return updates.install();});
  const workArea=screen.getPrimaryDisplay().workArea;
  window=new BrowserWindow({width:Math.min(1400,workArea.width),height:Math.min(960,workArea.height),minWidth:Math.min(960,workArea.width),minHeight:Math.min(680,workArea.height),backgroundColor:'#101113',title:'Corte — Editor de vídeo',show:false,autoHideMenuBar:true,webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
  const menu=Menu.getApplicationMenu(),fileMenu=menu?.items.find(item=>item.role==='filemenu');
- if(fileMenu){fileMenu.submenu.insert(0,new MenuItem({id:'open-project',label:'Abrir projeto…',accelerator:'CmdOrCtrl+O',click:()=>window.webContents.send('editor:open-project')}));fileMenu.submenu.insert(1,new MenuItem({type:'separator'}));Menu.setApplicationMenu(menu);}
+ if(fileMenu){fileMenu.submenu.insert(0,new MenuItem({id:'open-project',label:'Abrir projeto…',accelerator:'CmdOrCtrl+O',click:()=>window.webContents.send('editor:open-project')}));for(const [index,label,mode] of [[1,'Salvar','save'],[2,'Salvar como…','as'],[3,'Salvar cópia portátil…','portable']])fileMenu.submenu.insert(index,new MenuItem({label,click:()=>window.webContents.send('editor:save-project',mode)}));fileMenu.submenu.insert(4,new MenuItem({type:'separator'}));Menu.setApplicationMenu(menu);}
  window.webContents.on('before-input-event',(event,input)=>{if(input.type==='keyDown'&&(input.control||input.meta)&&input.key.toLowerCase()==='o'){event.preventDefault();window.webContents.send('editor:open-project');}});
  window.webContents.setWindowOpenHandler(()=>({action:'deny'}));window.webContents.on('will-navigate',event=>event.preventDefault());
  window.webContents.session.setPermissionRequestHandler((contents,permission,cb,details)=>{
   const allowed=contents===window.webContents&&microphoneAllowed(permission,details,Date.now()<microphoneArmedUntil);cb(allowed);
  });
  window.webContents.session.setPermissionCheckHandler((contents,permission,origin,details)=>contents===window.webContents&&permission==='media'&&details.mediaType==='audio'&&details.isMainFrame===true&&Date.now()<microphoneArmedUntil);
- window.on('close',event=>{if(abort || dirty){const choice=dialog.showMessageBoxSync(window,{type:'question',buttons:['Continuar editando','Fechar sem salvar'],defaultId:0,cancelId:0,title:'Fechar projeto?',message:abort?'Uma operação está em andamento. Fechar irá cancelá-la.':'Há alterações não salvas. Deseja fechar mesmo assim?'});if(choice===0)event.preventDefault();else abort?.abort();}});
+ window.on('close',event=>{if(savingProject){event.preventDefault();dialog.showMessageBoxSync(window,{type:'info',buttons:['Aguardar'],message:'Aguarde o salvamento ou a cópia das mídias antes de fechar o projeto.'});return;}if(abort || dirty){const choice=dialog.showMessageBoxSync(window,{type:'question',buttons:['Continuar editando','Fechar sem salvar'],defaultId:0,cancelId:0,title:'Fechar projeto?',message:abort?'Uma operação está em andamento. Fechar irá cancelá-la.':'Há alterações não salvas. Deseja fechar mesmo assim?'});if(choice===0)event.preventDefault();else abort?.abort();}});
+ if(app.isPackaged&&process.platform==='win32'){
+  const {createUpdates}=await import('./updates.mjs'),{preserveModels,modelStorePath}=await import('./models-store.mjs');
+  const manifest=JSON.parse(await fs.readFile(path.join(__dirname,'../vendor/models/manifest.json'),'utf8'));
+  process.env.CORTE_MODEL_PATH=modelStorePath(app.getPath('userData'),manifest);
+  const {autoUpdater}=require('electron-updater');autoUpdater.logger=null;autoUpdater.disableWebInstaller=true;
+  updates=createUpdates({updater:autoUpdater,prepare:async()=>{process.env.CORTE_MODEL_PATH=await preserveModels({bundled:path.join(process.resourcesPath,'models'),userData:app.getPath('userData'),manifest});},blocked:()=>dirty||savingProject||!!abort||rendererBusy||activeOperations>0||microphoneArmedUntil>Date.now(),notify:state=>{if(!window.isDestroyed())window.webContents.send('editor:update',state);}});
+ }
  await window.loadFile(path.join(__dirname,'../src/index.html'));window.show();
+ if(updates){void updates.check();updateTimer=setInterval(()=>void updates.check(),6*60*60*1000);updateTimer.unref();}
 }).catch(error=>{dialog.showErrorBox('Não foi possível iniciar o Corte',error.message);app.quit();});
-app.on('window-all-closed',()=>app.quit());
+app.on('window-all-closed',()=>{clearInterval(updateTimer);app.quit();});

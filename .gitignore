@@ -92,3 +92,14 @@ credentials/
 /.github/workflows/*
 !/.github/workflows/build-windows-media-tools.yml
 !/vendor/distribution/*.sha256
+
+# Explicit release automation files only.
+!/scripts/
+/scripts/*
+!/scripts/release.mjs
+!/scripts/prepare-release.mjs
+!/scripts/release-assets.mjs
+!/scripts/release-bootstrap.json
+!/.github/workflows/release.yml
+
+!/scripts/update-build.cjs

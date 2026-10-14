@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import path from 'node:path';
 import {selectEvidence,refinementTimes,pixelMetrics,cosineDistance,modelPath} from '../desktop/local.mjs';
 import {createProject,addAsset,addClip} from '../src/project.mjs';
 test('local selection preserves coverage and adds dense evidence around visual changes, not fixed objects',()=>{
@@ -19,5 +20,5 @@ test('refinement targets proposed source ranges including both borders and retai
  assert.deepEqual(refinementTimes(p,{operations:[{type:'update',clipId:'c',volume:.5}]},[],30),[]);
 });
 test('media output directories cannot escape temporary root or collide through path sanitization',async()=>{
- const {frameDirectory}=await import('../desktop/local.mjs');const root='/tmp/analysis';assert.notEqual(frameDirectory(root,'a/b'),frameDirectory(root,'a_b'));assert.ok(frameDirectory(root,'../../secret').startsWith(root+'/'));assert.equal(frameDirectory(root,'asset'),frameDirectory(root,'asset'));
+ const {frameDirectory}=await import('../desktop/local.mjs');const root='/tmp/analysis';assert.notEqual(frameDirectory(root,'a/b'),frameDirectory(root,'a_b'));assert.equal(path.dirname(frameDirectory(root,'../../secret')),path.normalize(root));assert.equal(frameDirectory(root,'asset'),frameDirectory(root,'asset'));
 });

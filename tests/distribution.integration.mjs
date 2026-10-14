@@ -1,15 +1,19 @@
 // Post-build audit. Does not execute Windows binaries on macOS.
 import assert from 'node:assert/strict';
 import path from 'node:path';
+import {existsSync} from 'node:fs';
 import {readFile,readdir} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {createRequire} from 'node:module';
 import {execFileSync} from 'node:child_process';
 const require=createRequire(import.meta.url),asar=require('@electron/asar'),root=path.resolve(import.meta.dirname,'..');
-const locations=[['mac',path.join(root,'release/mac-arm64/Corte.app/Contents/Resources')],['win',path.join(root,'release/win-unpacked/resources')]];
+const allLocations=[['mac',path.join(root,'release/mac-arm64/Corte.app/Contents/Resources')],['win',path.join(root,process.env.CORTE_DISTRIBUTION_UPDATE==='1'?'release/update/win-unpacked/resources':'release/win-unpacked/resources')]];
+const selected=process.env.CORTE_DISTRIBUTION_PLATFORM;
+assert.ok(!selected||['mac','win'].includes(selected),'supported audit platform');
+const locations=selected?allLocations.filter(([p])=>p===selected):allLocations;
 const digest=b=>createHash('sha256').update(b).digest('hex'),report=[];
 for(const [platform,resources] of locations){
- const archive=path.join(resources,'app.asar'),files=asar.listPackage(archive).map(f=>f.replace(/^\//,''));
+ const archive=path.join(resources,'app.asar'),files=asar.listPackage(archive).map(f=>f.replace(/\\/g,'/').replace(/^\//,''));
  assert.ok(!files.some(f=>/^node_modules\/(ffmpeg-static\/ffmpeg(?:\.exe)?$|ffprobe-static\/bin\/)/.test(f)),platform+': unused npm tools are forbidden');
  assert.ok(!files.some(f=>/(?:^|\/)(?:auth\.json|\.env(?:\.|$)|openai-key\.enc|.*\.corte|Cookies)(?:$|\/)/i.test(f)),platform+': private state is forbidden');
  for(const dir of ['src','desktop'])for(const file of await readdir(path.join(root,dir),{recursive:true,withFileTypes:true})){if(!file.isFile())continue;const name=path.relative(root,path.join(file.parentPath||file.path,file.name)).split(path.sep).join('/');assert.equal(digest(asar.extractFile(archive,name)),digest(await readFile(path.join(root,name))),platform+': source mismatch '+name);}
@@ -34,8 +38,14 @@ for(const [platform,resources] of locations){
   if(platform==='win'){assert.equal(bytes.readUInt16LE(0),0x5a4d);const pe=bytes.readUInt32LE(0x3c);assert.equal(bytes.readUInt16LE(pe+4),0x8664,'Windows x64 executable');assert.ok(!bytes.toString('latin1').includes('--enable-nonfree'),'Windows nonfree flag');}
   else{const license=execFileSync(file,['-L'],{encoding:'utf8',stdio:['ignore','pipe','pipe']});assert.match(license,/GNU General Public License/);assert.doesNotMatch(license,/not legally redistributable/);const libs=execFileSync('otool',['-L',file],{encoding:'utf8'}).trim().split('\n').slice(1);assert.ok(libs.every(line=>/^\s*(\/usr\/lib\/|\/System\/Library\/)/.test(line)),'no external dynamic libraries');}
  }
+ const seed=JSON.parse(await readFile(path.join(root,'scripts/release-bootstrap.json')));
+ for(const [name,hash] of Object.entries(seed.extraTools[platform]))assert.equal(digest(await readFile(path.join(resources,'tools',name))),hash,platform+': preserved tool '+name);
  for(const file of ['ffmpeg.LICENSE','ffprobe.LICENSE'])assert.ok((await readFile(path.join(resources,'tools',file),'utf8')).includes('GNU GENERAL PUBLIC LICENSE'));
- const clipManifest=JSON.parse(await readFile(path.join(resources,'models/manifest.json'),'utf8'));for(const item of clipManifest.files)assert.equal(digest(await readFile(path.join(resources,'models',item.path))),item.sha256,'bundled CLIP integrity');
+ const pinnedModels=JSON.parse(await readFile(path.join(root,'vendor/models/manifest.json'),'utf8'));
+ assert.deepEqual(JSON.parse(asar.extractFile(archive,'vendor/models/manifest.json')),pinnedModels,'embedded model manifest');
+ if(process.env.CORTE_DISTRIBUTION_UPDATE==='1')assert.equal(existsSync(path.join(resources,'models')),false,'update must not include AI weights');
+ else{const clipManifest=JSON.parse(await readFile(path.join(resources,'models/manifest.json'),'utf8'));assert.deepEqual(clipManifest,pinnedModels);for(const item of clipManifest.files)assert.equal(digest(await readFile(path.join(resources,'models',item.path))),item.sha256,'bundled CLIP integrity');}
+
  for(const f of files.filter(f=>/\.(?:mjs|cjs|js|json|html|md)$/.test(f)&&!f.startsWith('node_modules/'))){const text=asar.extractFile(archive,f).toString('utf8');assert.ok(!/\b(?:sk-(?:proj-)?[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,})/.test(text),platform+': potential credential in '+f);}
  report.push({platform,version:JSON.parse(asar.extractFile(archive,'package.json')).version,files:files.length,tools:'hashes verified',source:'identical',privateState:'not detected',runtime:platform==='win'?'not executed':'tool license and linking verified'});
 }

@@ -1,0 +1,31 @@
+import assert from 'node:assert/strict';
+import path from 'node:path';
+import {mkdtemp,readFile,rename,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {createRequire} from 'node:module';
+import {binaries,run} from '../desktop/media.mjs';
+const require=createRequire(import.meta.url),{_electron}=require('playwright');
+const root=path.resolve(import.meta.dirname,'..'),dir=await mkdtemp(path.join(tmpdir(),'corte-save-reopen-'));
+const source=path.join(dir,'source.mp4'),file=path.join(dir,'edited.CORTE');let app;
+const launch=async(initialFile=null)=>{app=await _electron.launch({executablePath:process.env.CORTE_TEST_APP||require('electron'),args:[...(process.env.CORTE_TEST_APP?[]:[root]),`--user-data-dir=${path.join(dir,'profile')}`,...(initialFile?[initialFile]:[])],env:{...process.env,ELECTRON_RUN_AS_NODE:''}});const page=await app.firstWindow();await page.locator('#nav-media').waitFor();return page;};
+const close=async()=>{await app.evaluate(({dialog})=>dialog.showMessageBoxSync=()=>1);await app.close();app=null;};
+const open=async page=>{await app.evaluate(({dialog},file)=>dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]}),file);await app.evaluate(({Menu})=>Menu.getApplicationMenu().getMenuItemById('open-project').click());await page.waitForFunction(()=>document.querySelectorAll('.timeline-clip').length===2);};
+try{
+ await run(binaries().ffmpeg,['-v','error','-y','-f','lavfi','-i','color=blue:s=320x320:r=30','-t','4','-c:v','libx264',source]);
+ let page=await launch();await app.evaluate(({dialog},file)=>dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]}),source);await page.locator('#nav-media').click();await page.waitForFunction(()=>document.querySelectorAll('.timeline-clip').length===1);
+ await page.locator('#playhead-time').fill('1');await page.locator('#playhead-time').dispatchEvent('change');await page.locator('.timeline-clip').focus();await page.keyboard.press('b');await page.waitForFunction(()=>document.querySelectorAll('.timeline-clip').length===2);
+ await page.locator('#project-name').fill('Edição salva');await page.locator('#project-name').dispatchEvent('change');await page.locator('#nav-components').click();await page.locator('#add-text').click();await page.locator('.scene-text').fill('Texto alterado');await page.locator('#project-name').focus();
+ await app.evaluate(({dialog},file)=>dialog.showSaveDialog=async()=>({canceled:false,filePath:file}),file);await page.locator('#save-project').click();await page.waitForFunction(()=>document.querySelector('#save-state').textContent.includes('Salvo'));
+ const saved=JSON.parse(await readFile(file,'utf8'));assert.equal(saved.project.clips.length,2);assert.equal(saved.project.textLayers[0].text,'Texto alterado');const entries=saved.history.entries.length;await close();
+ page=await launch(file);await page.waitForFunction(()=>document.querySelectorAll('.timeline-clip').length===2,{},{timeout:8000});assert.equal(await page.locator('#project-name').inputValue(),'Edição salva');assert.equal(await page.locator('.text-block').count(),1);assert.equal(await page.locator('.history-entry').count(),entries);await page.locator('#playhead-time').fill('1');await page.locator('#playhead-time').dispatchEvent('change');await page.waitForFunction(()=>document.querySelector('.scene-text')?.textContent==='Texto alterado');await page.waitForFunction(()=>document.querySelector('#source-video').readyState>=2);
+ await page.locator('#project-name').fill('Não descartar');await page.locator('#project-name').dispatchEvent('change');
+ const {spawn}=await import('node:child_process');const confirmation=page.waitForEvent('dialog');
+ const secondary=spawn(process.env.CORTE_TEST_APP||require('electron'),[...(process.env.CORTE_TEST_APP?[]:[root]),`--user-data-dir=${path.join(dir,'profile')}`,file],{env:{...process.env,ELECTRON_RUN_AS_NODE:''},stdio:'ignore'});
+ const exited=new Promise((resolve,reject)=>{secondary.once('error',reject);secondary.once('exit',code=>code===0?resolve():reject(Error('Secondary exit '+code)));});
+ const cancel=await confirmation;await cancel.dismiss();await exited;assert.equal(await page.locator('#project-name').inputValue(),'Não descartar','system open must not discard unsaved edits');
+ const accepted=page.waitForEvent('dialog');await app.evaluate(({app},file)=>app.emit('open-file',{preventDefault(){}},file),file);const confirm=await accepted;await confirm.accept();await page.waitForFunction(()=>document.querySelector('#project-name').value==='Edição salva'&&document.querySelector('#busy-message').hidden);
+ const rejected=await page.evaluate(async()=>{try{await window.editor.openProject('arbitrary.corte');return false;}catch(e){return /Solicitação de abertura inválida/.test(e.message);}});assert.equal(rejected,true,'renderer cannot supply arbitrary project paths');
+ await close();
+ await rename(source,source+'.moved');page=await launch(file);await page.waitForFunction(()=>document.querySelectorAll('.timeline-clip').length===2,{},{timeout:8000});assert.equal(await page.locator('#project-name').inputValue(),'Edição salva');assert.equal(await page.locator('.text-block').count(),1);await page.waitForFunction(()=>document.querySelector('#toast').textContent.includes('mídias estão ausentes'));assert.deepEqual(JSON.parse(await readFile(file,'utf8')),saved);
+ console.log('PASS system file opening: cold launch, real second instance, unsaved cancellation, macOS event, missing media and IPC path rejection');
+}finally{if(app)await close();await rm(dir,{recursive:true,force:true});}

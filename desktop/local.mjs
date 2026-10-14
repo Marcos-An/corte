@@ -4,7 +4,7 @@ import {Worker} from 'node:worker_threads';
 import {existsSync} from 'node:fs';
 export function frameDirectory(root,assetId){return path.join(root,createHash('sha256').update(assetId).digest('hex'));}
 export const MODEL_ID='Xenova/clip-vit-base-patch32';
-export function modelPath(){const packed=process.resourcesPath&&path.join(process.resourcesPath,'models');return packed&&existsSync(packed)?packed:path.resolve(import.meta.dirname,'../vendor/models');}
+export function modelPath(){const saved=process.env.CORTE_MODEL_PATH;if(saved&&existsSync(saved))return saved;const packed=process.resourcesPath&&path.join(process.resourcesPath,'models');return packed&&existsSync(packed)?packed:path.resolve(import.meta.dirname,'../vendor/models');}
 export function cosineDistance(a,b){let dot=0,aa=0,bb=0;for(let i=0;i<a.length;i++){dot+=a[i]*b[i];aa+=a[i]*a[i];bb+=b[i]*b[i];}return aa&&bb?Math.max(0,1-dot/Math.sqrt(aa*bb)):0;}
 export function pixelMetrics(image){
  const {data,width:w,height:h,channels:c}=image;let sum=0,square=0,n=0,light=0,count=0;

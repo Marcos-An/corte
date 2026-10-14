@@ -1,0 +1,22 @@
+{
+  "repo": "Marcos-An/corte",
+  "tag": "v0.5.4",
+  "macZip": {
+    "name": "Corte-0.5.4-arm64-mac.zip",
+    "sha256": "eadce0eaa5eb4f6f7133f919df1d1814e28cbf3b6872333f9b484d47356a35db"
+  },
+  "winInstaller": {
+    "name": "Corte.Setup.0.5.4.exe",
+    "sha256": "689a7a112cfa34140952f0bc9aa45b0fc030a3082a6fef6de95d20651713c425"
+  },
+  "extraTools": {
+    "mac": {
+      "yt-dlp": "0f192b7ec147ab6288885d6351d9ab67367640029b4377576ef46dd79cf7b202"
+    },
+    "win": {
+      "yt-dlp.exe": "66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7a",
+      "codex.exe": "444a3f0008050605cae73cd9b7a2dcac61294062dfaab56dd20430fd6498518b",
+      "codex-code-mode-host.exe": "deaebc21f354f151fcebeac46e12c6e8c4ef75ee448e25e3577502074e04b8d9"
+    }
+  }
+}

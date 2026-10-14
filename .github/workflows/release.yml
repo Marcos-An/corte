@@ -1,0 +1,193 @@
+name: Draft release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: New version (e.g. 0.5.5)
+        required: true
+        type: string
+      expected_sha:
+        description: Exact source commit on main
+        required: true
+        type: string
+      dry_run:
+        description: Validate artifacts only; do not create a release
+        type: boolean
+        default: true
+permissions:
+  contents: read
+concurrency:
+  group: corte-release
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ inputs.version }}
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Validate request without building or publishing
+        run: |
+          test "$GITHUB_REF" = refs/heads/main
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          node --input-type=module - <<'JS'
+          import {validateVersion} from './scripts/release.mjs';
+          import {readFileSync} from 'node:fs';
+          import {execFileSync} from 'node:child_process';
+          const v=validateVersion(process.env.VERSION,JSON.parse(readFileSync('package.json')).version);
+          const tags=execFileSync('gh',['api','--paginate','repos/Marcos-An/corte/releases','--jq','.[].tag_name'],{encoding:'utf8'}).trim().split('\n');
+          for(const tag of tags)if(/^v\d+\.\d+\.\d+$/.test(tag))validateVersion(v,tag.slice(1));
+          const refs=execFileSync('gh',['api','repos/Marcos-An/corte/git/matching-refs/tags/v'+v],{encoding:'utf8'});
+          if(JSON.parse(refs).some(r=>r.ref==='refs/tags/v'+v))throw Error('Tag already exists');
+          JS
+  build:
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            platform: mac
+          - os: windows-2025
+            platform: win
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ inputs.version }}
+      CORTE_DISTRIBUTION_PLATFORM: ${{ matrix.platform }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Scan tracked source (sanitized locations only)
+        run: |
+          node --input-type=module - <<'JS'
+          import {execFileSync} from 'node:child_process';
+          import {readFileSync} from 'node:fs';
+          const pattern=/\b(?:sk-(?:proj-)?[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,}|AIza[A-Za-z0-9_-]{30,})|-----BEGIN (?:RSA |OPENSSH |EC )?PRIVATE KEY-----/;
+          const hits=[];for(const file of execFileSync('git',['ls-files','-z'],{encoding:'utf8'}).split('\0').filter(Boolean)){
+            readFileSync(file,'utf8').split('\n').forEach((line,i)=>{if(pattern.test(line))hits.push(file+':'+(i+1));});
+          }
+          if(hits.length)throw Error('Potential secrets: '+hits.join(', '));
+          JS
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          key: corte-dependencies-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/release-bootstrap.json', 'vendor/models/manifest.json', 'vendor/distribution/manifest.json') }}
+          path: |
+            vendor/models
+            vendor/darwin-arm64/ffmpeg
+            vendor/darwin-arm64/ffprobe
+            vendor/darwin-arm64/yt-dlp
+            vendor/windows/ffmpeg.exe
+            vendor/windows/ffprobe.exe
+            vendor/windows/yt-dlp.exe
+            vendor/windows/codex.exe
+            vendor/windows/codex-code-mode-host.exe
+            vendor/distribution/*-sources.tar.gz
+      - name: Restore verified tools and models without recompiling FFmpeg
+        run: node scripts/prepare-release.mjs
+      - run: npm ci
+      - name: Stamp build version (source ref remains immutable)
+        run: npm version "$VERSION" --no-git-tag-version --ignore-scripts
+      - run: npm test
+      - run: npm run check
+      - name: Build native installer without publishing
+        run: npm run dist:${{ matrix.platform }} -- --publish never
+      - name: Audit packaged files, licenses, sources and hashes
+        run: node tests/distribution.integration.mjs
+      - name: Exercise packaged application and real MP4
+        run: |
+          if [ "$CORTE_DISTRIBUTION_PLATFORM" = mac ]; then
+            export CORTE_TEST_APP="$PWD/release/mac-arm64/Corte.app/Contents/MacOS/Corte"
+          else
+            export CORTE_TEST_APP="$PWD/release/win-unpacked/Corte.exe"
+          fi
+          node tests/ai-complex.e2e.mjs
+      - name: Verify and collect final assets
+        run: |
+          mkdir -p release/assets
+          if [ "$CORTE_DISTRIBUTION_PLATFORM" = mac ]; then
+            hdiutil verify "release/Corte-$VERSION-arm64.dmg"
+            unzip -t "release/Corte-$VERSION-arm64-mac.zip" > /dev/null
+            cp "release/Corte-$VERSION-arm64.dmg" "release/Corte-$VERSION-arm64-mac.zip" release/assets/
+            cp vendor/distribution/ffmpeg-macos-sources.tar.gz release/assets/
+          else
+            cp "release/Corte Setup $VERSION.exe" "release/assets/Corte.Setup.$VERSION.exe"
+            cp vendor/distribution/ffmpeg-windows-sources.tar.gz release/assets/
+          fi
+      - name: Build and audit Windows automatic update without AI weights
+        if: ${{ matrix.platform == 'win' }}
+        run: |
+          npm run dist:update:win -- --publish never
+          CORTE_DISTRIBUTION_UPDATE=1 node tests/distribution.integration.mjs
+          cp "release/update/Corte.Update.$VERSION.exe" "release/update/Corte.Update.$VERSION.exe.blockmap" release/update/latest.yml release/assets/
+      - name: Save/open regressions on packaged application
+        run: |
+          if [ "$CORTE_DISTRIBUTION_PLATFORM" = mac ]; then
+            export CORTE_TEST_APP="$PWD/release/mac-arm64/Corte.app/Contents/MacOS/Corte"
+          else
+            export CORTE_TEST_APP="$PWD/release/win-unpacked/Corte.exe"
+          fi
+          node tests/project-save.e2e.mjs
+          node tests/save-reopen.e2e.mjs
+          node tests/updater-download.integration.mjs
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: release-${{ matrix.platform }}
+          if-no-files-found: error
+          retention-days: 7
+          path: release/assets/*
+  draft:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ inputs.version }}
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: release/assets
+      - name: Install checksum/feed validator dependencies (no lifecycle scripts)
+        env:
+          GH_TOKEN: ""
+        run: npm ci --ignore-scripts
+      - name: Require both platforms and checksum every asset
+        run: node scripts/release-assets.mjs release/assets "$VERSION"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: release-verified
+          if-no-files-found: error
+          retention-days: 7
+          path: release/assets/*
+      - name: Create draft only after all gates pass
+        if: ${{ !inputs.dry_run }}
+        run: |
+          printf 'Beta sem assinatura/notarização. Mac arm64 e Windows x64. Fontes GPL e SHA256SUMS incluídos. Testes e smoke do app empacotado passaram nos runners; não substitui QA físico.\n\nSource commit: %s. Build version: %s (stamped in CI).\n' "$EXPECTED_SHA" "$VERSION" > release/notes.md
+          gh release create "v$VERSION" --repo Marcos-An/corte --target "$EXPECTED_SHA" --draft --prerelease --title "Corte $VERSION — beta" --notes-file release/notes.md release/assets/*
+          # No release edit --draft=false: publication is a separate human action.
