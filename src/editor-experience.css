@@ -20,7 +20,7 @@ body{background:var(--bg);min-width:800px}
 .timeline-toolbar{height:42px;background:#191a1d}
 .timeline-toolbar #range-mode,.timeline-toolbar #cut-mode,.timeline-toolbar #split,.timeline-toolbar #delete,.timeline-toolbar #move-left,.timeline-toolbar #move-right{display:none}
 #mark-remove{width:auto;padding:7px 12px;gap:6px}
-.timeline-content{background:none;min-height:215px}
+.timeline-content{background:none;min-height:215px;isolation:isolate}
 .track-sidebar{background:#161719}
 .track-label{height:62px;margin-top:32px;padding:8px 12px;color:#d6d6dd}
 .track-label:nth-child(2){height:36px!important}
@@ -33,7 +33,7 @@ body{background:var(--bg);min-width:800px}
 .audio-block{background:#294b45;color:#c1e1d7}
 .caption-block{background:#49394c;color:#e9d6e8;border-color:#725776}
 .music-block{background:#574534;color:#f0d6bd;border-color:#886749}
-.playhead{pointer-events:auto;cursor:ew-resize;touch-action:none;width:11px;transform:translateX(-5px);background:linear-gradient(to right,transparent 5px,#eee 5px,#eee 6px,transparent 6px)}
+.playhead{z-index:10;pointer-events:auto;cursor:ew-resize;touch-action:none;width:11px;transform:translateX(-5px);background:linear-gradient(to right,transparent 5px,#eee 5px,#eee 6px,transparent 6px)}
 .playhead:before{left:0}.playhead:focus-visible{outline:1px solid #aaa;outline-offset:3px}
 .clip-actions{display:flex;justify-content:center;gap:8px;padding:5px;background:#161719;border-top:1px solid #292b2e}
 .clip-actions button{padding:6px 12px;border-radius:7px;font-size:11px;color:#c9cbd1}
