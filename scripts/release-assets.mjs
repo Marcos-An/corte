@@ -18,4 +18,4 @@ export async function collectAssets(dir,version){
  if(feed?.version!==version||feed.path!==`Corte.Update.${version}.exe`||feed.sha512!==sha512||feed.files?.length!==1||feed.files[0].url!==feed.path||feed.files[0].sha512!==sha512||feed.files[0].size!==size)throw Error('Metadados de atualização inválidos.');
  await writeFile(path.join(dir,'SHA256SUMS'),lines.join('\n')+'\n');
 }
-if(process.argv[1]&&realpathSync(process.argv[1])===fileURLToPath(import.meta.url))collectAssets(process.argv[2],process.argv[3]).catch(e=>{console.error(e.message);process.exitCode=1;});
+if(process.argv[1]&&process.argv[1]!=='-'&&realpathSync(process.argv[1])===fileURLToPath(import.meta.url))collectAssets(process.argv[2],process.argv[3]).catch(e=>{console.error(e.message);process.exitCode=1;});

@@ -21,7 +21,7 @@ export function dispatchRelease({version,current,dryRun=false,run}){
  run('gh',['workflow','run','release.yml','--repo',repo,'--ref','main','-f','version='+version,'-f','expected_sha='+sha,'-f','dry_run='+String(dryRun)]);
  return sha;
 }
-if(process.argv[1]&&realpathSync(process.argv[1])===fileURLToPath(import.meta.url)){
+if(process.argv[1]&&process.argv[1]!=='-'&&realpathSync(process.argv[1])===fileURLToPath(import.meta.url)){
  try{
  const args=process.argv.slice(2);if(args.length<1||args.length>2||(args[1]&&args[1]!=='--dry-run'))throw Error('Uso: npm run release -- 0.5.5 [--dry-run]');
  const run=(cmd,args)=>execFileSync(cmd==='npm'?process.execPath:cmd,cmd==='npm'?[process.env.npm_execpath,...args]:args,{cwd:root,encoding:'utf8',stdio:['ignore','pipe','inherit']});

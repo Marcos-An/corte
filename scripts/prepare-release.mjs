@@ -42,7 +42,7 @@ async function prepare(platform){
  await verify(platform);console.log('Dependências reutilizadas e verificadas, sem recompilar FFmpeg.');
  }finally{await rm(work,{recursive:true,force:true});}
 }
-if(process.argv[1]&&realpathSync(process.argv[1])===fileURLToPath(import.meta.url)){
+if(process.argv[1]&&process.argv[1]!=='-'&&realpathSync(process.argv[1])===fileURLToPath(import.meta.url)){
  const platform=process.platform==='darwin'?'mac':process.platform==='win32'?'win':null;
  if(!platform){console.error('Build somente em macOS arm64 ou Windows x64.');process.exitCode=1;}
  else prepare(platform).catch(e=>{console.error(e.message);process.exitCode=1;});

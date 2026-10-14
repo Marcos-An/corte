@@ -86,3 +86,8 @@ test('changing model revision cannot produce an update with missing AI weights',
  const {readFile}=await import('node:fs/promises'),{runInNewContext}=await import('node:vm'),{createRequire}=await import('node:module');const require=createRequire(new URL('../scripts/update-build.cjs',import.meta.url));const source=await readFile(new URL('../scripts/update-build.cjs',import.meta.url),'utf8');
  assert.throws(()=>runInNewContext(source,{module:{exports:{}},require:name=>name==='../vendor/models/manifest.json'?{files:[{path:'new.onnx',sha256:'a'.repeat(64)}]}:require(name)}),/Modelo de IA mudou/);
 });
+test('workflow stdin imports helpers without treating dash as a CLI file',async()=>{
+ const {spawnSync}=await import('node:child_process');const urls=['release.mjs','prepare-release.mjs','release-assets.mjs'].map(f=>new URL('../scripts/'+f,import.meta.url).href);
+ const result=spawnSync(process.execPath,['--input-type=module','-'],{input:urls.map(u=>`await import(${JSON.stringify(u)});`).join('\n')+'\nconsole.log("helpers imported");',encoding:'utf8'});
+ assert.equal(result.status,0,result.stderr);assert.match(result.stdout,/helpers imported/);
+});
