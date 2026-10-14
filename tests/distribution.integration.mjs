@@ -30,9 +30,9 @@ for(const [platform,resources] of locations){
  assert.equal(text(entry(recipe)),text(await readFile(path.join(root,'vendor/distribution',recipe))),'bundled build recipe');
  assert.equal(text(entry('source-checksums.sha256')),text(await readFile(path.join(root,'vendor/distribution/source-checksums.sha256'))),'expected upstream source hashes');
  const sums=entry('SHA256SUMS').toString('utf8').trim().split('\n');
- for(const line of sums){const [hash,name]=line.split(/\s+/);assert.match(hash,/^[a-f0-9]{64}$/);assert.ok(!name.includes('/'),'source checksum name');assert.equal(digest(entry(name)),hash,'source input '+name);}
+ for(const line of sums){const [hash,markedName]=line.split(/\s+/);const name=markedName.replace(/^\*/, '');assert.match(hash,/^[a-f0-9]{64}$/);assert.ok(!name.includes('/'),'source checksum name');assert.equal(digest(entry(name)),hash,'source input '+name);}
  const expected=(await readFile(path.join(root,'vendor/distribution/source-checksums.sha256'),'utf8')).trim().split('\n');
- for(const line of expected){const [hash,name]=line.split(/\s+/);if(platform==='mac'&&name==='zlib-1.3.1.tar.gz'&&!entries.includes('archives/'+name))continue;assert.equal(digest(entry(name)),hash,'pinned upstream '+name);}
+ for(const line of expected){const [hash,markedName]=line.split(/\s+/);const name=markedName.replace(/^\*/, '');if(platform==='mac'&&name==='zlib-1.3.1.tar.gz'&&!entries.includes('archives/'+name))continue;assert.equal(digest(entry(name)),hash,'pinned upstream '+name);}
  for(const tool of ['ffmpeg','ffprobe']){
   const file=path.join(resources,'tools',tool+(platform==='win'?'.exe':'')),bytes=await readFile(file);assert.equal(digest(bytes),manifest[platform][tool].sha256,platform+': controlled binary hash');
   if(platform==='win'){assert.equal(bytes.readUInt16LE(0),0x5a4d);const pe=bytes.readUInt32LE(0x3c);assert.equal(bytes.readUInt16LE(pe+4),0x8664,'Windows x64 executable');assert.ok(!bytes.toString('latin1').includes('--enable-nonfree'),'Windows nonfree flag');}
