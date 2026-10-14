@@ -19,7 +19,7 @@ export async function scanQuality(file,{signal,onProgress=()=>{}}={}){
   const child=spawn(binaries().ffmpeg,['-v','error','-i',file,'-an','-vf',`fps=10:start_time=0,scale=${width}:${height}`,'-pix_fmt','gray','-f','rawvideo','pipe:1'],{signal,windowsHide:true});
   const timer=setTimeout(()=>child.kill(),1800000);let settled=false;
   const finish=error=>{if(settled)return;settled=true;clearTimeout(timer);error?reject(error):resolve();};
-  child.stderr.resume();child.on('error',()=>finish(new Error(signal?.aborted?'Análise cancelada.':'Não foi possível iniciar a análise local.')));
+  child.stderr.resume();child.on('error',error=>{if(error.name==='AbortError')return;finish(new Error(signal?.aborted?'Análise cancelada.':'Não foi possível iniciar a análise local.'));});
   child.stdout.on('data',chunk=>{pending=Buffer.concat([pending,chunk]);while(pending.length>=size){const image=pending.subarray(0,size);let sum=0,squares=0,n=0;
    for(let y=1;y<height-1;y++)for(let x=1;x<width-1;x++){const i=y*width+x,lap=image[i-1]+image[i+1]+image[i-width]+image[i+width]-4*image[i];sum+=lap;squares+=lap*lap;n++;}
    rows.push({time:rows.length/10,sharpness:squares/n-(sum/n)**2});pending=pending.subarray(size);

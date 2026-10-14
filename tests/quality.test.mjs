@@ -26,3 +26,12 @@ test('actual FFmpeg scan honors cancellation without producing a plan',async()=>
  await assert.rejects(scanQuality(file,{signal:controller.signal,onProgress:()=>controller.abort()}),/cancelada/);
  }finally{await rm(dir,{recursive:true,force:true});}
 });
+test('cancelled scan waits for FFmpeg close before returning and releasing media',async t=>{
+ const {createRequire,syncBuiltinESMExports}=await import('node:module'),{EventEmitter}=await import('node:events'),{PassThrough}=await import('node:stream');const require=createRequire(import.meta.url),cp=require('node:child_process');
+ const child=new EventEmitter();child.stdout=new PassThrough();child.stderr=new PassThrough();child.kill=()=>{};
+ const stub=t.mock.method(cp,'spawn',()=>child);syncBuiltinESMExports();
+ const {scanQuality}=await import('../desktop/quality.mjs');const controller=new AbortController();let finished=false;
+ const result=scanQuality('fixture.mp4',{signal:controller.signal});const rejection=assert.rejects(result,/cancelada/).then(()=>{finished=true;});
+ try{controller.abort();child.emit('error',Object.assign(new Error('abort'),{name:'AbortError'}));await new Promise(r=>setImmediate(r));assert.equal(finished,false,'AbortError is not proof that FFmpeg released the media');}
+ finally{child.emit('close',1);await rejection;stub.mock.restore();syncBuiltinESMExports();child.stdout.destroy();child.stderr.destroy();}
+});
