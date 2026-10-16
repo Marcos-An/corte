@@ -73,9 +73,10 @@ export function searchFrames(index,queries,{k=3,spacing=2}={}){
  return found;
 }
 // Frames far below the asset's median sharpness, as [start,end) source ranges.
-export function blurryRanges(samples,ratio=.3){
- if(samples.length<3)return [];
- const sorted=samples.map(s=>s.sharpness).sort((a,b)=>a-b),limit=sorted[Math.floor(sorted.length/2)]*ratio,step=samples.length>1?samples[1].time-samples[0].time:1,ranges=[];
+// `reference` is the project-wide median: a clip blurry from start to end has nothing sharper inside it to compare with.
+export function blurryRanges(samples,ratio=.3,reference=null){
+ if(!samples.length||reference===null&&samples.length<3)return [];
+ const sorted=samples.map(s=>s.sharpness).sort((a,b)=>a-b),limit=(reference??sorted[Math.floor(sorted.length/2)])*ratio,step=samples.length>1?samples[1].time-samples[0].time:1,ranges=[];
  for(const s of samples){if(s.sharpness>=limit)continue;const last=ranges.at(-1);if(last&&Math.abs(last[1]-s.time)<1e-6)last[1]=s.time+step;else ranges.push([s.time,s.time+step]);}
  return ranges;
 }

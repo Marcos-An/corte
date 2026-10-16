@@ -13,7 +13,7 @@ try{
  const load=device=>CLIPVisionModelWithProjection.from_pretrained(MODEL_ID,{dtype:'q8',device,local_files_only:true});
  try{model=await load(backend);}catch(error){if(backend==='cpu')throw error;backend='cpu';fallback=true;onProgress({stage:'worker-diagnostic',event:'worker-start',worker:'vision',processType:'vision',backend});model=await load('cpu');}
  onProgress({stage:'worker-diagnostic',event:'worker-start',worker:'vision',processType:'vision',backend});
- const evidence=[],reports=[],index=[],fps=step===.5?4:step===5?1:2,start=performance.now();
+ const evidence=[],reports=[],index=[],sharpnessByAsset=new Map(),fps=step===.5?4:step===5?1:2,start=performance.now();
  try{for(const asset of assets){
   if(!asset.file)throw new Error('Mídia ausente.');signal.throwIfAborted();const folder=frameDirectory(directory,asset.id);await mkdir(folder,{recursive:true});
   onProgress({stage:'local',completed:0,total:Math.ceil(asset.duration*fps),asset:asset.name});
@@ -35,12 +35,13 @@ try{
    inferred++;const vector=Array.from(output.image_embeds.data);vectors.set(i,vector);sharpness.set(i,pixelMetrics(image).sharpness);return vector;
   };
   await semanticChanges(samples,candidates,embed);
-  const perSecond=[];for(let i=0;i<samples.length;i+=fps){const vector=await embed(i),norm=Math.hypot(...vector)||1;perSecond.push({time:samples[i].time,sharpness:sharpness.get(i)});index.push({assetId:asset.id,time:samples[i].time,path:pool(i),vector:vector.map(x=>Number((x/norm).toFixed(5)))});}
-  const blurry=blurryRanges(perSecond);
+  const perSecond=[];sharpnessByAsset.set(asset.id,perSecond);for(let i=0;i<samples.length;i+=fps){const vector=await embed(i),norm=Math.hypot(...vector)||1;perSecond.push({time:samples[i].time,sharpness:sharpness.get(i)});index.push({assetId:asset.id,time:samples[i].time,path:pool(i),vector:vector.map(x=>Number((x/norm).toFixed(5)))});}
   const times=selectEvidence(candidates,Math.max(6,Math.floor(48/assets.length)));
   for(const time of times)evidence.push({assetId:asset.id,time,path:candidates.find(s=>s.time===time).file});
-  reports.push({assetId:asset.id,localFrames:samples.length,inferredFrames:inferred,localStep:1/fps,selected:times,...(blurry.length?{blurry}:{}),signals:candidates.slice().sort((a,b)=>b.change-a.change).slice(0,12).map(s=>({sourceTime:s.time,visualChange:Number(s.change.toFixed(3)),sharpness:Math.round(s.sharpness)}))});
+  reports.push({assetId:asset.id,localFrames:samples.length,inferredFrames:inferred,localStep:1/fps,selected:times,signals:candidates.slice().sort((a,b)=>b.change-a.change).slice(0,12).map(s=>({sourceTime:s.time,visualChange:Number(s.change.toFixed(3)),sharpness:Math.round(s.sharpness)}))});
  }}finally{await model?.dispose();}
+ const all=[...sharpnessByAsset.values()].flat().map(s=>s.sharpness).sort((a,b)=>a-b),reference=all[Math.floor(all.length/2)];
+ for(const report of reports){const blurry=all.length?blurryRanges(sharpnessByAsset.get(report.assetId)||[],.3,reference):[];if(blurry.length)report.blurry=blurry;}
  return {frames:evidence,index,report:{model:MODEL_ID,dtype:'q8',backend,fallback,elapsedMs:Math.round(performance.now()-start),rssMB:Math.round(process.memoryUsage().rss/1e6),assets:reports,warning:'Sinais locais são candidatos, não prova de eventos nem critério automático de corte. Amostras podem perder eventos rápidos.'}};
 }catch(error){if(signal.aborted)throw new Error('Análise cancelada.');throw error;}
 }

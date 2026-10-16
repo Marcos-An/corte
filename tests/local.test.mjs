@@ -78,3 +78,7 @@ test('the accurate speech model is used only from a folder holding every file of
   await rm(path.join(dir,manifest.files[0].path));assert.notEqual((await accurateSpeechModel())?.path,dir,'an incomplete folder is skipped');
  }finally{if(saved===undefined)delete process.env.CORTE_SPEECH_MODEL_PATH;else process.env.CORTE_SPEECH_MODEL_PATH=saved;await rm(dir,{recursive:true,force:true});}
 });
+test('a clip blurry from start to end is caught against the sharpness of the whole project',async()=>{
+ const {blurryRanges}=await import('../desktop/local.mjs'),soft=Array.from({length:6},(_,t)=>({time:t,sharpness:8}));
+ assert.deepEqual(blurryRanges(soft),[],'alone it has nothing sharper to compare with');assert.deepEqual(blurryRanges(soft,.3,100),[[0,6]]);
+});
