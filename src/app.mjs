@@ -59,7 +59,7 @@ function describeOperation(p,op){
  if(op.ranges)return `${op.type==='keep_ranges'?'Manter':'Remover'} intervalos · ${name} · ${op.ranges.map(([start,end])=>`${seconds(start)}–${seconds(end)}`).join(', ')}`.slice(0,4000);
  return `Remover · ${name}`;
 }
-const editLabels={trim:'Aparar trecho',split:'Dividir trecho',delete:'Remover trecho',move:'Mover trecho',update:'Volume / reenquadramento',set_aspect:'Formato'};
+const editLabels={set_brief:'Informações do local',trim:'Aparar trecho',split:'Dividir trecho',delete:'Remover trecho',move:'Mover trecho',update:'Volume / reenquadramento',set_aspect:'Formato'};
 function edit(op){const q=editProject(project(),op);commit(q,{...describeChange(project(),q),label:op.type==='update'?(('volume'in op)?'Volume':('fadeIn'in op||'fadeOut'in op)?'Fade de áudio':'adjustments'in op?'Ajustes de imagem':'speed'in op?'Velocidade':'Reenquadramento'):(editLabels[op.type]||'Editar projeto')});}
 function renderHistory(){
  const list=$('history-list');list.replaceChildren();
@@ -69,6 +69,7 @@ $('history-toggle').addEventListener('click',()=>{$('history-panel').hidden=fals
 
 function setBusy(value,label='Preparando…',cancellable=true){busy=value;bridge?.setBusy?.(value).catch(()=>{});$('cancel').hidden=value&&!cancellable;$('ai-engine').disabled=value;$('prompt').disabled=value;renderTextScene();$('busy-message').hidden=!value||aiRunning;$('ai-progress').hidden=!value||!aiRunning;$('ai-panel').setAttribute('aria-busy',String(value&&aiRunning));$('busy-label').textContent=label;updateButtons();document.querySelectorAll('#clip-properties input, #clip-properties button').forEach(e=>e.disabled=value);$('aspect').disabled=value;$('project-name').disabled=value;}
 function updateButtons(){
+ if(document.activeElement!==$('ai-facts'))$('ai-facts').value=project().brief?.facts||'';$('ai-facts-state').textContent=project().brief?.facts?'· preenchido':'';$('ai-facts').disabled=busy;
  renderUpdate();
  $('relink-missing').disabled=busy;
  document.querySelectorAll('#components-panel input,#components-panel select,#components-panel button').forEach(e=>e.disabled=busy);$('add-text').disabled=busy||!project().clips.length;
@@ -889,9 +890,11 @@ $('install-update').onclick=guard(async()=>{
  if(dirty||busy||recorder)throw Error('Salve o projeto e conclua a operação atual antes de atualizar.');
  await bridge.installUpdate();
 });
-async function refreshSpeechModel(){const r=await bridge.speechModel();$('speech-model-status').textContent=r.installed?'Reconhecimento preciso instalado.':r.installing?'Baixando reconhecimento preciso…':'Usando o reconhecimento básico incluído.';$('speech-model-install').hidden=r.installed;$('speech-model-install').disabled=r.installing;}
+async function refreshSpeechModel(){const r=await bridge.speechModel();$('speech-model-status').textContent=r.installed?'Reconhecimento preciso instalado.':r.installing?'Baixando reconhecimento preciso…':'Usando o reconhecimento básico incluído.';$('speech-model-install').hidden=r.installed;$('speech-model-install').disabled=r.installing;$('ai-speech-hint').hidden=r.installed||$('ai-engine').value!=='hybrid';$('ai-speech-install').disabled=r.installing;}
 bridge.onSpeechModel?.(p=>{$('speech-model-status').textContent=`Baixando reconhecimento preciso… ${p.completed}/${p.total} arquivos`;});
-$('speech-model-install').addEventListener('click',async()=>{$('speech-model-install').disabled=true;$('speech-model-status').textContent='Baixando reconhecimento preciso…';try{await bridge.installSpeechModel();toast('Reconhecimento preciso instalado.');}catch(error){toast(error.message,true);}finally{await refreshSpeechModel().catch(()=>{});}});
+async function installSpeech(){for(const id of ['speech-model-install','ai-speech-install'])$(id).disabled=true;$('speech-model-status').textContent='Baixando reconhecimento preciso…';try{await bridge.installSpeechModel();toast('Reconhecimento preciso instalado.');}catch(error){toast(error.message,true);}finally{$('ai-speech-install').disabled=false;await refreshSpeechModel().catch(()=>{});}}
+$('speech-model-install').addEventListener('click',installSpeech);$('ai-speech-install').addEventListener('click',installSpeech);
+$('ai-facts').addEventListener('change',guard(()=>{if(busy)return;const value=$('ai-facts').value;if((project().brief?.facts||'')===value.trim())return;edit({type:'set_brief',facts:value});}));
 async function showSettings(section){$('api-key').value='';$('settings-dialog').showModal();void refreshSpeechModel().catch(()=>{$('speech-model-status').textContent='Não foi possível verificar o reconhecimento de fala.';});if(section==='api')$('api-key').focus();const r=await bridge.apiStatus();$('api-status').textContent=r.configured?'Chave cadastrada e protegida.':'Nenhuma chave cadastrada.';await refreshConnection();}
 $('settings').addEventListener('click',guard(showSettings));$('caption-settings').addEventListener('click',guard(showSettings));
 $('settings-close').addEventListener('click',()=>$('settings-dialog').close());$('settings-dialog').addEventListener('close',()=>$('api-key').value='');
@@ -1020,7 +1023,7 @@ $('clip-crop').onclick=()=>{selectedMusic=null;showInspector('video');};$('clip-
 
 function tab(name){$('tab-video').classList.toggle('active',name==='video');$('tab-audio').classList.toggle('active',name==='audio');$('video-properties').hidden=name==='audio';}
 $('tab-video').addEventListener('click',()=>tab('video'));$('tab-audio').addEventListener('click',()=>tab('audio'));
-$('nav-media').addEventListener('click',()=>importVideos());$('nav-audio').addEventListener('click',()=>showModule(editorPanel(activePanel,'audio')));$('nav-ai').addEventListener('click',()=>{showModule(editorPanel(activePanel,'ai'));if(activePanel)$('prompt').focus();});
+$('nav-media').addEventListener('click',()=>importVideos());$('nav-audio').addEventListener('click',()=>showModule(editorPanel(activePanel,'audio')));$('nav-ai').addEventListener('click',()=>{showModule(editorPanel(activePanel,'ai'));if(activePanel)$('prompt').focus();void refreshSpeechModel().catch(()=>{});});
 $('export').addEventListener('click',()=>{if(busy || !project().clips.length)return;stop();$('export-details').textContent=`${project().clips.length} trecho${project().clips.length===1?'':'s'} · ${format(duration(project()))} · Formato ${project().aspect}`;$('export-dialog').showModal();});
 $('export-close').addEventListener('click',()=>$('export-dialog').close());
 $('export-confirm').addEventListener('click',guard(async()=>{$('export-dialog').close();setBusy(true,'Exportando vídeo…');try{const result=await bridge.exportProject(project(),Number($('export-height').value));if(result)toast(`Vídeo exportado: ${result.path.split(/[\\/]/).pop()}`);}finally{setBusy(false);}}));
@@ -1028,7 +1031,7 @@ let connectionRequest=0;
 async function refreshConnection(){if(!bridge)return;const request=++connectionRequest,r=await bridge.status();if(request!==connectionRequest)return;connected=r.connected;$('connect').classList.toggle('connected',connected);$('connection-label').textContent=connected?'ChatGPT conectado':'Não conectado';$('connect').disabled=busy||connected;}
 $('connect').addEventListener('click',guard(async()=>{if(connected){toast('Conectado com ChatGPT. Configure limites e créditos na sua conta; esta versão não possui desconexão integrada.');return;}if(!bridge)throw new Error('O login está disponível no app desktop.');$('connect').disabled=true;$('connection-label').textContent='Conclua no navegador…';try{await bridge.login();await refreshConnection();toast(connected?'ChatGPT conectado. Pronto para analisar.':'Login não concluído.',!connected);}finally{$('connect').disabled=busy||connected;if(!connected)$('connection-label').textContent='Não conectado';}}));
 $('prompt').addEventListener('input',()=>{pending=null;$('proposal').hidden=true;updateButtons();});
-$('ai-engine').addEventListener('change',()=>{pending=null;$('proposal').hidden=true;});
+$('ai-engine').addEventListener('change',()=>{pending=null;$('proposal').hidden=true;void refreshSpeechModel().catch(()=>{});});
 $('ai-scope').addEventListener('change',()=>{pending=null;$('proposal').hidden=true;$('ai-feedback').hidden=true;updateButtons();});
 let cancelRequested=false;
 $('analyze').addEventListener('click',guard(async()=>{
@@ -1042,8 +1045,12 @@ $('analyze').addEventListener('click',guard(async()=>{
    const box=$('proposal');box.replaceChildren();box.hidden=false;
    const add=text=>{const p=document.createElement('p');p.textContent=text;box.append(p);};
    add('Proposta híbrida — revise antes de aplicar.');add(result.plan.summary);
-   for(const op of result.plan.operations)add(describeOperation(snapshot,op));
-   for(const text of result.pendingRequests||[])add('Pendente — não será executado: '+text);
+   // One line per part of the request, in the user's own order, before the technical operations.
+   const coverage=result.coverage||[],statusLabels={planned:'Feito',partial:'Parcial',pending:'Pendente',not_needed:'Não se aplica'};
+   if(coverage.length){const list=document.createElement('ul');list.className='proposal-coverage';list.setAttribute('aria-label','Partes do pedido');for(const item of coverage){const li=document.createElement('li');li.className='coverage-'+item.status;const badge=document.createElement('span');badge.className='coverage-status';badge.textContent=statusLabels[item.status]||item.status;const text=document.createElement('span');text.textContent=item.status==='planned'?item.request:`${item.request} — ${item.reason}`;li.append(badge,text);list.append(li);}box.append(list);}
+   const operations=document.createElement('details');operations.className='proposal-operations';const summary=document.createElement('summary');summary.textContent=`Operações (${result.plan.operations.length})`;operations.append(summary);for(const op of result.plan.operations){const p=document.createElement('p');p.textContent=describeOperation(snapshot,op);operations.append(p);}box.append(operations);
+   const fromCoverage=new Set(coverage.map(c=>`${c.request}: ${c.reason}`));
+   for(const text of result.pendingRequests||[])if(!fromCoverage.has(text))add('Pendente — não será executado: '+text);
    for(const warning of result.analysisWarnings||[])add('Revisão da fala: '+warning);
    add(`Evidências compartilhadas: ${result.shared?.transcriptWords||0} palavras transcritas e ${result.shared?.frames||0} frames, incluindo a revisão de bordas. As imagens são amostras; confira os cortes na timeline.`);
    pending={snapshot:JSON.stringify(snapshot),plan:result.plan,scope,notes:[...(result.pendingRequests||[]),...(result.analysisWarnings||[])]};

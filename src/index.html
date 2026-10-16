@@ -112,6 +112,9 @@
 <div class="prompt-box"><textarea id="prompt" aria-label="Pedido de edição" maxlength="6000" placeholder="Descreva o que quer mudar no vídeo…"></textarea>
 <div class="prompt-bottom"><button id="analyze" class="send" aria-label="Preparar edição" title="Enviar pedido e autorizar a análise do escopo escolhido"><svg class="icon"><use href="#i-send"/></svg></button></div></div>
 
+<details id="ai-facts-box" class="ai-facts"><summary>Informações do local <span id="ai-facts-state"></span></summary><textarea id="ai-facts" aria-label="Informações do local" maxlength="4000" placeholder="Cardápio e ingredientes, endereço, datas, nomes… A IA usa só o que estiver aqui para conferir falas e preencher textos."></textarea></details>
+<p id="ai-speech-hint" class="ai-speech-hint" hidden>As falas estão sendo transcritas com o modelo básico. <button id="ai-speech-install" class="reset">Baixar reconhecimento preciso (1,1 GB)</button></p>
+
 <div id="ai-progress" class="ai-progress" role="status" hidden><span class="loader" aria-hidden="true"></span><strong id="ai-progress-label">Preparando sua edição…</strong><button id="ai-cancel" class="reset">Cancelar</button></div>
 <p id="ai-feedback" role="alert" hidden></p>
 <div id="proposal" class="proposal" hidden></div>

@@ -11,6 +11,7 @@ export const ASPECTS = ['9:16', '16:9', '1:1', '4:5'];
 export function createProject(name='Meu projeto') { return {version:1,name,aspect:'9:16',assets:[],clips:[],captionStyle:{font:'Anton',size:6.5,color:'#ffffff',accent:'#eac39b',position:'bottom',preset:'outline'}}; }
 export function validateProject(p) {
   if (!p || p.version!==1 || typeof p.name!=='string' || p.name.length>200 || !ASPECTS.includes(p.aspect) || !Array.isArray(p.assets) || !Array.isArray(p.clips) || p.assets.length>100 || p.clips.length>500) fail('Projeto inválido ou versão não suportada.');
+  if(p.brief!==undefined&&(!p.brief||typeof p.brief!=='object'||Object.keys(p.brief).some(k=>k!=='facts')||typeof p.brief.facts!=='string'||!p.brief.facts.trim()||p.brief.facts.length>4000))fail('Informações do local inválidas. Use até 4.000 caracteres.');
   const ids=new Set();
   for(const a of p.assets) {
     if(!a || typeof a.id!=='string' || !a.id || ids.has(a.id) || typeof a.name!=='string' || !finite(a.duration) || a.duration<=0 || a.duration>21600 || !Number.isInteger(a.width) || a.width<(a.kind==='audio'?0:2) || a.width>16384 || !Number.isInteger(a.height) || a.height<(a.kind==='audio'?0:2) || a.height>16384 || (a.kind!==undefined&&!['audio','video','image'].includes(a.kind)) || (a.kind==='audio'&&(a.width!==0||a.height!==0||!a.hasAudio)) || typeof a.hasAudio!=='boolean') fail('Mídia inválida.');
@@ -90,6 +91,8 @@ export function clipAt(p,time) {
 export function editProject(p,op) {
   const q=clone(p);
   if(op.type==='set_aspect') { q.aspect=op.aspect;return validateProject(q); }
+  // Facts only the user knows (menu, address, dates): kept with the project so the AI can check and fill them.
+  if(op.type==='set_brief') { const facts=typeof op.facts==='string'?op.facts.trim():op.facts;if(facts)q.brief={facts};else delete q.brief;return validateProject(q); }
   const index=q.clips.findIndex(c=>c.id===op.clipId);if(index<0) fail('Trecho não encontrado.');
   const c=q.clips[index];
   switch(op.type) {
