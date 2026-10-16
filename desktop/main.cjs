@@ -34,7 +34,7 @@ if(primary)app.whenReady().then(async()=>{
  function authorized(p){core.validateProject(p);for(const a of p.assets){const r=registry.get(a.id);if(!r){if(hydration?.state.assets.some(s=>s.id===a.id&&s.pending))throw Error(`Ainda validando ${a.name}. Aguarde a validação da mídia.`);throw new Error(`Mídia ausente: ${a.name}. Relocalize o arquivo.`);}for(const key of ['duration','width','height','hasAudio','kind'])if((key==='kind'?(a[key]||'video'):a[key])!==(key==='kind'?(r.asset[key]||'video'):r.asset[key]))throw new Error('Os dados da mídia não correspondem ao arquivo importado.');}return p;}
  function handler(name,fn){ipcMain.handle(`editor:${name}`,async(event,...args)=>{
    if(event.sender!==window?.webContents || event.senderFrame!==window.webContents.mainFrame)return {ok:false,error:'Origem não autorizada.'};
-   const blocking=!['dirty','busy','ready','update-status','update-check','update-install','status','api-status','cancel'].includes(name);
+   const blocking=!['dirty','busy','ready','update-status','update-check','update-install','status','api-status','cancel','speech-model','speech-model-install'].includes(name);
    if(blocking)activeOperations++;
    try{return {ok:true,value:await fn(...args)};}catch(error){return {ok:false,error:error.message || 'Não foi possível concluir.'};}finally{if(blocking)activeOperations--;}
  });}
@@ -123,6 +123,15 @@ if(primary)app.whenReady().then(async()=>{
    abort=new AbortController();try{return await media.renderProject(p,registry,picked.filePath,{height,signal:abort.signal,onProgress:notify});}finally{abort=null;}
  });
  handler('status',async()=>({...await ai.loginStatus(home),platform:process.platform}));
+ // Accurate speech recognition is an optional ~1.1 GB download; recognition verifies every checksum before using it.
+ const speechManifest=JSON.parse(await fs.readFile(path.join(__dirname,'../vendor/models/speech-accurate-manifest.json'),'utf8'));
+ {const {modelStorePath}=await import('./models-store.mjs'),stored=modelStorePath(app.getPath('userData'),speechManifest);if(require('node:fs').existsSync(path.join(stored,'manifest.json')))process.env.CORTE_SPEECH_MODEL_PATH=stored;}
+ let speechInstall=null;
+ handler('speech-model',async()=>({installed:!!await (await import('./local.mjs')).accurateSpeechModel(),installing:!!speechInstall,sizeMB:Math.round(1085)}));
+ handler('speech-model-install',async()=>{
+  speechInstall??=(async()=>{const {installOptionalModel}=await import('./models-store.mjs');process.env.CORTE_SPEECH_MODEL_PATH=await installOptionalModel({manifest:speechManifest,userData:app.getPath('userData'),onProgress:p=>{if(!window.isDestroyed())window.webContents.send('editor:speech-model',p);}});return {installed:true};})().finally(()=>{speechInstall=null;});
+  return speechInstall;
+ });
  handler('login',async()=>{if(loginRunning)throw new Error('O login já está aberto no navegador.');loginRunning=true;try{await ai.startLogin(home);return ai.loginStatus(home);}finally{loginRunning=false;}});
  handler('analyze',async(p,prompt,step,clipId=null,engine='chatgpt',shareEvidence=false)=>{
   core.validateProject(p);const {scopeProject,validateScopedPlan}=await import('../src/editor-experience.mjs');const scoped=scopeProject(p,clipId);authorized(scoped);if(!['hybrid','chatgpt'].includes(engine))throw Error('Motor de IA inválido.');if(engine==='hybrid'&&shareEvidence!==true)throw Error('Autorize o envio das evidências para esta análise.');if(abort)throw Error('Já há uma operação em andamento.');abort=new AbortController();

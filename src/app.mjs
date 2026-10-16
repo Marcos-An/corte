@@ -889,7 +889,10 @@ $('install-update').onclick=guard(async()=>{
  if(dirty||busy||recorder)throw Error('Salve o projeto e conclua a operação atual antes de atualizar.');
  await bridge.installUpdate();
 });
-async function showSettings(section){$('api-key').value='';$('settings-dialog').showModal();if(section==='api')$('api-key').focus();const r=await bridge.apiStatus();$('api-status').textContent=r.configured?'Chave cadastrada e protegida.':'Nenhuma chave cadastrada.';await refreshConnection();}
+async function refreshSpeechModel(){const r=await bridge.speechModel();$('speech-model-status').textContent=r.installed?'Reconhecimento preciso instalado.':r.installing?'Baixando reconhecimento preciso…':'Usando o reconhecimento básico incluído.';$('speech-model-install').hidden=r.installed;$('speech-model-install').disabled=r.installing;}
+bridge.onSpeechModel?.(p=>{$('speech-model-status').textContent=`Baixando reconhecimento preciso… ${p.completed}/${p.total} arquivos`;});
+$('speech-model-install').addEventListener('click',async()=>{$('speech-model-install').disabled=true;$('speech-model-status').textContent='Baixando reconhecimento preciso…';try{await bridge.installSpeechModel();toast('Reconhecimento preciso instalado.');}catch(error){toast(error.message,true);}finally{await refreshSpeechModel().catch(()=>{});}});
+async function showSettings(section){$('api-key').value='';$('settings-dialog').showModal();void refreshSpeechModel().catch(()=>{$('speech-model-status').textContent='Não foi possível verificar o reconhecimento de fala.';});if(section==='api')$('api-key').focus();const r=await bridge.apiStatus();$('api-status').textContent=r.configured?'Chave cadastrada e protegida.':'Nenhuma chave cadastrada.';await refreshConnection();}
 $('settings').addEventListener('click',guard(showSettings));$('caption-settings').addEventListener('click',guard(showSettings));
 $('settings-close').addEventListener('click',()=>$('settings-dialog').close());$('settings-dialog').addEventListener('close',()=>$('api-key').value='');
 $('api-save').addEventListener('click',guard(async()=>{const value=$('api-key').value;$('api-key').value='';await bridge.apiSave(value);$('api-status').textContent='Chave cadastrada e protegida.';}));

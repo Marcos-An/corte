@@ -22,3 +22,30 @@ export async function preserveModels({bundled,userData,manifest}){
   await rename(stage,target);return target;
  }finally{await rm(stage,{recursive:true,force:true});}
 }
+// Optional models (visual search, accurate speech) are not in the installer; they come from the revision pinned in
+// their manifest, every file checked against its sha256, and only a complete verified folder is ever used.
+export function modelDownloadUrl(manifest,file){
+ const repo=file.split('/').slice(0,2).join('/'),rest=file.split('/').slice(2).join('/');
+ const revision=repo===manifest.model?manifest.revision:repo===manifest.speech?.model?manifest.speech.revision:null;
+ if(!revision||!rest)throw Error('Arquivo de modelo sem revisão fixada: '+file);
+ return `https://huggingface.co/${repo}/resolve/${revision}/${rest}`;
+}
+export async function optionalModelPath(userData,manifest){
+ const target=modelStorePath(userData,manifest);
+ try{await verify(target,manifest);return target;}catch{return null;}
+}
+export async function installOptionalModel({manifest,userData,fetch=globalThis.fetch,onProgress=()=>{}}){
+ const installed=await optionalModelPath(userData,manifest);if(installed)return installed;
+ const target=modelStorePath(userData,manifest),stage=target+'.tmp-'+randomUUID();await mkdir(stage,{recursive:true});
+ try{
+  for(const [i,f] of manifest.files.entries()){
+   const response=await fetch(modelDownloadUrl(manifest,f.path));if(!response.ok)throw Error(`Download do modelo falhou (${response.status}).`);
+   const out=path.join(stage,f.path);await mkdir(path.dirname(out),{recursive:true});await writeFile(out,Buffer.from(await response.arrayBuffer()));
+   onProgress({completed:i+1,total:manifest.files.length,file:f.path});
+  }
+  await writeFile(path.join(stage,'manifest.json'),JSON.stringify(manifest));await verify(stage,manifest);
+  try{await rename(target,target+'.damaged-'+randomUUID());}catch(e){if(e.code!=='ENOENT')throw e;}
+  await rename(stage,target);return target;
+ }finally{await rm(stage,{recursive:true,force:true});}
+}
+

@@ -80,12 +80,15 @@ export function blurryRanges(samples,ratio=.3){
  return ranges;
 }
 // The search encoder ships in its own manifest: code-only Windows updates may lack it, and search then turns off.
-export async function searchModels(){
- const manifest=JSON.parse(await readFile(path.resolve(import.meta.dirname,'../vendor/models/search-manifest.json'),'utf8'));
- const folders=[process.env.CORTE_SEARCH_MODEL_PATH,modelPath(),process.resourcesPath&&path.join(process.resourcesPath,'models'),path.resolve(import.meta.dirname,'../vendor/models')].filter(Boolean);
+async function optionalModel(manifestFile,override){
+ const manifest=JSON.parse(await readFile(path.resolve(import.meta.dirname,'../vendor/models',manifestFile),'utf8'));
+ const folders=[override,modelPath(),process.resourcesPath&&path.join(process.resourcesPath,'models'),path.resolve(import.meta.dirname,'../vendor/models')].filter(Boolean);
  const folder=folders.find(dir=>manifest.files.every(f=>existsSync(path.join(dir,f.path))));
  return folder?{path:folder,manifest}:null;
 }
+export function searchModels(){return optionalModel('search-manifest.json',process.env.CORTE_SEARCH_MODEL_PATH);}
+// Whisper large-v3-turbo: far better Portuguese than the bundled whisper-small, downloaded on demand from Settings.
+export function accurateSpeechModel(){return optionalModel('speech-accurate-manifest.json',process.env.CORTE_SPEECH_MODEL_PATH);}
 export async function embedQueries({texts,signal}){
  const found=await searchModels();if(!found)return null;
  return runVisualProcess({data:{texts,models:found.path,manifest:found.manifest},backend:'cpu',signal,onProgress:()=>{}});

@@ -7,6 +7,7 @@ import {execFileSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {modelDownloadUrl} from '../desktop/models-store.mjs';
 const root=fileURLToPath(new URL('../',import.meta.url));
 export async function verifyFile(file,expected){
  const hash=createHash('sha256');for await(const chunk of createReadStream(file))hash.update(chunk);
@@ -22,12 +23,7 @@ async function verify(platform){
  const search=JSON.parse(await readFile(root+'vendor/models/search-manifest.json'));for(const f of search.files)await verifyFile(root+'vendor/models/'+f.path,f.sha256);
 }
 // Files added after the bootstrap release (e.g. a new model part) come from the revision pinned in the manifest.
-export function modelDownloadUrl(manifest,file){
- const repo=file.split('/').slice(0,2).join('/'),rest=file.split('/').slice(2).join('/');
- const revision=repo===manifest.model?manifest.revision:repo===manifest.speech?.model?manifest.speech.revision:null;
- if(!revision||!rest)throw Error('Arquivo de modelo sem revisão fixada: '+file);
- return `https://huggingface.co/${repo}/resolve/${revision}/${rest}`;
-}
+export {modelDownloadUrl};
 async function fetchModelFile(manifest,file,to,sha256){
  const response=await fetch(modelDownloadUrl(manifest,file));if(!response.ok)throw Error(`Download do modelo falhou (${response.status}): ${file}`);
  await writeFile(to,Buffer.from(await response.arrayBuffer()));await verifyFile(to,sha256);

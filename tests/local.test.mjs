@@ -69,3 +69,12 @@ test('blurry stretches are reported per asset from the sharpness of real preview
  const s=Array.from({length:12},(_,t)=>({time:t,sharpness:t>=4&&t<=6?5:100}));
  assert.deepEqual(blurryRanges(s),[[4,7]]);assert.deepEqual(blurryRanges(s.map(x=>({...x,sharpness:100}))),[]);assert.deepEqual(blurryRanges([]),[]);
 });
+test('the accurate speech model is used only from a folder holding every file of its manifest',async()=>{
+ const {accurateSpeechModel}=await import('../desktop/local.mjs'),{mkdtemp,mkdir,writeFile,rm,readFile}=await import('node:fs/promises'),{tmpdir}=await import('node:os');
+ const manifest=JSON.parse(await readFile(new URL('../vendor/models/speech-accurate-manifest.json',import.meta.url),'utf8')),dir=await mkdtemp(path.join(tmpdir(),'corte-speech-model-')),saved=process.env.CORTE_SPEECH_MODEL_PATH;
+ try{
+  for(const f of manifest.files){await mkdir(path.dirname(path.join(dir,f.path)),{recursive:true});await writeFile(path.join(dir,f.path),'x');}
+  process.env.CORTE_SPEECH_MODEL_PATH=dir;const found=await accurateSpeechModel();assert.equal(found.path,dir);assert.equal(found.manifest.model,'onnx-community/whisper-large-v3-turbo_timestamped');
+  await rm(path.join(dir,manifest.files[0].path));assert.notEqual((await accurateSpeechModel())?.path,dir,'an incomplete folder is skipped');
+ }finally{if(saved===undefined)delete process.env.CORTE_SPEECH_MODEL_PATH;else process.env.CORTE_SPEECH_MODEL_PATH=saved;await rm(dir,{recursive:true,force:true});}
+});

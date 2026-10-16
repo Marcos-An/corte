@@ -61,6 +61,7 @@ credentials/
 /vendor/models/**
 !/vendor/models/manifest.json
 !/vendor/models/search-manifest.json
+!/vendor/models/speech-accurate-manifest.json
 !/vendor/models/Xenova/
 !/vendor/models/Xenova/clip-vit-base-patch32/
 !/vendor/models/Xenova/clip-vit-base-patch32/LICENSE

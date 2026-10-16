@@ -21,3 +21,8 @@ test('pre-cancellation never launches a process',async()=>{await assert.rejects(
 test('CPU fallback initialization crash is not misidentified as another accelerator crash',()=>fixture(async({entry,trace})=>{
  await assert.rejects(module.runVisualProcess({data:{trace,mode:'cpu-transition-crash'},backend:'dml',entry}),/interrompida/);assert.equal((await readFile(trace,'utf8')).trim(),'dml');
 }));
+test('the isolated runner also carries non-visual work, marking a CPU fallback on its report',()=>fixture(async({entry,trace,dir})=>{
+ const progress=[],r=await module.runIsolated({data:{trace},backend:'dml',entry,worker:'speech',onProgress:p=>progress.push(p)});
+ assert.equal(r.report.fallback,true);assert.ok(progress.filter(p=>p.event==='worker-start').every(p=>p.worker==='speech'));
+ await assert.rejects(module.runIsolated({data:{trace,mode:'always-crash'},backend:'dml',entry,worker:'speech',crashError:'A transcrição foi interrompida.'}),/transcrição foi interrompida/);
+}));

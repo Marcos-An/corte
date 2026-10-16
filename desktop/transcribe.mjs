@@ -1,11 +1,15 @@
 import {Worker} from 'node:worker_threads';
 import {validateProject} from '../src/project.mjs';
-import {modelPath} from './local.mjs';
+import {modelPath,accurateSpeechModel} from './local.mjs';import {runIsolated} from './visual-process.mjs';
 export async function transcribeLocally({project,registry,signal,onProgress=()=>{},purpose='captions'}){
  if(!['captions','edit'].includes(purpose))throw Error('Finalidade da transcrição inválida.');if(signal?.aborted)throw new Error('Transcrição cancelada.');validateProject(project);
  const used=new Set(project.clips.map(c=>c.assetId));const assets=project.assets.filter(a=>used.has(a.id)&&a.hasAudio);
  if(!assets.length)throw new Error('Não há áudio na timeline para legendar.');
  for(const a of assets)if(!registry.get(a.id)?.path)throw new Error('Mídia ausente.');
+ const accurate=await accurateSpeechModel();
+ if(accurate)return (await runIsolated({entry:new URL('./speech-child.mjs',import.meta.url),worker:'speech',backend:process.platform==='win32'?'dml':'cpu',signal,onProgress,
+  startError:'Não foi possível iniciar a transcrição local.',crashError:'A transcrição local foi interrompida. O editor continua aberto; tente novamente.',
+  data:{models:accurate.path,manifest:accurate.manifest,speechModel:accurate.manifest.model,purpose,assets:assets.map(a=>({...a,file:registry.get(a.id).path}))}})).transcripts;
  return new Promise((resolve,reject)=>{
   const worker=new Worker(new URL('./transcribe-worker.mjs',import.meta.url),{workerData:{models:modelPath(),purpose,assets:assets.map(a=>({...a,file:registry.get(a.id).path}))}});let settled=false,outcome='error';
   const finish=(error,result)=>{if(settled)return;outcome=signal?.aborted?'canceled':error?'error':'ok';settled=true;signal?.removeEventListener('abort',cancel);worker.terminate();error?reject(error):resolve(result);};

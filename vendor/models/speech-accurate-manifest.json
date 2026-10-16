@@ -1,0 +1,57 @@
+{
+  "model": "onnx-community/whisper-large-v3-turbo_timestamped",
+  "revision": "b3f77bf9a8c4d5ea3415827033d1ffea7955fd9a",
+  "dtype": "q8",
+  "license": "MIT",
+  "purpose": "Optional accurate speech recognition, downloaded on demand from Settings. whisper-small stays the default.",
+  "files": [
+    {
+      "path": "onnx-community/whisper-large-v3-turbo_timestamped/config.json",
+      "sha256": "32c02d1dfb9a93ff236cdcf0f741f8f3a4cedb437c407a361a022451ac009131"
+    },
+    {
+      "path": "onnx-community/whisper-large-v3-turbo_timestamped/generation_config.json",
+      "sha256": "8568ddf83476167b4607014956b87142763fa6923e71259a606734beb39bdfc8"
+    },
+    {
+      "path": "onnx-community/whisper-large-v3-turbo_timestamped/preprocessor_config.json",
+      "sha256": "7ccc62c6f2765af1f3b46c00c9b5894426835a05021c8b9c01eecb6dfb542711"
+    },
+    {
+      "path": "onnx-community/whisper-large-v3-turbo_timestamped/tokenizer.json",
+      "sha256": "b3c8202bbf06d8ee4232c5984baa563784ac4737e2e7fdc42fa180200d3cfcdb"
+    },
+    {
+      "path": "onnx-community/whisper-large-v3-turbo_timestamped/tokenizer_config.json",
+      "sha256": "844b642c73a91359722f47b35705f7174686df33d252695d8572cf9ac03a6389"
+    },
+    {
+      "path": "onnx-community/whisper-large-v3-turbo_timestamped/special_tokens_map.json",
+      "sha256": "baea4ea09372eb4fca86b4e4346139fd73cb807d5087e9de0948e971739c3e74"
+    },
+    {
+      "path": "onnx-community/whisper-large-v3-turbo_timestamped/added_tokens.json",
+      "sha256": "3c51f66c4c21f9e126970078f11ae77a78c74aee8df606ee9daba86e467108e0"
+    },
+    {
+      "path": "onnx-community/whisper-large-v3-turbo_timestamped/vocab.json",
+      "sha256": "e2aa043ef015641d363d8288e7c241c85e36a5c761fb303598e0710233344387"
+    },
+    {
+      "path": "onnx-community/whisper-large-v3-turbo_timestamped/merges.txt",
+      "sha256": "2df2990a395e35e8dfbc7511e08c12d56018d8d04691e0133e5d63b21e154dc6"
+    },
+    {
+      "path": "onnx-community/whisper-large-v3-turbo_timestamped/normalizer.json",
+      "sha256": "bf1c507dc8724ca9cf9903640dacfb69dae2f00edee4f21ceba106a7392f26dd"
+    },
+    {
+      "path": "onnx-community/whisper-large-v3-turbo_timestamped/onnx/encoder_model_quantized.onnx",
+      "sha256": "a5bece0f99f86b5fed85e59b6b23299500639b283a0a6e00098e6583ed1baeb8"
+    },
+    {
+      "path": "onnx-community/whisper-large-v3-turbo_timestamped/onnx/decoder_model_merged_quantized.onnx",
+      "sha256": "b4ab1c92a9bcf8c8fdc49deacb57ac51b707d5248bc7868af42371b896c3ae52"
+    }
+  ]
+}

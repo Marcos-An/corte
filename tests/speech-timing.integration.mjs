@@ -10,6 +10,8 @@ const norm=s=>s.toLowerCase().normalize('NFD').replace(/[^a-z]/g,''),[,second,th
 assert.ok(t.words.some(w=>w.start>=28&&w.start<second.end),'speech crossing the 30s window edge keeps word times');
 assert.ok(gapSeconds<5,`uncertain speech stays local, not a window blackout (${gapSeconds.toFixed(1)}s)`);
 for(let i=0;i<truth.segments.length-1;i++){const from=truth.segments[i].end+.3,to=truth.segments[i+1].start-.3;assert.ok(!t.words.some(w=>w.start>from&&w.start<to),`no word inside the planted pause ${from.toFixed(1)}-${to.toFixed(1)}s`);}
+// With the accurate model installed, the words the Kokoro prompt depends on must come out right.
+if(t.recognizer?.includes('large-v3-turbo'))for(const word of ['radioativo','takoyaki','picole','crianca','cardapio'])assert.ok(t.words.some(w=>norm(w.text)===word),`accurate model recognizes "${word}" (${t.words.map(w=>w.text).join(' ')})`);
 // Anchors are timing, not spelling: whisper-small mangles Portuguese food words ("Kojaki"), which is a recognition limit, not a timing one.
 for(const segment of [second,third]){const w=t.words.find(w=>w.start>=segment.start-1);assert.ok(w&&Math.abs(w.start-segment.start)<.4,`first word after the pause starts within 0.4s of ${segment.start}s (got ${w?.start})`);}
 for(let i=0;i<truth.segments.length-1;i++){const from=truth.segments[i].end,to=truth.segments[i+1].start;assert.ok(t.pauses?.some(p=>Math.abs(p.start-from)<.35&&Math.abs(p.end-to)<.35),`planted pause ${from.toFixed(2)}-${to.toFixed(2)}s is measured (${JSON.stringify(t.pauses)})`);}
@@ -18,5 +20,5 @@ for(let i=1;i<t.words.length;i++){assert.ok(t.words[i].start>=t.words[i-1].start
 // Cutting the first word after a pause must start just after the previous speech really ends, even when Whisper stretched that word's end into the silence.
 const k=t.words.findIndex(w=>w.start>=third.start-1),[[cut]]=resolveSpeechOperations(project,{plan:{operations:[{type:'remove_words',clipId:'c',ranges:[[k,k]]}]},coverage:[]},[{assetId:'speech',words:t.words,pauses:t.pauses}]).plan.operations.map(o=>o.ranges);
 assert.ok(cut[0]>=second.end-.1&&cut[0]<=second.end+.35,`cut starts at the real end of speech ${second.end}s, not the stretched word end ${t.words[k-1].end}s (got ${cut[0]})`);
-console.log(JSON.stringify({passed:true,words:t.words.length,gaps:t.gaps.length,gapSeconds:Number(gapSeconds.toFixed(2)),pauses:t.pauses.length,cutAfterPause:Number(cut[0].toFixed(2)),stretchedWordEnd:t.words[k-1].end,elapsedMs:Math.round(performance.now()-started)}));
+console.log(JSON.stringify({passed:true,recognizer:t.recognizer,words:t.words.length,gaps:t.gaps.length,gapSeconds:Number(gapSeconds.toFixed(2)),pauses:t.pauses.length,cutAfterPause:Number(cut[0].toFixed(2)),stretchedWordEnd:t.words[k-1].end,elapsedMs:Math.round(performance.now()-started)}));
 }finally{await rm(dir,{recursive:true,force:true});}
