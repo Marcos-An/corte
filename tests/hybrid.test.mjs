@@ -1,5 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {refineVisualPlan} from '../desktop/hybrid.mjs';
+import {refineVisualPlan,requestHybridEdit} from '../desktop/hybrid.mjs';
+const registry=new Map([['a',{path:'/private/source.mp4'}]]);
 import {createProject,addAsset,addClip} from '../src/project.mjs';
 const p=addClip(addAsset(createProject(),{id:'a',name:'a.mp4',duration:100,width:640,height:360,hasAudio:true}),'a','c');
 const base={summary:'Ajuste',questions:[],unsupported:[],operations:[{type:'remove_ranges',clipId:'c',ranges:[[35,37]]}]};
@@ -37,4 +38,20 @@ test('overview has a global image budget and never silently drops independent so
  const {selectOverview}=await import('../desktop/hybrid.mjs');const candidates=Array.from({length:100},(_,i)=>({assetId:'a',time:i}));const result=selectOverview(p,candidates,60);assert.ok(result.length<=60);
  const fragmented=structuredClone(p);fragmented.clips=Array.from({length:100},(_,i)=>({...p.clips[0],id:'c'+i,in:i*.9,out:i*.9+.4}));
  assert.throws(()=>selectOverview(fragmented,[],60),/regiões|cobertura|trecho menor/i);
+});
+test('internal ASR uncertainty becomes review warnings, does not generate captions or block independent visual changes',async()=>{
+ const before=structuredClone(p);let evidence;
+ const out=await requestHybridEdit({project:p,prompt:'Vertical e corte uma fala',shareEvidence:true,registry,connected:async()=>true,transcribe:async options=>{assert.equal(options.purpose,'edit');return [{assetId:'a',words:[],gaps:[{start:0,end:30,reason:'unreliable-word-times'}]}];},planRequest:async options=>{evidence=options;return {frames:1,plan:{summary:'Vertical; fala pendente',operations:[{type:'set_aspect',aspect:'9:16'}],questions:[],unsupported:[]},pendingRequests:['Corte de fala precisa de revisão.']};}});
+ assert.equal(evidence.speechGaps.length,1);assert.ok(out.analysisWarnings.length);assert.equal(out.plan.operations[0].type,'set_aspect');assert.deepEqual(p,before);assert.equal(p.transcripts,undefined);
+});
+test('gaps outside the included source range are not shared; uncertain deletions never leave a partially dependent plan',async()=>{
+ const scoped=structuredClone(p);scoped.clips[0].in=40;scoped.clips[0].out=80;let gaps;
+ await requestHybridEdit({project:scoped,prompt:'Vertical',shareEvidence:true,registry,connected:async()=>true,transcribe:async()=>[{assetId:'a',words:[],gaps:[{start:0,end:30,reason:'unreliable-word-times'}]}],planRequest:async options=>{gaps=options.speechGaps;return {frames:1,plan:{summary:'Vertical',operations:[{type:'set_aspect',aspect:'9:16'}],questions:[],unsupported:[]},pendingRequests:[]};}});assert.deepEqual(gaps,[]);
+ const out=await requestHybridEdit({project:p,prompt:'Corte a fala',shareEvidence:true,registry,connected:async()=>true,transcribe:async()=>[{assetId:'a',words:[],gaps:[{start:0,end:30,reason:'unreliable-word-times'}]}],planRequest:async()=>({frames:1,plan:{summary:'Cortar e legendar',operations:[{type:'remove_ranges',clipId:'c',ranges:[[1,2]]},{type:'add_text',layer:{id:'dependent',text:'Depois do corte',start:2,end:3,style:{font:'Arial',size:5,color:'#ffffff',position:'top',preset:'clean'}}}],questions:[],unsupported:[]},pendingRequests:[]})});assert.deepEqual(out.plan.operations,[]);assert.match(out.analysisWarnings.join(' '),/revisão|confiáveis/i);
+});
+test('uncertain source coverage survives trim/keep/delete, repeated sources and sequential split operations',async()=>{
+ const run=async(project,operations)=>requestHybridEdit({project,prompt:'Editar',shareEvidence:true,registry,connected:async()=>true,transcribe:async()=>[{assetId:'a',words:[],gaps:[{start:0,end:30,reason:'unreliable-word-times'}]}],planRequest:async()=>({frames:1,plan:{summary:'Plano',operations,questions:[],unsupported:[]},pendingRequests:[]})});
+ for(const ops of [[{type:'delete',clipId:'c'}],[{type:'trim',clipId:'c',in:1,out:100}],[{type:'keep_ranges',clipId:'c',ranges:[[35,100]]}],[{type:'split',clipId:'c',time:30},{type:'trim',clipId:'c',in:1,out:30}]])assert.deepEqual((await run(p,ops)).plan.operations,[]);
+ const repeated=addClip(p,'a','repeat');assert.deepEqual((await run(repeated,[{type:'delete',clipId:'c'}])).plan.operations,[],'another instance of the same source does not hide an unsafe deletion');
+ for(const op of [{type:'remove_ranges',clipId:'c',ranges:[[35,37]]},{type:'keep_ranges',clipId:'c',ranges:[[0,30],[35,100]]}])assert.equal((await run(p,[op])).plan.operations.length,1,'reliable source regions may still be edited');
 });

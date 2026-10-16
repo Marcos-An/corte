@@ -15,10 +15,10 @@ import {captionEntries,captionStyle} from './captions.mjs';
 import {transitionRoom,setMotion,createProject,addAsset,addClip,addMusic,editMusic,addTextLayer,editTextLayer,remapWordStyles,addImageLayer,editImageLayer,addVideoLayer,editVideoLayer,addShapeLayer,editShapeLayer,editProject,History,layerOrder,moveLayer,setKeyframe,transitionLimit,setTransition,transitionAt,duration,clipAt,applyPlan} from './project.mjs';
 const $=id=>document.getElementById(id),bridge=window.editor;
 let captionPreviewStyle=null,previewCrop=null,adjustmentPreview=null;
-let updateState={phase:'idle'};
+let updateState={phase:'idle'},mediaHydrationState=null,lastHydrationErrors=0;
 let activePanel=null,recorder=null,recordStream=null,recordDiscard=false,recordAt=0,recordTimer=null;
 let cutMode=false,rangeMode=false,rangeSelection=null,rangePlaybackEnd=null,removalPreview=null;
-let history=new History(createProject()),selected=null,position=0,zoom=4,playing=false,busy=false,connected=false,dirty=false,pending=null,dragId=null;
+let history=new History(createProject()),selected=null,position=0,zoom=4,playing=false,busy=false,openingProject=false,connected=false,dirty=false,pending=null,dragId=null;
 const media=new Map(),video=$('source-video'),canvas=$('preview-canvas'),ctx=canvas.getContext('2d');
 let activeSource=null,activeClip=null,audioContext=null,gain=null,toastTimer;
 const project=()=>history.current;const musicPlayers=new Map();let selectedMusic=null;
@@ -79,7 +79,7 @@ function updateButtons(){
  $('export').disabled=busy||!project().clips.length;
  $('analyze').disabled=busy||!project().clips.length||!$('prompt').value.trim();
  $('range-delete').disabled=busy||rangeMode!=='remove'||!rangeSelection;
- $('play').disabled=timelineDuration()<=0;$('connect').disabled=busy||connected;
+ $('play').disabled=openingProject||timelineDuration()<=0||!!media.get(clipAt(project(),Math.min(position,Math.max(0,duration(project())-.001)))?.clip.assetId)?.pending;$('connect').disabled=busy||connected;
  for(const type of Object.keys(SHAPES))$('add-shape-'+type).disabled=busy||!project().clips.length;renderComponents();
 }
 function assetData(a){return {id:a.id,name:a.name,duration:a.duration,width:a.width,height:a.height,hasAudio:a.hasAudio,...(a.kind?{kind:a.kind}:{})};}
@@ -666,7 +666,7 @@ function seek(time){
  const p=project(),found=p.clips.length&&(position<duration(p)||timelineDuration()<=duration(p))?clipAt(p,Math.min(position,Math.max(0,duration(p)-.001))):null;
  $('preview-empty').hidden=!!found;
  if(!found){activeSource=null;activeClip=null;video.pause();video.removeAttribute('src');video.load();draw();return;}
- const m=media.get(found.clip.assetId);if(!m?.url){stop();activeSource=null;activeClip=null;video.removeAttribute('src');video.load();ctx.fillStyle='#000';ctx.fillRect(0,0,canvas.width,canvas.height);$('preview-empty').hidden=false;toast('Mídia ausente. Clique com o botão direito no trecho para localizar a mídia.',true);return;}
+ const m=media.get(found.clip.assetId);if(m?.pending){activeSource=null;activeClip=null;video.pause();video.removeAttribute('src');video.load();ctx.fillStyle='#000';ctx.fillRect(0,0,canvas.width,canvas.height);return;}if(!m?.url){stop();activeSource=null;activeClip=null;video.removeAttribute('src');video.load();ctx.fillStyle='#000';ctx.fillRect(0,0,canvas.width,canvas.height);$('preview-empty').hidden=false;toast('Mídia ausente. Clique com o botão direito no trecho para localizar a mídia.',true);return;}
  if(p.assets.find(a=>a.id===found.clip.assetId)?.kind==='image'){
   video.pause();if(activeSource!==m.url){video.removeAttribute('src');video.load();}activeSource=m.url;activeClip=found.clip.id;draw();return;
  }
@@ -699,10 +699,15 @@ function animate(now=performance.now()){
  }
  syncOriginalAudio();requestAnimationFrame(animate);
 }
-video.addEventListener('seeked',draw);video.addEventListener('loadeddata',draw);
+let previewLoadStarted=0;video.addEventListener('loadstart',()=>previewLoadStarted=performance.now());
+video.addEventListener('seeked',draw);video.addEventListener('loadeddata',()=>{draw();if(previewLoadStarted)bridge?.previewTiming?.(performance.now()-previewLoadStarted).catch(()=>{});previewLoadStarted=0;});
 video.addEventListener('error',()=>{stop();toast('O preview não conseguiu decodificar este vídeo. Tente um MP4 H.264; a mídia original não foi alterada.',true);});
-function render(){
+function renderMediaNotice(){
+ const state=mediaHydrationState;$('media-validation').hidden=!state?.pending;if(state?.pending)$('media-validation-label').textContent=`Validando mídias: ${state.assets.length-state.pending} de ${state.assets.length}. A montagem já está aberta.`;
  const missing=project().assets.filter(a=>media.get(a.id)?.missing);$('missing-media').hidden=!missing.length;$('missing-media-message').textContent=`${missing.length} mídia(s) ausente(s). Seu projeto e as edições continuam aqui.`;$('relink-missing').disabled=busy;
+}
+function render(){
+ renderMediaNotice();
  $('project-name').value=project().name;$('aspect').value=project().aspect;
  const [w,h]=project().aspect.split(':').map(Number);canvas.height=720;canvas.width=Math.round(720*w/h/2)*2;layoutGuides();$('preview-resolution').textContent=`${canvas.width} × ${canvas.height}`;
  renderTimeline();renderInspector();renderHistory();renderCaptions();renderComponents();seek(position);updateButtons();
@@ -865,7 +870,7 @@ $('menu-position').addEventListener('change',()=>{
 function renderUpdate(){
  const {phase,version,installedVersion,percent=0}=updateState;
  $('installed-version').textContent=installedVersion?`Versão instalada: ${installedVersion}`:'Versão instalada: verificando…';
- const labels={idle:'Atualizações automáticas ativadas.',preparing:'Preparando a IA local para futuras atualizações…',checking:'Verificando atualizações…',current:'Corte atualizado.',downloading:`Baixando atualização ${version||''} · ${percent}%`,ready:`Atualização ${version||''} baixada. Será instalada automaticamente ao fechar o Corte.${dirty?' Salve seu projeto antes de fechar.':''}`,error:'Não foi possível atualizar. Confira sua conexão e o espaço livre e tente novamente.',unavailable:'Atualização automática disponível no aplicativo instalado para Windows. Mac: atualização manual por enquanto.'};
+ const labels={waiting:'Atualização aguardando a operação atual terminar.',idle:'Atualizações automáticas ativadas.',preparing:'Preparando a IA local para futuras atualizações…',checking:'Verificando atualizações…',current:'Corte atualizado.',downloading:`Baixando atualização ${version||''} · ${percent}%`,ready:`Atualização ${version||''} baixada. Será instalada automaticamente ao fechar o Corte.${dirty?' Salve seu projeto antes de fechar.':''}`,error:'Não foi possível atualizar. Confira sua conexão e o espaço livre e tente novamente.',unavailable:'Atualização automática disponível no aplicativo instalado para Windows. Mac: atualização manual por enquanto.'};
  $('update-status').textContent=labels[phase]||labels.idle;
  $('check-update').disabled=['unavailable','preparing','checking','downloading','ready'].includes(phase);
  $('update-notice').hidden=!['preparing','downloading','ready','error'].includes(phase);
@@ -916,10 +921,21 @@ $('save-as-project').addEventListener('click',guard(()=>saveCurrentProject('as')
 $('save-portable-project').addEventListener('click',guard(()=>saveCurrentProject('portable')));
 bridge?.onSaveProject?.(guard(mode=>saveCurrentProject(mode)));
 document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();e.stopPropagation();if(!busy)(e.shiftKey?$('save-as-project'):$('save-project')).click();}},true);
+function applyMediaState(state){
+ if(!state||state.id!==mediaHydrationState?.id)return;
+ const active=clipAt(project(),Math.min(position,Math.max(0,duration(project())-.001)))?.clip.assetId,oldUrl=media.get(active)?.url;
+ for(const asset of state.assets)if(media.get(asset.id)?.pending)media.set(asset.id,asset);
+ mediaHydrationState=state;renderMediaNotice();renderTimeline();renderComponents();updateButtons();if(oldUrl!==media.get(active)?.url)seek(position);
+ if(state.errors.length>lastHydrationErrors){lastHydrationErrors=state.errors.length;toast(state.errors.at(-1),true);}
+}
+bridge?.onMediaState?.(applyMediaState);
+$('cancel-media-validation').onclick=guard(async()=>{if(mediaHydrationState)await bridge.cancelMediaValidation(mediaHydrationState.id);});
+$('copy-performance-diagnostics').onclick=guard(async()=>{await bridge.copyPerformanceDiagnostics();toast('Diagnóstico local copiado. Sem nomes ou caminhos das mídias.');});
 async function openSavedProject(token){
- if(busy){if(token)toast('Conclua a operação atual e abra o projeto pelo menu Arquivo.',true);return;}document.activeElement?.blur?.();if(dirty && !confirm('Abrir outro projeto e descartar alterações não salvas?'))return;stop();setBusy(true,'Abrindo projeto…',false);let r;
- try{r=await bridge.openProject(token);}finally{setBusy(false);}
- if(r){$('share-evidence').checked=false;projectFileLabel(r.file);selectedCaptionKey=null;history=r.history?History.from(r.history):new History(r.project);media.clear();for(const a of r.assets)media.set(a.id,a);selected=r.project.clips[0]?.id||null;position=0;pending=null;$('proposal').hidden=true;markDirty(false);render();if(r.assets.some(a=>a.missing))toast('Algumas mídias estão ausentes. Clique com o botão direito no trecho para localizar a mídia.',true);}
+ if(busy){if(token)toast('Conclua a operação atual e abra o projeto pelo menu Arquivo.',true);return;}document.activeElement?.blur?.();if(dirty && !confirm('Abrir outro projeto e descartar alterações não salvas?'))return;stop();openingProject=true;setBusy(true,'Abrindo projeto…');
+ try{const r=await bridge.openProject(token);
+ if(r){mediaHydrationState=r.hydrationId?{id:r.hydrationId,assets:r.assets,pending:r.assets.filter(a=>a.pending).length,errors:[]}:null;lastHydrationErrors=0;$('share-evidence').checked=false;projectFileLabel(r.file);selectedCaptionKey=null;history=r.history?History.from(r.history):new History(r.project);media.clear();for(const a of r.assets)media.set(a.id,a);selected=r.project.clips[0]?.id||null;position=0;pending=null;$('proposal').hidden=true;markDirty(false);render();if(r.errors?.length)toast(r.errors.join('\n'),true);else if(r.assets.some(a=>a.missing))toast('Algumas mídias estão ausentes. Clique com o botão direito no trecho para localizar a mídia.',true);if(r.hydrationId)applyMediaState(await bridge.mediaState(r.hydrationId));}
+ }finally{openingProject=false;setBusy(false);}
 }
 async function relinkAssets(assets){if(busy)return;stop();setBusy(true,'Localizando mídias…',false);try{for(const asset of assets){const result=await bridge.relink(asset);if(!result)break;media.set(asset.id,result);markDirty();render();}}finally{setBusy(false);}}
 $('relink-missing').onclick=guard(()=>relinkAssets(project().assets.filter(a=>media.get(a.id)?.missing)));
@@ -1008,8 +1024,9 @@ $('analyze').addEventListener('click',guard(async()=>{
    add('Proposta híbrida — revise antes de aplicar.');add(result.plan.summary);
    for(const op of result.plan.operations)add(describeOperation(snapshot,op));
    for(const text of result.pendingRequests||[])add('Pendente — não será executado: '+text);
+   for(const warning of result.analysisWarnings||[])add('Revisão da fala: '+warning);
    add(`Evidências compartilhadas: ${result.shared?.transcriptWords||0} palavras transcritas e ${result.shared?.frames||0} frames, incluindo a revisão de bordas. As imagens são amostras; confira os cortes na timeline.`);
-   pending={snapshot:JSON.stringify(snapshot),plan:result.plan,scope,notes:result.pendingRequests||[]};
+   pending={snapshot:JSON.stringify(snapshot),plan:result.plan,scope,notes:[...(result.pendingRequests||[]),...(result.analysisWarnings||[])]};
    const discard=document.createElement('button');discard.id='discard-hybrid-plan';discard.textContent='Descartar proposta';discard.onclick=()=>{pending=null;box.hidden=true;};box.append(discard);
    if(result.plan.operations.length){const apply=document.createElement('button');apply.id='apply-hybrid-plan';apply.className='primary';apply.textContent='Aplicar somente estas alterações';apply.onclick=guard(()=>{
     if(busy||!pending)return;const draft=pending;if(draft.snapshot!==JSON.stringify(project()))throw Error('O projeto mudou. Prepare uma nova proposta.');validateScopedPlan(project(),draft.plan,draft.scope);const before=project(),next=applyPlan(before,draft.plan);commit(next,{...describeChange(before,next),label:`IA híbrida: ${draft.plan.summary}`.slice(0,4000),details:[...draft.plan.operations.map(op=>describeOperation(before,op)),...draft.notes.map(n=>'Pendente: '+n)]});toast('Alterações revisadas aplicadas. Pendências não foram executadas.');
@@ -1021,7 +1038,7 @@ $('analyze').addEventListener('click',guard(async()=>{
  }finally{setBusy(false);}
 }));
 $('cancel').addEventListener('click',guard(()=>{cancelRequested=true;return bridge.cancel();}));
-bridge?.onProgress(p=>{if(p.stage==='hybrid')$('busy-label').textContent=p.message;else if(p.stage==='captions')$('busy-label').textContent=`Transcrevendo localmente · ${Math.round(p.completed)}/${Math.round(p.total)}…`;else if(p.stage==='transition')$('busy-label').textContent=`Renderizando transição ${p.completed}/${p.total}…`;else if(p.stage==='transcribe'){$('busy-label').textContent=`GPT transcrevendo áudio · ${p.completed+1}/${p.total}…`;if($('captions-panel').getAttribute('aria-busy')==='true')captionFeedback('loading',`Transcrevendo áudio · ${p.completed+1}/${p.total}…`);}else if(p.stage==='intent')$('busy-label').textContent='Interpretando seu pedido (somente texto)…';else if(p.stage==='quality')$('busy-label').textContent=`Detector local · ${p.seconds.toFixed(0)} s analisados…`;else if(p.stage==='local')$('busy-label').textContent=`Análise no PC · ${p.asset} · ${p.completed}/${p.total} imagens…`;else if(p.stage==='frames')$('busy-label').textContent=`Preparando frames ${p.completed}/${p.total}…`;else if(p.stage==='analysis')$('busy-label').textContent='IA analisando as cenas…';else if(p.stage==='render')$('busy-label').textContent=`Renderizando trecho ${p.completed}/${p.total}…`;});
+bridge?.onProgress(p=>{if(p.stage==='media-warning'){toast(p.message,true);}else if(p.stage==='media'){if(busy)$('busy-label').textContent=p.message;}else if(p.stage==='hybrid')$('busy-label').textContent=p.message;else if(p.stage==='captions')$('busy-label').textContent=`Transcrevendo localmente · ${Math.round(p.completed)}/${Math.round(p.total)}…`;else if(p.stage==='transition')$('busy-label').textContent=`Renderizando transição ${p.completed}/${p.total}…`;else if(p.stage==='transcribe'){$('busy-label').textContent=`GPT transcrevendo áudio · ${p.completed+1}/${p.total}…`;if($('captions-panel').getAttribute('aria-busy')==='true')captionFeedback('loading',`Transcrevendo áudio · ${p.completed+1}/${p.total}…`);}else if(p.stage==='intent')$('busy-label').textContent='Interpretando seu pedido (somente texto)…';else if(p.stage==='quality')$('busy-label').textContent=`Detector local · ${p.seconds.toFixed(0)} s analisados…`;else if(p.stage==='local')$('busy-label').textContent=`Análise no PC · ${p.asset} · ${p.completed}/${p.total} imagens…`;else if(p.stage==='frames')$('busy-label').textContent=`Preparando frames ${p.completed}/${p.total}…`;else if(p.stage==='analysis')$('busy-label').textContent='IA analisando as cenas…';else if(p.stage==='render')$('busy-label').textContent=`Renderizando trecho ${p.completed}/${p.total}…`;});
 document.addEventListener('keydown',e=>{
  if(e.target.isContentEditable||e.target.closest('input,textarea,select')||document.querySelector('dialog[open]'))return;
  if(!busy&&e.key==='Enter'&&rangeSelection&&rangeMode==='remove'){e.preventDefault();$('range-delete').click();return;}

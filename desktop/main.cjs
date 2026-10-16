@@ -20,28 +20,33 @@ if(primary)app.whenReady().then(async()=>{
  const cache=path.join(app.getPath('userData'),'cache'),home=path.join(app.getPath('userData'),'chatgpt');await fs.mkdir(cache,{recursive:true});
  const {keyStore}=await import('./credentials.mjs'),{captionEstimate,transcribeCloud}=await import('./cloud-captions.mjs');
  const keys=keyStore(path.join(app.getPath('userData'),'openai-key.enc'),safeStorage);
+ const {createDiagnostics}=await import('./diagnostics.mjs'),{beginMediaHydration}=await import('./open-media.mjs');
+ const diagnostics=createDiagnostics(path.join(app.getPath('userData'),'diagnostics','performance.jsonl'));let hydration=null,ensureModels=async()=>{};
+ async function timed(stage,fn){const started=performance.now();try{const value=await fn();diagnostics.record({stage,elapsedMs:performance.now()-started,outcome:'ok'});return value;}catch(error){diagnostics.record({stage,elapsedMs:performance.now()-started,outcome:'error'});throw error;}}
  function notify(p){if(window && !window.isDestroyed())window.webContents.send('editor:progress',p);}
- function expose(a){const entry=registry.get(a.id);return {...a,url:entry?`corte-media://local/${entry.token}/video`:null,thumbnail:entry?.thumbnail?`corte-media://local/${entry.token}/thumb`:null,missing:!entry};}
- function authorized(p){core.validateProject(p);for(const a of p.assets){const r=registry.get(a.id);if(!r)throw new Error(`Mídia ausente: ${a.name}. Relocalize o arquivo.`);for(const key of ['duration','width','height','hasAudio','kind'])if((key==='kind'?(a[key]||'video'):a[key])!==(key==='kind'?(r.asset[key]||'video'):r.asset[key]))throw new Error('Os dados da mídia não correspondem ao arquivo importado.');}return p;}
+ function expose(a,entry=registry.get(a.id)){return {...a,url:entry?`corte-media://local/${entry.token}/video`:null,thumbnail:entry?.thumbnail?`corte-media://local/${entry.token}/thumb`:null,missing:!entry};}
+ function authorized(p){core.validateProject(p);for(const a of p.assets){const r=registry.get(a.id);if(!r){if(hydration?.state.assets.some(s=>s.id===a.id&&s.pending))throw Error(`Ainda validando ${a.name}. Aguarde a validação da mídia.`);throw new Error(`Mídia ausente: ${a.name}. Relocalize o arquivo.`);}for(const key of ['duration','width','height','hasAudio','kind'])if((key==='kind'?(a[key]||'video'):a[key])!==(key==='kind'?(r.asset[key]||'video'):r.asset[key]))throw new Error('Os dados da mídia não correspondem ao arquivo importado.');}return p;}
  function handler(name,fn){ipcMain.handle(`editor:${name}`,async(event,...args)=>{
    if(event.sender!==window?.webContents || event.senderFrame!==window.webContents.mainFrame)return {ok:false,error:'Origem não autorizada.'};
    const blocking=!['dirty','busy','ready','update-status','update-check','update-install','status','api-status','cancel'].includes(name);
    if(blocking)activeOperations++;
    try{return {ok:true,value:await fn(...args)};}catch(error){return {ok:false,error:error.message || 'Não foi possível concluir.'};}finally{if(blocking)activeOperations--;}
  });}
- async function register(file,assetId,expected){
-   if(!storage.allowedMedia(file))throw new Error('Formato não suportado. Use vídeo, áudio ou imagem PNG, JPEG ou WebP.');
-   const real=await fs.realpath(file),stat=await fs.stat(real);if(!stat.isFile())throw new Error('Selecione um arquivo de mídia.');
-   const info=await media.probe(real);const asset={id:assetId||crypto.randomUUID(),name:path.basename(file),...info};
-   if(expected && ['duration','width','height','hasAudio','kind'].some(k=>(k==='kind'?(expected[k]||'video'):expected[k])!==(k==='kind'?(info[k]||'video'):info[k])))throw new Error('Arquivo diferente do original. Importe-o como nova mídia.');
-   const token=crypto.randomUUID(),thumbnail=info.kind==='audio'?null:path.join(cache,`${token}.jpg`);if(thumbnail)await media.frame(real,info.kind==='image'?0:Math.min(info.duration/2,2),thumbnail);
-   registry.set(asset.id,{path:real,asset:expected||asset,thumbnail,token});return expose(expected||asset);
+ const {createMediaRegistration}=await import('./import-media.mjs');
+ const registration=createMediaRegistration({cache,probe:media.probe,frame:media.frame,onProgress:notify,onTiming:event=>diagnostics.record(event),onWarning:message=>notify({stage:'media-warning',message})});
+ app.on('before-quit',()=>{hydration?.cancel();registration.cancelThumbnails();});
+ async function mediaOperation(fn){
+  if(abort||savingProject)throw Error('Aguarde a operação atual.');const controller=new AbortController();abort=controller;
+  try{return await fn(controller.signal);}finally{if(abort===controller)abort=null;}
+ }
+ async function register(file,assetId,expected,{signal,target=registry}={}){
+  const entry=await registration.register(file,{assetId,expected,signal});signal?.throwIfAborted();target.set(entry.asset.id,entry);return expose(entry.asset,entry);
  }
  protocol.handle('corte-media',async request=>{
    const url=new URL(request.url),parts=url.pathname.split('/').filter(Boolean);
    if(url.hostname==='fonts'){const name=url.pathname.slice(1);if(!/^[A-Za-z0-9]+-Regular\.ttf$/.test(name))return new Response('Not found',{status:404});const font=app.isPackaged?path.join(process.resourcesPath,'fonts',name):path.join(__dirname,'../vendor/fonts',name);try{return await stream.fileResponse(font,request);}catch{return new Response('Not found',{status:404});}}
    const entry=[...registry.values()].find(r=>r.token===parts[0]);if(url.hostname!=='local' || !entry || !['video','thumb'].includes(parts[1]) || parts.length!==2)return new Response('Not found',{status:404});
-   try{return await stream.fileResponse(parts[1]==='video'?entry.path:entry.thumbnail,request);}catch{return new Response('Media unavailable',{status:404});}
+   try{if(parts[1]==='thumb'&&entry.thumbnailReady&&!await entry.thumbnailReady)return new Response('Thumbnail unavailable',{status:404});return await stream.fileResponse(parts[1]==='video'?entry.path:entry.thumbnail,request);}catch{return new Response('Media unavailable',{status:404});}
  });
  const musicProvider=await import('./music.mjs');let musicAbort=null;
  handler('music-search',(query,kind)=>musicProvider.searchMusic(query,kind));
@@ -49,17 +54,16 @@ if(primary)app.whenReady().then(async()=>{
  handler('music-cancel',()=>{musicAbort?.abort();return null;});
  handler('music-prepare',async(id)=>{musicAbort?.abort();const job=new AbortController();musicAbort=job;try{const file=await musicProvider.prepareMusic(id,path.join(cache,'music-preview'),job.signal);job.signal.throwIfAborted();return await register(file);}finally{if(musicAbort===job)musicAbort=null;}});
  handler('music-adopt',async(id)=>{const r=registry.get(id);if(!r||r.asset.kind!=='audio')throw Error('Música não preparada.');const dir=path.join(app.getPath('userData'),'music');await fs.mkdir(dir,{recursive:true});const out=path.join(dir,`${id}.m4a`);if(path.resolve(r.path)!==path.resolve(out))await fs.copyFile(r.path,out);r.path=out;return expose(r.asset);});
- handler('import',async(kind)=>{
-   if(abort)throw new Error('Aguarde a operação atual.');
+ handler('import',async(kind)=>mediaOperation(async signal=>{
    const picked=await dialog.showOpenDialog(window,{title:kind==='video-layer'?'Adicionar vídeo sobreposto':kind==='image'?'Adicionar imagem':'Adicionar mídias à timeline',properties:['openFile','multiSelections'],filters:[{name:kind==='image'?'Imagem':'Mídia',extensions:kind==='video-layer'?['mp4','mov','mkv','webm','m4v','avi']:kind==='image'?['png','jpg','jpeg','webp']:['mp4','mov','mkv','webm','m4v','avi','mp3','m4a','wav','ogg','flac','aac','png','jpg','jpeg','webp']}]});
-   if(picked.canceled)return {assets:[],errors:[]};const assets=[],errors=[];
-   for(const file of picked.filePaths.slice(0,100)){try{if(kind==='video-layer'&&!/\.(mp4|mov|mkv|webm|m4v|avi)$/i.test(file))throw Error('Escolha um vídeo.');if(kind==='image'&&!/\.(png|jpe?g|webp)$/i.test(file))throw Error('Escolha uma imagem PNG, JPEG ou WebP.');const a=await register(file);if(kind==='video-layer'&&a.kind!==undefined&&a.kind!=='video')throw Error('Escolha um arquivo com vídeo.');assets.push(a);}catch(e){errors.push(`${path.basename(file)}: ${e.message}`);}}return {assets,errors};
- });
- handler('relink',async asset=>{
-   if(abort)throw new Error('Aguarde a operação atual.');core.validateProject({...core.createProject(),assets:[asset]});
+   if(picked.canceled)return {assets:[],errors:[]};const assets=[],errors=[],staged=new Map();
+   for(const file of picked.filePaths.slice(0,100)){try{if(kind==='video-layer'&&!/\.(mp4|mov|mkv|webm|m4v|avi)$/i.test(file))throw Error('Escolha um vídeo.');if(kind==='image'&&!/\.(png|jpe?g|webp)$/i.test(file))throw Error('Escolha uma imagem PNG, JPEG ou WebP.');const a=await register(file,undefined,undefined,{signal,target:staged});if(kind==='video-layer'&&a.kind!==undefined&&a.kind!=='video')throw Error('Escolha um arquivo com vídeo.');assets.push(a);}catch(e){if(signal.aborted)throw Error('Importação cancelada.');errors.push(`${path.basename(file)}: ${e.message}`);}}signal.throwIfAborted();for(const a of assets)registry.set(a.id,staged.get(a.id));return {assets,errors};
+ }));
+ handler('relink',async asset=>mediaOperation(async signal=>{
+   core.validateProject({...core.createProject(),assets:[asset]});
    const picked=await dialog.showOpenDialog(window,{title:`Localizar ${asset.name}`,properties:['openFile'],filters:[{name:asset.kind==='image'?'Imagem':'Mídia',extensions:asset.kind==='image'?['png','jpg','jpeg','webp']:['mp4','mov','mkv','webm','m4v','avi','mp3','m4a','wav','ogg','flac','aac','png','jpg','jpeg','webp']}]});
-   return picked.canceled?null:register(picked.filePaths[0],asset.id,asset);
- });
+   return picked.canceled?null:register(picked.filePaths[0],asset.id,asset,{signal});
+ }));
  handler('save',async(p,history,mode='save')=>{
    if(!['save','as','portable'].includes(mode))throw Error('Modo de salvamento inválido.');
    if(abort||savingProject)throw Error('Aguarde a operação atual.');
@@ -68,6 +72,7 @@ if(primary)app.whenReady().then(async()=>{
     const sources=new Map([...sourcePaths].map(([id,file])=>[id,{path:file}]));for(const [id,entry] of registry)sources.set(id,entry);
     const name=p.name.replace(/[<>:"/\\|?*]/g,'_').trim()||'Projeto';
     if(mode==='portable'){
+     if(hydration?.state.pending)throw Error('Aguarde a validação das mídias antes de criar uma cópia portátil.');
      const picked=await dialog.showOpenDialog(window,{title:'Escolha onde criar a cópia portátil (inclui as mídias)',properties:['openDirectory','createDirectory']});if(picked.canceled)return null;
      const folder=path.join(picked.filePaths[0],`${name}-portatil-${crypto.randomUUID().slice(0,8)}`);
      const file=await storage.savePortableProject(folder,p,registry,history);return {name:path.basename(folder),file,portable:true};
@@ -85,16 +90,23 @@ if(primary)app.whenReady().then(async()=>{
    }finally{savingProject=false;}
  });
  handler('ready',()=>{projectReady=true;deliverProject();return null;});
- handler('open',async token=>{
-   if(abort||savingProject)throw new Error('Aguarde a operação atual.');
+ handler('open',async token=>mediaOperation(async signal=>{
    let file;
    if(token){if(token!==pendingProject?.token)throw new Error('Solicitação de abertura inválida.');file=pendingProject.file;pendingProject=null;}
    else{const picked=await dialog.showOpenDialog(window,{title:'Abrir projeto',properties:['openFile'],filters:[{name:'Projeto Corte',extensions:['corte']}]});if(picked.canceled)return null;file=picked.filePaths[0];}
-   const data=await storage.readProjectFile(file),assets=[];
+   const data=await timed('project-read',()=>storage.readProjectFile(file));signal.throwIfAborted();
    const savedAssets=[...new Map((data.history?data.history.entries.flatMap(e=>e.state.assets):data.project.assets).map(a=>[a.id,a])).values()];
-   for(const asset of savedAssets){const source=data.sources.find(s=>s.assetId===asset.id);try{if(!source?.path)throw new Error();assets.push(await register(source.path,asset.id,asset));}catch{registry.delete(asset.id);assets.push({...asset,missing:true,url:null,thumbnail:null});}}
-   activeProjectFile=file;sourcePaths=new Map(data.sources.map(s=>[s.assetId,s.path]));dirty=false;return {project:data.project,history:data.history,assets,file};
- });
+   hydration?.cancel();registration.cancelThumbnails();registry=new Map();const staged=registry;let session;
+   session=beginMediaHydration({assets:savedAssets,sources:data.sources,register:(file,id,expected,options)=>register(file,id,expected,{...options,target:staged}),onChange:state=>{
+    if(hydration!==session||window.isDestroyed())return;window.webContents.send('editor:media-state',state);
+    if(!state.pending&&updates?.status().phase==='waiting')void updates.check();
+   }});hydration=session;
+   activeProjectFile=file;sourcePaths=new Map(data.sources.map(s=>[s.assetId,s.path]));dirty=false;return {project:data.project,history:data.history,assets:session.state.assets,file,hydrationId:session.state.id};
+ }));
+ handler('media-state',id=>hydration?.state.id===id?hydration.state:null);
+ handler('cancel-media',id=>{if(hydration?.state.id!==id)throw Error('Validação de outro projeto.');hydration.cancel();return true;});
+ handler('preview-timing',elapsedMs=>{if(Number.isFinite(elapsedMs)&&elapsedMs>=0&&elapsedMs<=180000)diagnostics.record({stage:'preview-load',elapsedMs,outcome:'ok'});return true;});
+ handler('performance-diagnostics',async()=>{const text=await diagnostics.read();clipboard.writeText(`Corte ${app.getVersion()} · ${process.platform}\n${text||'Sem medições disponíveis.'}`);return true;});
  handler('export',async(p,height)=>{
    authorized(p);if(abort)throw new Error('Já há uma operação em andamento.');
    const picked=await dialog.showSaveDialog(window,{title:'Exportar vídeo',defaultPath:`${p.name.replace(/[<>:"/\\|?*]/g,'_')}.mp4`,filters:[{name:'Vídeo MP4',extensions:['mp4']}]});if(picked.canceled)return null;
@@ -104,8 +116,8 @@ if(primary)app.whenReady().then(async()=>{
  handler('status',async()=>({...await ai.loginStatus(home),platform:process.platform}));
  handler('login',async()=>{if(loginRunning)throw new Error('O login já está aberto no navegador.');loginRunning=true;try{await ai.startLogin(home);return ai.loginStatus(home);}finally{loginRunning=false;}});
  handler('analyze',async(p,prompt,step,clipId=null,engine='chatgpt',shareEvidence=false)=>{
-  authorized(p);if(!['hybrid','chatgpt'].includes(engine))throw Error('Motor de IA inválido.');if(abort)throw Error('Já há uma operação em andamento.');abort=new AbortController();
-  try{const {scopeProject,validateScopedPlan}=await import('../src/editor-experience.mjs');const options={home,cache,project:scopeProject(p,clipId),scopeClipId:clipId,prompt,registry,signal:abort.signal,onProgress:notify,shareEvidence};
+  authorized(p);if(!['hybrid','chatgpt'].includes(engine))throw Error('Motor de IA inválido.');if(engine==='hybrid'&&shareEvidence!==true)throw Error('Autorize o envio das evidências para esta análise.');if(abort)throw Error('Já há uma operação em andamento.');abort=new AbortController();
+  try{await ensureModels();const {scopeProject,validateScopedPlan}=await import('../src/editor-experience.mjs');const options={home,cache,project:scopeProject(p,clipId),scopeClipId:clipId,prompt,registry,signal:abort.signal,onProgress:notify,shareEvidence};
    const result=engine==='hybrid'?await (await import('./hybrid.mjs')).requestHybridEdit(options):await (await import('./intent.mjs')).requestPromptPlan(options);validateScopedPlan(p,result.plan,clipId);return result;
   }finally{abort=null;}
  });
@@ -119,7 +131,7 @@ if(primary)app.whenReady().then(async()=>{
  handler('recording-arm',()=>{if(abort)throw Error('Aguarde a operação atual.');microphoneArmedUntil=Date.now()+15000;return true;});
  handler('recording-disarm',()=>{microphoneArmedUntil=0;return true;});
  handler('recording-save',async(bytes,mime)=>{if(abort)throw Error('Aguarde a operação atual.');const file=await saveRecording(bytes,mime,path.join(app.getPath('userData'),'narrations'));try{return await register(file);}catch(e){await fs.rm(file,{force:true});throw e;}});
- handler('busy',value=>{rendererBusy=value===true;return true;});
+ handler('busy',value=>{rendererBusy=value===true;if(!rendererBusy&&updates?.status().phase==='waiting')void updates.check();return true;});
  handler('dirty',value=>{dirty=value===true;return true;});
  handler('update-status',()=>updates?.status()||{phase:'unavailable',platform:process.platform,installedVersion:app.getVersion()});
  handler('update-check',()=>{if(!updates)throw Error('Atualizações automáticas estão disponíveis no Corte instalado para Windows.');return updates.check();});
@@ -140,7 +152,8 @@ if(primary)app.whenReady().then(async()=>{
   const manifest=JSON.parse(await fs.readFile(path.join(__dirname,'../vendor/models/manifest.json'),'utf8'));
   process.env.CORTE_MODEL_PATH=modelStorePath(app.getPath('userData'),manifest);
   const {autoUpdater}=require('electron-updater');autoUpdater.logger=null;autoUpdater.disableWebInstaller=true;
-  updates=createUpdates({updater:autoUpdater,installedVersion:app.getVersion(),prepare:async()=>{process.env.CORTE_MODEL_PATH=await preserveModels({bundled:path.join(process.resourcesPath,'models'),userData:app.getPath('userData'),manifest});},blocked:()=>dirty||savingProject||!!abort||rendererBusy||activeOperations>0||microphoneArmedUntil>Date.now(),notify:state=>{if(!window.isDestroyed())window.webContents.send('editor:update',state);}});
+  let modelsReady;ensureModels=()=>{if(!modelsReady)modelsReady=timed('models',async()=>{process.env.CORTE_MODEL_PATH=await preserveModels({bundled:path.join(process.resourcesPath,'models'),userData:app.getPath('userData'),manifest});}).catch(error=>{modelsReady=null;throw error;});return modelsReady;};
+  updates=createUpdates({updater:autoUpdater,installedVersion:app.getVersion(),prepare:ensureModels,busy:()=>savingProject||!!abort||rendererBusy||activeOperations>0||!!hydration?.state.pending,blocked:()=>dirty||savingProject||!!abort||rendererBusy||activeOperations>0||microphoneArmedUntil>Date.now(),notify:state=>{if(!window.isDestroyed())window.webContents.send('editor:update',state);}});
  }
  await window.loadFile(path.join(__dirname,'../src/index.html'));window.show();
  if(updates){void updates.check();updateTimer=setInterval(()=>void updates.check(),6*60*60*1000);updateTimer.unref();}

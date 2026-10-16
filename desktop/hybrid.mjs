@@ -16,6 +16,21 @@ export async function refineVisualPlan({project,prompt,frames,request,signal}){
 export function includedEvidence(project,frames){
  return frames.filter(f=>Number.isFinite(f.time)&&project.clips.some(c=>c.assetId===f.assetId&&f.time>=c.in&&f.time<c.out));
 }
+// Compare source coverage per original clip instance, including split/range-generated pieces.
+function preservesUncertainSpeech(project,plan,gaps){
+ if(!gaps.length)return true;let state=project;
+ for(const op of plan.operations){
+  const clip=state.clips.find(c=>c.id===op.clipId),otherIds=new Set(state.clips.filter(c=>c.id!==clip?.id).map(c=>c.id));
+  const next=applyPlan(state,{...plan,operations:[op]});
+  if(clip){const pieces=next.clips.filter(c=>c.assetId===clip.assetId&&!otherIds.has(c.id)).sort((a,b)=>a.in-b.in);
+   for(const gap of gaps.filter(g=>g.assetId===clip.assetId)){
+    const start=Math.max(clip.in,gap.start),end=Math.min(clip.out,gap.end);if(end<=start)continue;let cursor=start;
+    for(const piece of pieces){if(piece.out<=cursor)continue;if(piece.in>cursor+.000001)break;cursor=Math.max(cursor,piece.out);}
+    if(cursor<end-.000001)return false;
+   }
+  }state=next;
+ }return true;
+}
 export async function requestHybridEdit({project,prompt,shareEvidence,signal,onProgress=()=>{},transcribe=transcribeLocally,connected=async options=>(await import('./ai.mjs')).loginStatus(options.home).then(r=>r.connected),planRequest=async options=>(await import('./ai.mjs')).requestPlan(options),...options}){
  validateProject(project);if(typeof prompt!=='string'||!prompt.trim()||prompt.length>6000)throw Error('Escreva um pedido de até 6.000 caracteres.');
  const check=()=>{if(signal?.aborted)throw Error('Análise cancelada.');};check();
@@ -25,19 +40,26 @@ export async function requestHybridEdit({project,prompt,shareEvidence,signal,onP
  for(const c of project.clips)if(!options.registry?.get(c.assetId)?.path)throw Error('Mídia ausente. Relocalize antes da análise.');
  const withAudio=project.clips.some(c=>project.assets.find(a=>a.id===c.assetId)?.hasAudio);
  onProgress({stage:'hybrid',message:'Transcrevendo falas localmente antes de preparar a proposta…'});
- const raw=withAudio?await transcribe({project,signal,onProgress,...options}):[];check();
+ const raw=withAudio?await transcribe({project,signal,onProgress,...options,purpose:'edit'}):[];check();
  if(!Array.isArray(raw))throw Error('Transcrição local inválida.');
- const transcripts=[];
+ const transcripts=[],speechGaps=[];
  for(const t of raw){
   const asset=project.assets.find(a=>a.id===t.assetId);if(!asset||!project.clips.some(c=>c.assetId===t.assetId))continue;
   if(!Array.isArray(t.words)||t.words.some(w=>typeof w.text!=='string'||w.text.length>500||!Number.isFinite(w.start)||!Number.isFinite(w.end)||w.start<0||w.end<=w.start||w.end>asset.duration+.001))throw Error('Transcrição local com tempos inválidos. Nenhuma evidência enviada.');
+  if(t.gaps!==undefined&&(!Array.isArray(t.gaps)||t.gaps.length>10000))throw Error('Lacunas de reconhecimento inválidas.');
+  for(const gap of t.gaps||[]){
+   if(!Number.isFinite(gap.start)||!Number.isFinite(gap.end)||gap.start<0||gap.end<=gap.start||gap.end>asset.duration+.000001||gap.reason!=='unreliable-word-times')throw Error('Lacuna de reconhecimento com tempo inválido.');
+   for(const clip of project.clips.filter(c=>c.assetId===asset.id)){const start=Math.max(clip.in,gap.start),end=Math.min(clip.out,gap.end);if(end>start)speechGaps.push({assetId:asset.id,start,end,reason:gap.reason});}
+  }
   transcripts.push({assetId:t.assetId,words:t.words.filter(w=>project.clips.some(c=>c.assetId===t.assetId&&w.start>=c.in&&w.end<=c.out)).map(({start,end,text})=>({start,end,text}))});
  }
  onProgress({stage:'hybrid',message:'Selecionando frames localmente e preparando plano com o ChatGPT…'});
- const result=await planRequest({...options,project,prompt,signal,onProgress,transcripts,review:true});check();
+ const result=await planRequest({...options,project,prompt,signal,onProgress,transcripts,speechGaps,review:true});check();
  validatePlan(project,result.plan);applyPlan(project,result.plan);
  if(!Array.isArray(result.pendingRequests)||result.pendingRequests.length>40||result.pendingRequests.some(s=>typeof s!=='string'||s.length>2000))throw Error('Pendências da proposta inválidas.');
- return {...result,reviewRequired:true,mode:'hybrid',shared:{transcriptWords:transcripts.reduce((n,t)=>n+t.words.length,0),frames:result.frames}};
+ const safe=preservesUncertainSpeech(project,result.plan,speechGaps),analysisWarnings=speechGaps.length?[`A transcrição interna encontrou ${speechGaps.length} trecho(s) sem tempos confiáveis. Não foram criadas legendas. Cortes nesses trechos precisam de revisão.${safe?'':' A proposta contém remoções nesses trechos e não será aplicada, inclusive operações dependentes; prepare outra proposta preservando-os.'}`]:[];
+ const plan=safe?result.plan:{...result.plan,operations:[],summary:'Proposta preservada para revisão: não foi possível garantir os cortes nos trechos sem tempos de fala confiáveis.'};
+ return {...result,plan,analysisWarnings,reviewRequired:true,mode:'hybrid',shared:{transcriptWords:transcripts.reduce((n,t)=>n+t.words.length,0),frames:result.frames}};
 }
 export function selectOverview(project,candidates,max=60){
  if(!Number.isInteger(max)||max<1)throw Error('Orçamento de imagens inválido.');

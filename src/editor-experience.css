@@ -539,7 +539,7 @@ dialog>.context-heading strong{font-size:15px}
 .text-trim.start{border-left-color:#fff}.text-trim.end{border-right-color:#fff}
 .image-trim{background:#ffffff33}
 /* Toasts sit above the timeline, never over the clips; errors keep a red edge. */
-.toast{bottom:auto;top:66px;max-width:min(560px,70vw);background:#24252a;border-color:#3d3f46}
+.toast{pointer-events:none;bottom:auto;top:66px;max-width:min(560px,70vw);background:#24252a;border-color:#3d3f46}
 .toast.error{border-color:#8b5353}
 /* One tab language: the segmented control used by Legendas and Componentes. */
 .inspector .tabs{height:auto;margin:0 22px 4px;padding:3px;gap:2px;border:1px solid #2c2e33;border-radius:9px;background:#17181b}

@@ -36,7 +36,7 @@ export function parseProbe(result) {
   const rotation=Number(v.tags?.rotate || v.side_data_list?.find(s=>s.rotation)?.rotation || 0);
   return {duration,width:Math.abs(rotation)%180===90?v.height:v.width,height:Math.abs(rotation)%180===90?v.width:v.height,hasAudio:result.streams.some(s=>s.codec_type==='audio')};
 }
-export async function probe(file) {const {stdout}=await run(binaries().ffprobe,['-v','error','-show_streams','-show_format','-of','json',file]);const result=JSON.parse(stdout);
+export async function probe(file,options={}) {const {stdout}=await run(binaries().ffprobe,['-v','error','-show_streams','-show_format','-of','json',file],options);const result=JSON.parse(stdout);
  if(/\.(png|jpe?g|webp)$/i.test(file)){
   const v=result.streams?.find(s=>s.codec_type==='video');if(!v||!['png','mjpeg','webp'].includes(v.codec_name)||!Number.isInteger(v.width)||!Number.isInteger(v.height)||v.width<2||v.height<2||v.width>16384||v.height>16384)throw Error('Imagem inválida.');
   return {kind:'image',duration:5,width:v.width,height:v.height,hasAudio:false};
@@ -46,9 +46,9 @@ export function sampleTimes(duration,step=2,max=60) {
   if(!Number.isFinite(duration)||duration<=0||!Number.isFinite(step)||step<=0||!Number.isInteger(max)||max<1)throw new Error('Amostragem inválida.');
   const actualStep=Math.max(step,duration/max);const result=[];for(let i=0;i<max && i*actualStep<duration;i++)result.push(Number((i*actualStep).toFixed(3)));return result;
 }
-export async function frame(file,time,out,signal) {
+export async function frame(file,time,out,signal,options={}) {
   await rm(out,{force:true});
-  await run(binaries().ffmpeg,['-hide_banner','-loglevel','error','-y','-ss',String(time),'-i',file,'-frames:v','1','-vf','scale=480:-2',out],{signal});
+  await run(binaries().ffmpeg,['-hide_banner','-loglevel','error','-y','-ss',String(time),'-i',file,'-frames:v','1','-vf','scale=480:-2',out],{...options,signal});
   const image=await stat(out).catch(error=>{if(error.code==='ENOENT')return null;throw error;});
   if(!image?.size)throw new Error('Nenhum frame disponível nesse instante. A análise não pode reutilizar uma imagem anterior.');
 }

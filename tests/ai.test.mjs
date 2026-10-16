@@ -61,3 +61,6 @@ test('remote prompt cannot leak saved transcripts or narration captions outside 
 test('non-fatal experimental-feature startup warning is suppressed without enabling tools',()=>{
  const args=codexArgs('/tmp/schema','/tmp/result');assert.ok(args.includes('suppress_unstable_features_warning=true'));assert.ok(args.includes('features.skip_host_skill_discovery=true'));assert.ok(args.includes('shell_tool=false'));
 });
+test('hybrid prompt distinguishes uncertain internal speech from generated subtitles and forbids deleting those regions',()=>{
+ const prompt=buildPrompt(p,'Vertical',[],{review:true,speechGaps:[{assetId:p.assets[0].id,start:0,end:1}]});assert.match(prompt,/sem tempos confiáveis/i);assert.match(prompt,/não remova|não exclua/i);assert.match(prompt,/speechGaps/);
+});
