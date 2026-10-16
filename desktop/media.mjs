@@ -1,7 +1,7 @@
-import {clipSpeed,clipDuration} from '../src/clip-time.mjs';
+import {clipSpeed,clipDuration,zoomAt} from '../src/clip-time.mjs';
 import {adjustmentFilter} from '../src/color-adjustments.mjs';
-// Smooth zoom: per-frame scale from zoom.from to zoom.to over the clip, then a fixed centred crop back to the framed size.
-function zoomFilter(c){if(!c.zoom)return '';const {from,to}=c.zoom,d=clipDuration(c);return `scale=w='trunc(iw*(${from}+${Number((to-from).toFixed(6))}*t/${Number(d.toFixed(6))})/2)*2':h=-2:eval=frame,crop=w='trunc(iw/${from}/2)*2':h='trunc(ih/${from}/2)*2':x='(iw-ow)/2':y='(ih-oh)/2',`;}
+// Smooth zoom: zoompan keeps the framed size and recentres every frame (a per-frame scale + crop drifted to a corner).
+function zoomFilter(c,a){if(!c.zoom)return '';const {from,to}=c.zoom,d=clipDuration(c),r=c.crop,even=v=>Math.max(2,Math.round(v/2)*2);return `zoompan=z='${from}+${Number((to-from).toFixed(6))}*min(1,it/${Number(d.toFixed(6))})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${even(a.width*r.w)}x${even(a.height*r.h)}:fps=30,`;}
 import {audioFadeFilter} from '../src/audio-envelope.mjs';
 import {shapeAss} from '../src/shapes.mjs';
 import {keyframeExpression,pointsOf,animated} from '../src/keyframes.mjs';
@@ -62,18 +62,22 @@ export function dimensions(aspect,height=720) {
   const [w,h]=aspect.split(':').map(Number);return w>=h?{width:Math.round(height*w/h/2)*2,height}:{width:height,height:Math.round(height*h/w/2)*2};
 }
 function tempoFilter(speed){const filters=[];while(speed<.5){filters.push('atempo=0.5');speed/=.5;}while(speed>2){filters.push('atempo=2');speed/=2;}if(speed!==1)filters.push('atempo='+speed);return filters.length?filters.join(',')+',':'';}
+// A transition re-renders a window of the clip: its smooth zoom continues from where the clip is, not from the start.
+export function transitionSegment(c,start,end){
+ const piece={...c,in:start,out:end};if(c.zoom)piece.zoom={from:zoomAt(c,(start-c.in)/clipSpeed(c)),to:zoomAt(c,(end-c.in)/clipSpeed(c))};return piece;
+}
 export function buildSegmentArgs(c,a,input,out,aspect,height=720) {
   validateProject({version:1,name:'Render',aspect,assets:[a],clips:[c]});
   // A frozen frame loops its first decoded frame for the hold; its sound is silence.
   const speed=clipSpeed(c),timing=c.freeze?'trim=end_frame=1,loop=loop=-1:size=1:start=0,setpts=N/30/TB,':speed===1?'':`trim=duration=${c.out-c.in},setpts=(PTS-STARTPTS)/${speed},`,audioTiming=speed===1?'':`atrim=duration=${c.out-c.in},asetpts=PTS-STARTPTS,${tempoFilter(speed)}`;
   const size=dimensions(aspect,height),r=c.crop,bg=c.background==='color'?c.backgroundColor.replace('#','0x'):'black';
-  const filter=`${timing}${adjustmentFilter(c.adjustments)}crop=iw*${r.w}:ih*${r.h}:iw*${r.x}:ih*${r.y},${zoomFilter(c)}scale=${size.width}:${size.height}:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=${size.width}:${size.height}:(ow-iw)/2:(oh-ih)/2:${bg},setsar=1,fps=30,format=yuv420p`;
+  const filter=`${timing}${adjustmentFilter(c.adjustments)}crop=iw*${r.w}:ih*${r.h}:iw*${r.x}:ih*${r.y},${zoomFilter(c,a)}scale=${size.width}:${size.height}:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=${size.width}:${size.height}:(ow-iw)/2:(oh-ih)/2:${bg},setsar=1,fps=30,format=yuv420p`;
   const args=['-hide_banner','-loglevel','error','-y',...(a.kind==='image'?['-loop','1']:['-ss',String(c.in)]),'-i',input];
   const silent=!a.hasAudio||!!c.freeze;
   if(silent)args.push('-f','lavfi','-i','anullsrc=channel_layout=stereo:sample_rate=48000');
-  let vf=c.background==='blur'?['-filter_complex',`[0:v]${timing}${adjustmentFilter(c.adjustments)}crop=iw*${r.w}:ih*${r.h}:iw*${r.x}:ih*${r.y},${zoomFilter(c)}split=2[bg][fg];[bg]scale=${size.width}:${size.height}:force_original_aspect_ratio=increase,crop=${size.width}:${size.height},gblur=sigma=${size.width*.015}[blur];[fg]scale=${size.width}:${size.height}:force_original_aspect_ratio=decrease:force_divisible_by=2[front];[blur][front]overlay=(W-w)/2:(H-h)/2,setsar=1,fps=30,format=yuv420p[v]`]:['-vf',filter];
+  let vf=c.background==='blur'?['-filter_complex',`[0:v]${timing}${adjustmentFilter(c.adjustments)}crop=iw*${r.w}:ih*${r.h}:iw*${r.x}:ih*${r.y},${zoomFilter(c,a)}split=2[bg][fg];[bg]scale=${size.width}:${size.height}:force_original_aspect_ratio=increase,crop=${size.width}:${size.height},gblur=sigma=${size.width*.015}[blur];[fg]scale=${size.width}:${size.height}:force_original_aspect_ratio=decrease:force_divisible_by=2[front];[blur][front]overlay=(W-w)/2:(H-h)/2,setsar=1,fps=30,format=yuv420p[v]`]:['-vf',filter];
   if(a.kind==='image'){
-    const source=`[0:v]${timing}format=rgba,${adjustmentFilter(c.adjustments,true)}crop=iw*${r.w}:ih*${r.h}:iw*${r.x}:ih*${r.y}${c.zoom?','+zoomFilter(c).slice(0,-1):''}`,front=`scale=${size.width}:${size.height}:force_original_aspect_ratio=decrease:force_divisible_by=2[front]`,canvas=`color=c=${bg}:s=${size.width}x${size.height}:r=30,format=rgba[base]`;
+    const source=`[0:v]${timing}format=rgba,${adjustmentFilter(c.adjustments,true)}crop=iw*${r.w}:ih*${r.h}:iw*${r.x}:ih*${r.y}${c.zoom?','+zoomFilter(c,a).slice(0,-1):''}`,front=`scale=${size.width}:${size.height}:force_original_aspect_ratio=decrease:force_divisible_by=2[front]`,canvas=`color=c=${bg}:s=${size.width}x${size.height}:r=30,format=rgba[base]`;
     const layers=c.background==='blur'?`${source},split=2[bg][fg];[bg]scale=${size.width}:${size.height}:force_original_aspect_ratio=increase,crop=${size.width}:${size.height},gblur=sigma=${size.width*.015}[blur];${canvas};[base][blur]overlay=format=auto[canvas];[fg]${front}`:`${source},${front};${canvas};[base]null[canvas]`;
     vf=['-filter_complex',`${layers};[canvas][front]overlay=(W-w)/2:(H-h)/2:format=auto,setsar=1,fps=30,format=yuv420p[v]`];
   }
@@ -101,7 +105,7 @@ export async function renderProject(project,registry,destination,{height=720,sig
         const at=transitionAt(project,cut),files=[];
         for(const [side,c,time] of [['left',left,at.leftTime],['right',right,at.rightTime]]){
           const a=project.assets.find(a=>a.id===c.assetId),out=path.join(temp,`transition-${i}-${side}.mp4`),start=time-t.duration/2*clipSpeed(c);
-          await run(binaries().ffmpeg,buildSegmentArgs({...c,in:a.kind==='image'?0:start,out:a.kind==='image'?t.duration*clipSpeed(c):start+t.duration*clipSpeed(c)},a,registry.get(a.id).path,out,project.aspect,height),{signal,timeout:1800000});files.push(out);
+          await run(binaries().ffmpeg,buildSegmentArgs(transitionSegment(c,a.kind==='image'?0:start,a.kind==='image'?t.duration*clipSpeed(c):start+t.duration*clipSpeed(c)),a,registry.get(a.id).path,out,project.aspect,height),{signal,timeout:1800000});files.push(out);
         }
         const merged=path.join(temp,`transition-${i}.mp4`),effect=t.type==='fade'?`[a]fade=t=out:st=0:d=${t.duration/2}[blackA];[b]fade=t=in:st=${t.duration/2}:d=${t.duration/2}[blackB];[blackA][blackB]blend=all_expr='if(lt(T,${t.duration/2}),A,B)'[v]`:`[a][b]xfade=transition=${fx[t.type]}:duration=${t.duration}:offset=0[v]`;
         await run(binaries().ffmpeg,['-hide_banner','-loglevel','error','-y','-i',files[0],'-i',files[1],'-filter_complex',`[0:v]settb=AVTB,setpts=PTS-STARTPTS[a];[1:v]settb=AVTB,setpts=PTS-STARTPTS[b];${effect}`,'-map','[v]','-t',String(t.duration),'-an','-c:v','libx264','-preset','fast','-crf','20','-pix_fmt','yuv420p',merged],{signal,timeout:1800000});

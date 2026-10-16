@@ -7,7 +7,7 @@ function validate(manifest){
  const paths=new Set();for(const f of manifest.files){if(!/^[A-Za-z0-9_-][A-Za-z0-9_.-]*(\/[A-Za-z0-9_-][A-Za-z0-9_.-]*)*$/.test(f.path)||!/^([a-f0-9]{64})$/.test(f.sha256)||paths.has(f.path))throw Error('Manifesto de modelos inválido.');paths.add(f.path);}
 }
 export function modelStorePath(userData,manifest){validate(manifest);return path.join(userData,'models',createHash('sha256').update(JSON.stringify(manifest)).digest('hex'));}
-async function verify(folder,manifest){
+export async function verify(folder,manifest){
  if(!(await lstat(folder)).isDirectory())throw Error('Pasta de modelos inválida.');
  for(const f of manifest.files){const file=path.join(folder,f.path);if(!(await lstat(file)).isFile())throw Error('Modelo inválido.');const h=createHash('sha256');for await(const bytes of createReadStream(file))h.update(bytes);if(h.digest('hex')!==f.sha256)throw Error('Modelo local corrompido.');}
 }

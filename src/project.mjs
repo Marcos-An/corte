@@ -1,5 +1,5 @@
 import {KEYFRAME_FIELDS,keyframeAt,retimeKeyframes,validateKeyframes,validateMotion} from './keyframes.mjs';
-import {clipSpeed,clipDuration,sourceTime} from './clip-time.mjs';
+import {clipSpeed,clipDuration,sourceTime,zoomAt} from './clip-time.mjs';
 import {FONT_FAMILIES} from './fonts.mjs';
 import {validateTranscript,captionStyle} from './captions.mjs';
 const clone = value => structuredClone(value);
@@ -104,6 +104,7 @@ export function editProject(p,op) {
       if(a.kind==='image'||!finite(hold)||hold<.1||hold>10||!finite(op.time)||op.time<c.in-1e-6||op.time>c.out+1e-6)fail('Não foi possível congelar o quadro: escolha um instante do vídeo e de 0,1 a 10 segundos.');
       const at=Math.max(0,Math.min(op.time,a.duration-.04)),still={id:id(),assetId:c.assetId,in:at,out:at+.04,volume:c.volume,crop:clone(c.crop),freeze:hold};
       for(const k of ['adjustments','background','backgroundColor'])if(c[k]!==undefined)still[k]=clone(c[k]);
+      const z=zoomAt(c,(op.time-c.in)/clipSpeed(c));if(z>1)still.zoom={from:z,to:z};
       if(op.time-c.in<.02)q.clips.splice(index,0,still);
       else if(c.out-op.time<.02)q.clips.splice(index+1,0,still);
       else{const right={...clone(c),id:id(),in:op.time};c.out=op.time;if(c.fadeOut!==undefined)c.fadeOut=0;if(right.fadeIn!==undefined)right.fadeIn=0;q.clips.splice(index+1,0,still,right);}
@@ -116,7 +117,7 @@ export function editProject(p,op) {
     case 'trim': c.in=op.in;c.out=op.out;break;
     case 'delete': q.clips.splice(index,1);break;
     case 'move': if(!Number.isInteger(op.index) || op.index<0 || op.index>=q.clips.length) fail('Posição inválida.');q.clips.splice(index,1);q.clips.splice(op.index,0,c);break;
-    case 'update': for(const key of ['volume','crop','background','backgroundColor','fadeIn','fadeOut','adjustments','speed','zoom']) if(key in op){if(key==='zoom'&&(op.zoom===null||op.zoom.from===1&&op.zoom.to===1))delete c.zoom;else c[key]=clone(op[key]);}break;
+    case 'update': for(const key of ['volume','crop','background','backgroundColor','fadeIn','fadeOut','adjustments','speed','zoom','freeze']) if(key in op){if(key==='zoom'&&(op.zoom===null||op.zoom.from===1&&op.zoom.to===1))delete c.zoom;else c[key]=clone(op[key]);}break;
     default: fail('Operação ainda não suportada.');
   }
   return validateProject(reconcileTransitions(q));
@@ -145,7 +146,7 @@ export class History {
     const h=new History(data.entries[0].state);h.entries=clone(data.entries);h.cursor=data.cursor;return h;
   }
 }
-const keys={split:['clipId','time'],trim:['clipId','in','out'],delete:['clipId'],move:['clipId','index'],update:['clipId','volume','crop','speed','background','backgroundColor','adjustments','fadeIn','fadeOut','zoom'],set_aspect:['aspect'],remove_ranges:['clipId','ranges'],keep_ranges:['clipId','ranges'],freeze_frame:['clipId','time','duration'],adjust_ranges:['clipId','ranges','patch'],set_transition:['leftId','rightId','effect','duration'],set_transition_at:['index','effect','duration'],edit_audio:['audioId','patch'],add_text:['layer'],add_image:['layer'],add_video:['layer'],add_shape:['layer'],edit_component:['layerId','patch'],remove_component:['layerId'],move_component:['layerId','direction'],set_keyframe:['layerId','time','pose'],remove_keyframe:['layerId','time'],set_motion:['layerId','enter','exit']};
+const keys={split:['clipId','time'],trim:['clipId','in','out'],delete:['clipId'],move:['clipId','index'],update:['clipId','volume','crop','speed','background','backgroundColor','adjustments','fadeIn','fadeOut','zoom','freeze'],set_aspect:['aspect'],remove_ranges:['clipId','ranges'],keep_ranges:['clipId','ranges'],freeze_frame:['clipId','time','duration'],adjust_ranges:['clipId','ranges','patch'],set_transition:['leftId','rightId','effect','duration'],set_transition_at:['index','effect','duration'],edit_audio:['audioId','patch'],add_text:['layer'],add_image:['layer'],add_video:['layer'],add_shape:['layer'],edit_component:['layerId','patch'],remove_component:['layerId'],move_component:['layerId','direction'],set_keyframe:['layerId','time','pose'],remove_keyframe:['layerId','time'],set_motion:['layerId','enter','exit']};
 const visualPlanFields=['start','end','x','y','width','rotation','opacity'];
 const textPlanFields=['text','start','end','style'];
 const stylePlanFields=['font','size','color','position','preset','positionX','positionY','width','accent','strokeColor','strokeWidth','shadow','shadowColor','spacing','boxColor','boxOpacity','bold','italic','uppercase','hollow','accentLast','glowColor','glow','enter','exit'];
@@ -200,9 +201,13 @@ export function validatePlan(p,plan) {
 }
 // Range operations split a clip into pieces with new ids the plan cannot know. Each piece keeps its original clip as
 // lineage, so later range operations and updates naming that clip reach every piece.
-export function applyPlan(p,plan) {
+export function applyPlan(p,plan) { return planLineage(p,plan).project; }
+// Same as applyPlan, plus the original clip of every resulting piece. Piece ids are random per run, so callers that
+// apply a plan more than once must compare pieces by origin and source time, never by id.
+export function planLineage(p,plan) {
   validatePlan(p,plan);let q=clone(p);
-  const root=new Map(q.clips.map(c=>[c.id,c.id])),family=clipId=>q.clips.filter(c=>root.get(c.id)===clipId);
+  // A frozen frame belongs to its clip's lineage but holds one instant: updates and range edits of the clip skip it.
+  const root=new Map(q.clips.map(c=>[c.id,c.id])),family=clipId=>q.clips.filter(c=>root.get(c.id)===clipId&&!c.freeze);
   for(const op of plan.operations) {
     if(op.type==='update'&&root.get(op.clipId)===op.clipId&&family(op.clipId).length>1){for(const piece of family(op.clipId))q=applyPlanOperation(q,{...op,clipId:piece.id});continue;}
     if(op.type==='freeze_frame'){const target=(root.get(op.clipId)===op.clipId?family(op.clipId):q.clips.filter(c=>c.id===op.clipId)).find(c=>!c.freeze&&op.time>=c.in-1e-6&&op.time<=c.out+1e-6);if(!target)fail('Instante para congelar fora do trecho no plano.');const before=new Set(q.clips.map(c=>c.id));q=applyPlanOperation(q,{type:'freeze',clipId:target.id,time:op.time,duration:op.duration});for(const c of q.clips)if(!before.has(c.id))root.set(c.id,root.get(target.id));continue;}
@@ -216,13 +221,15 @@ export function applyPlan(p,plan) {
       }
       let segments=merged.map(([a,b])=>({in:a,out:b,patched:true}));
       if(op.type!=='keep_ranges'){segments=[];let cursor=c.in;for(const [start,end] of merged){if(start>cursor)segments.push({in:cursor,out:start});if(op.type==='adjust_ranges')segments.push({in:start,out:end,patched:true});cursor=end;}if(cursor<c.out)segments.push({in:cursor,out:c.out});}
+      // An adjustment never cuts: a sliver shorter than a piece is merged into its neighbour instead of vanishing.
+      if(op.type==='adjust_ranges'){const kept=[];for(const s of segments){if(s.out-s.in<.02&&kept.length)kept.at(-1).out=s.out;else kept.push({...s});}if(kept.length>1&&kept[0].out-kept[0].in<.02){kept[1].in=kept[0].in;kept.shift();}segments=kept;}
       const pieces=segments.filter(s=>s.out-s.in>=.02).map((s,i)=>({...clone(c),id:i===0?c.id:id(),in:s.in,out:s.out}));
       for(const [i,piece] of pieces.entries()){root.set(piece.id,root.get(c.id));if(i>0&&piece.fadeIn!==undefined)piece.fadeIn=0;if(i<pieces.length-1&&piece.fadeOut!==undefined)piece.fadeOut=0;}
       q.clips.splice(index,1,...pieces);reconcileTransitions(q);validateProject(q);
       if(op.type==='adjust_ranges')for(const [i,s] of segments.filter(s=>s.out-s.in>=.02).entries())if(s.patched)q=applyPlanOperation(q,{type:'update',clipId:pieces[i].id,...op.patch});
     }
   }
-  return validateProject(q);
+  return {project:validateProject(q),origin:clipId=>root.get(clipId)};
 }
 
 export function addMusic(p,asset,clip){const q=clone(p);if(!q.assets.some(a=>a.id===asset.id))q.assets.push(clone(asset));q.music=[...(q.music||[]),{id:clip.id||id(),assetId:asset.id,in:clip.in,out:clip.out,start:clip.start??0,volume:clip.volume??1,...(clip.role?{role:clip.role}:{}),...(clip.fadeIn!==undefined?{fadeIn:clip.fadeIn}:{}),...(clip.fadeOut!==undefined?{fadeOut:clip.fadeOut}:{})}];return validateProject(q);}

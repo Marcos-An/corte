@@ -1,6 +1,6 @@
 // Components anchored to what is said or shown, not to montage seconds the provider cannot know after its own cuts.
 // An anchor names words of a clip's transcript or a stretch of its source; it is placed where that material plays.
-import {applyPlan} from '../src/project.mjs';
+import {planLineage} from '../src/project.mjs';
 import {clipDuration} from '../src/clip-time.mjs';
 const ANCHORED=['place_overlay','place_text'],RESHAPING=['trim','split','delete','move','remove_ranges','keep_ranges','adjust_ranges','freeze_frame'];
 const fail=message=>{throw Error(message);};
@@ -14,10 +14,10 @@ function sourceSpan(project,anchor,transcripts){
  if(!Number.isFinite(anchor.sourceStart)||!Number.isFinite(anchor.sourceEnd)||anchor.sourceEnd<=anchor.sourceStart)fail('Âncora inválida: informe palavras {from,to} ou sourceStart < sourceEnd.');
  return {clip,start:anchor.sourceStart,end:anchor.sourceEnd};
 }
-// Pieces of the anchored clip keep its asset; pieces of other original clips are excluded even when they share the source.
-function timelineSpan(original,state,span){
- const others=new Set(original.clips.filter(c=>c.id!==span.clip.id).map(c=>c.id)),pieces=[];let t=0;
- for(const c of state.clips){if(!c.freeze&&c.assetId===span.clip.assetId&&!others.has(c.id)&&c.in<span.end&&c.out>span.start)pieces.push({c,t});t+=clipDuration(c);}
+// Only pieces descending from the anchored clip count, even when another clip shares the source.
+function timelineSpan(run,span){
+ const state=run.project,pieces=[];let t=0;
+ for(const c of state.clips){if(!c.freeze&&run.origin(c.id)===span.clip.id&&c.in<span.end&&c.out>span.start)pieces.push({c,t});t+=clipDuration(c);}
  if(!pieces.length)fail('O trecho ancorado foi removido pelos cortes do plano.');
  const at=({c,t},s)=>t+(s-c.in)/(c.speed??1),first=pieces[0],last=pieces.at(-1);
  return {start:at(first,Math.max(span.start,first.c.in)),end:at(last,Math.min(span.end,last.c.out))};
@@ -26,10 +26,10 @@ export function resolveAnchoredOperations(project,result,transcripts=[]){
  const ops=result?.plan?.operations;if(!Array.isArray(ops))return result;
  const first=ops.findIndex(o=>ANCHORED.includes(o?.type));if(first<0)return result;
  if(ops.slice(first).some(o=>RESHAPING.includes(o?.type)||o?.type==='update'&&'speed' in o))fail('place_overlay/place_text devem vir depois de todos os cortes, movimentos e mudanças de velocidade.');
- const state=applyPlan(project,{...result.plan,operations:ops.slice(0,first)});
+ const run=planLineage(project,{...result.plan,operations:ops.slice(0,first)});
  const operations=ops.map(op=>{
   if(!ANCHORED.includes(op?.type))return op;
-  const {start,end}=timelineSpan(project,state,sourceSpan(project,op.anchor,transcripts)),{id,x,y,width,rotation,opacity}=op.layer||{};
+  const {start,end}=timelineSpan(run,sourceSpan(project,op.anchor,transcripts)),{id,x,y,width,rotation,opacity}=op.layer||{};
   if(op.type==='place_text')return {type:'add_text',layer:{id:op.layer?.id,text:op.layer?.text,start,end,style:op.layer?.style}};
   const asset=project.assets.find(a=>a.id===op.layer?.assetId);if(!asset||asset.kind==='audio')fail('Mídia do componente não encontrada.');
   if(asset.kind==='image')return {type:'add_image',layer:{id,assetId:asset.id,start,end,x,y,width,rotation,opacity}};

@@ -12,16 +12,17 @@ test('a smooth zoom is a clip property interpolated over the clip and centred on
 });
 test('export animates the zoom per frame only when the clip has one',()=>{
  const plain=buildSegmentArgs(p.clips[0],p.assets[0],'in.mp4','out.mp4','9:16').join(' ');assert.doesNotMatch(plain,/eval=frame/);
- const zoomed=buildSegmentArgs({...p.clips[0],zoom:{from:1,to:1.2}},p.assets[0],'in.mp4','out.mp4','9:16').join(' ');assert.match(zoomed,/scale=w='trunc\(iw\*\(1\+0\.2\*t\/4\)\/2\)\*2':h=-2:eval=frame,crop=/);
+ const zoomed=buildSegmentArgs({...p.clips[0],zoom:{from:1,to:1.2}},p.assets[0],'in.mp4','out.mp4','9:16').join(' ');assert.match(zoomed,/zoompan=z='1\+0\.2\*min\(1,it\/4\)':x='iw\/2-\(iw\/zoom\/2\)':y='ih\/2-\(ih\/zoom\/2\)':d=1:s=320x240/);
 });
-test('the rendered frames actually move in: the last frame is a magnified centre of the first',async()=>{
+test('the rendered zoom stays centred on the framing and magnifies about twice',async()=>{
  const dir=await mkdtemp(path.join(tmpdir(),'corte-zoom-'));try{
-  const src=path.join(dir,'s.mp4');await run(binaries().ffmpeg,['-v','error','-y','-f','lavfi','-i','testsrc2=s=320x240:r=30:d=2','-c:v','libx264','-pix_fmt','yuv420p',src]);
+  const src=path.join(dir,'s.mp4');await run(binaries().ffmpeg,['-v','error','-y','-f','lavfi','-i','color=black:s=640x360:r=30:d=2,drawbox=x=300:y=160:w=40:h=40:color=white:t=fill','-c:v','libx264','-pix_fmt','yuv420p',src]);
   const a={id:'a',name:'s',...await probe(src)},c={id:'c',assetId:'a',in:0,out:2,volume:1,crop:{x:0,y:0,w:1,h:1},zoom:{from:1,to:2}},out=path.join(dir,'o.mp4');
   await run(binaries().ffmpeg,buildSegmentArgs(c,a,src,out,'16:9',720));
-  const grab=async(t,f)=>{await run(binaries().ffmpeg,['-v','error','-y','-ss',String(t),'-i',out,'-frames:v','1','-vf','scale=32:18','-f','rawvideo','-pix_fmt','gray',f]);return (await import('node:fs/promises')).readFile(f);};
-  const first=await grab(0,path.join(dir,'a.raw')),last=await grab(1.9,path.join(dir,'b.raw'));let diff=0;for(let i=0;i<first.length;i++)diff+=Math.abs(first[i]-last[i]);
-  assert.ok(diff/first.length>8,`frames differ by zooming (${(diff/first.length).toFixed(1)})`);assert.ok(Math.abs((await probe(out)).duration-2)<.1);
+  const marker=async(t,f)=>{await run(binaries().ffmpeg,['-v','error','-y','-ss',String(t),'-i',out,'-frames:v','1','-f','rawvideo','-pix_fmt','gray',f]);const d=await (await import('node:fs/promises')).readFile(f),w=1280;let x=0,y=0,n=0;for(let i=0;i<d.length;i++)if(d[i]>128){x+=i%w;y+=Math.floor(i/w);n++;}return {x:x/n,y:y/n,n};};
+  const first=await marker(.05,path.join(dir,'a.raw')),last=await marker(1.95,path.join(dir,'b.raw'));
+  for(const m of [first,last])assert.ok(Math.abs(m.x-640)<1280*.02&&Math.abs(m.y-360)<720*.02,`marker stays centred (${m.x.toFixed(0)},${m.y.toFixed(0)})`);
+  assert.ok(last.n/first.n>3,`marker area grows ~4x at 2x zoom (${(last.n/first.n).toFixed(2)})`);assert.ok(Math.abs((await probe(out)).duration-2)<.1);
  }finally{await rm(dir,{recursive:true,force:true});}
 });
 test('the AI can zoom a whole clip or only part of it, counted as framing',()=>{

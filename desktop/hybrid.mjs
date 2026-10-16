@@ -1,5 +1,5 @@
 import {transcribeLocally} from './transcribe.mjs';import {speechHints} from './speech-edit.mjs';
-import {validateProject,applyPlan,validatePlan} from '../src/project.mjs';
+import {validateProject,applyPlan,validatePlan,planLineage} from '../src/project.mjs';
 import {refinementTimes} from './local.mjs';
 // A visual query from the overview is answered by local search before the final round, even without cut borders to inspect.
 export async function refineVisualPlan({project,prompt,frames,request,signal,search=null}){
@@ -19,20 +19,19 @@ export function includedEvidence(project,frames){
  return frames.filter(f=>Number.isFinite(f.time)&&project.clips.some(c=>c.assetId===f.assetId&&f.time>=c.in&&f.time<c.out));
 }
 // Compare source coverage per original clip instance, including split/range-generated pieces.
-// Applied as cumulative prefixes so an operation naming a clip reaches every piece of it, as applyPlan does;
-// lineage is tracked here too so another clip of the same source cannot hide an unsafe cut.
+// Applied as cumulative prefixes so an operation naming a clip reaches every piece of it, as applyPlan does. Pieces
+// are compared by origin (ids are random per run), so another clip of the same source cannot hide an unsafe cut.
 function preservesUncertainSpeech(project,plan,gaps){
- if(!gaps.length)return true;let state=project;const root=new Map(project.clips.map(c=>[c.id,c.id]));
+ if(!gaps.length)return true;
  for(let i=0;i<plan.operations.length;i++){
-  const op=plan.operations[i],origin=root.get(op.clipId),family=state.clips.filter(c=>origin!==undefined&&root.get(c.id)===origin);
-  const next=applyPlan(project,{...plan,operations:plan.operations.slice(0,i+1)});for(const c of next.clips)if(!root.has(c.id))root.set(c.id,origin??c.id);
-  const pieces=next.clips.filter(c=>origin!==undefined&&root.get(c.id)===origin).sort((a,b)=>a.in-b.in);
+  const op=plan.operations[i],before=planLineage(project,{...plan,operations:plan.operations.slice(0,i)}),after=planLineage(project,{...plan,operations:plan.operations.slice(0,i+1)});
+  const origin=before.origin(op.clipId);if(origin===undefined)continue;
+  const family=before.project.clips.filter(c=>before.origin(c.id)===origin),pieces=after.project.clips.filter(c=>after.origin(c.id)===origin).sort((a,b)=>a.in-b.in);
   for(const clip of family)for(const gap of gaps.filter(g=>g.assetId===clip.assetId)){
    const start=Math.max(clip.in,gap.start),end=Math.min(clip.out,gap.end);if(end<=start)continue;let cursor=start;
    for(const piece of pieces){if(piece.out<=cursor)continue;if(piece.in>cursor+.000001)break;cursor=Math.max(cursor,piece.out);}
    if(cursor<end-.000001)return false;
   }
-  state=next;
  }return true;
 }
 export async function requestHybridEdit({project,prompt,shareEvidence,signal,onProgress=()=>{},transcribe=transcribeLocally,connected=async options=>(await import('./ai.mjs')).loginStatus(options.home).then(r=>r.connected),planRequest=async options=>(await import('./ai.mjs')).requestPlan(options),...options}){

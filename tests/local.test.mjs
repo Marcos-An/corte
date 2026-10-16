@@ -82,3 +82,10 @@ test('a clip blurry from start to end is caught against the sharpness of the who
  const {blurryRanges}=await import('../desktop/local.mjs'),soft=Array.from({length:6},(_,t)=>({time:t,sharpness:8}));
  assert.deepEqual(blurryRanges(soft),[],'alone it has nothing sharper to compare with');assert.deepEqual(blurryRanges(soft,.3,100),[[0,6]]);
 });
+test('a corrupted accurate speech model is reported as not ready, so transcription falls back to the bundled one',async()=>{
+ const {readyAccurateSpeechModel}=await import('../desktop/transcribe.mjs'),{mkdtemp,mkdir,writeFile,rm,readFile}=await import('node:fs/promises'),{tmpdir}=await import('node:os');
+ const manifest=JSON.parse(await readFile(new URL('../vendor/models/speech-accurate-manifest.json',import.meta.url),'utf8')),dir=await mkdtemp(path.join(tmpdir(),'corte-speech-bad-')),saved=process.env.CORTE_SPEECH_MODEL_PATH;
+ try{for(const f of manifest.files){await mkdir(path.dirname(path.join(dir,f.path)),{recursive:true});await writeFile(path.join(dir,f.path),'corrupted');}
+  process.env.CORTE_SPEECH_MODEL_PATH=dir;assert.equal(await readyAccurateSpeechModel(),null);
+ }finally{if(saved===undefined)delete process.env.CORTE_SPEECH_MODEL_PATH;else process.env.CORTE_SPEECH_MODEL_PATH=saved;await rm(dir,{recursive:true,force:true});}
+});

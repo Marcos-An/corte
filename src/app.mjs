@@ -1037,7 +1037,7 @@ let connectionRequest=0;
 async function refreshConnection(){if(!bridge)return;const request=++connectionRequest,r=await bridge.status();if(request!==connectionRequest)return;connected=r.connected;$('connect').classList.toggle('connected',connected);$('connection-label').textContent=connected?'ChatGPT conectado':'Não conectado';$('connect').disabled=busy||connected;}
 $('connect').addEventListener('click',guard(async()=>{if(connected){toast('Conectado com ChatGPT. Configure limites e créditos na sua conta; esta versão não possui desconexão integrada.');return;}if(!bridge)throw new Error('O login está disponível no app desktop.');$('connect').disabled=true;$('connection-label').textContent='Conclua no navegador…';try{await bridge.login();await refreshConnection();toast(connected?'ChatGPT conectado. Pronto para analisar.':'Login não concluído.',!connected);}finally{$('connect').disabled=busy||connected;if(!connected)$('connection-label').textContent='Não conectado';}}));
 $('prompt').addEventListener('input',()=>{pending=null;$('proposal').hidden=true;updateButtons();});
-$('ai-mode').addEventListener('change',()=>{pending=null;$('proposal').hidden=true;});
+$('ai-mode').addEventListener('change',()=>{pending=null;requestedStage=null;$('proposal').hidden=true;});
 $('ai-engine').addEventListener('change',()=>{pending=null;$('proposal').hidden=true;void refreshSpeechModel().catch(()=>{});});
 $('ai-scope').addEventListener('change',()=>{pending=null;$('proposal').hidden=true;$('ai-feedback').hidden=true;updateButtons();});
 let cancelRequested=false;
@@ -1077,7 +1077,7 @@ $('analyze').addEventListener('click',guard(async()=>{
   const {plan}=result,issues=[...(plan.questions||[]),...(plan.unsupported||[])];
   if(issues.length||!plan.operations?.length){const box=$('proposal');box.replaceChildren();box.hidden=false;for(const text of [plan.summary,...issues]){const p=document.createElement('p');p.textContent=text;box.append(p);}if(!issues.length)toast('Nenhuma alteração necessária.');return;}
   const q=applyPlan(snapshot,plan);setBusy(false);commit(q,{...describeChange(snapshot,q),label:`IA: ${plan.summary}`.slice(0,4000),details:plan.operations.map(op=>describeOperation(snapshot,op))});toast('Edição aplicada. Veja os detalhes no histórico ou desfaça.');
- }catch(e){$('ai-feedback').textContent=cancelRequested?'Edição cancelada. Nenhuma alteração aplicada.':e.message;$('ai-feedback').hidden=false;}finally{setBusy(false);aiRunning=false;}
+ }catch(e){if(stage)requestedStage=stage;$('ai-feedback').textContent=(cancelRequested?'Edição cancelada. Nenhuma alteração aplicada.':e.message)+(stage?` Envie de novo para repetir a etapa ${stage}.`:'');$('ai-feedback').hidden=false;}finally{setBusy(false);aiRunning=false;}
 }));
 const cancelOperation=guard(()=>{cancelRequested=true;if(aiRunning){$('ai-progress-label').textContent='Cancelando a edição…';$('ai-cancel').disabled=true;}return bridge.cancel();});
 $('cancel').addEventListener('click',cancelOperation);$('ai-cancel').addEventListener('click',cancelOperation);

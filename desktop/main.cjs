@@ -127,7 +127,7 @@ if(primary)app.whenReady().then(async()=>{
  const speechManifest=JSON.parse(await fs.readFile(path.join(__dirname,'../vendor/models/speech-accurate-manifest.json'),'utf8'));
  {const {modelStorePath}=await import('./models-store.mjs'),stored=modelStorePath(app.getPath('userData'),speechManifest);if(require('node:fs').existsSync(path.join(stored,'manifest.json')))process.env.CORTE_SPEECH_MODEL_PATH=stored;}
  let speechInstall=null;
- handler('speech-model',async()=>({installed:!!await (await import('./local.mjs')).accurateSpeechModel(),installing:!!speechInstall,sizeMB:Math.round(1085)}));
+ handler('speech-model',async()=>({installed:!!await (await import('./transcribe.mjs')).readyAccurateSpeechModel(),installing:!!speechInstall,sizeMB:Math.round(1085)}));
  handler('speech-model-install',async()=>{
   speechInstall??=(async()=>{const {installOptionalModel}=await import('./models-store.mjs');process.env.CORTE_SPEECH_MODEL_PATH=await installOptionalModel({manifest:speechManifest,userData:app.getPath('userData'),onProgress:p=>{if(!window.isDestroyed())window.webContents.send('editor:speech-model',p);}});return {installed:true};})().finally(()=>{speechInstall=null;});
   return speechInstall;

@@ -74,3 +74,15 @@ test('the overview may ask for visual searches and the final round sees which fr
  assert.ok(reviewPlanSchema.required.includes('visualQueries'));
  assert.match(buildPrompt(p,'x',[{assetId:'a',time:3,path:'/x.jpg',match:'takoyaki cut open'}],{review:true}),/"match":"takoyaki cut open"/);
 });
+test('a coverage rejection names the item, the operation and the categories that would fit',()=>{
+ const two=addClip(addAsset(createProject(),{id:'a',name:'Video',duration:10,width:320,height:240,hasAudio:true}),'a','c');
+ const ops=[{type:'trim',clipId:'c',in:1,out:9},{type:'freeze_frame',clipId:'c',time:5,duration:1}],payload=coverage=>JSON.stringify({plan:{...plan,operations:ops},pendingRequests:[],coverage});
+ assert.throws(()=>parseReviewPayload(two,payload([item('cut','planned',[0]),item('framing','planned',[1])])),/"Pedido de framing".*operação 1 \(freeze_frame\).*composition/);
+ assert.throws(()=>parseReviewPayload(two,payload([item('cut','planned',[0])])),/sem item de cobertura: 1/);
+ assert.throws(()=>parseReviewPayload(two,payload([item('cut','planned',[0,5])])),/operação 5.*não existe/);
+ assert.doesNotThrow(()=>parseReviewPayload(two,JSON.stringify({plan:{...plan,operations:[{type:'update',clipId:'c',zoom:{from:1,to:1.1}}]},pendingRequests:[],coverage:[item('motion','planned',[0])]})),'a smooth zoom is also camera motion');
+});
+test('user-written texts are used as given and the local blur map is enough evidence to cut',()=>{
+ const input=buildPrompt(p,'Inserir “Do Grupo Uchida”',[],{review:true});
+ assert.match(input,/escreveu no pedido[^.]*use-os exatamente, sem pedir confirmação/);assert.match(input,/report\.blurry[^.]*CADA segundo/);
+});

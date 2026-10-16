@@ -44,10 +44,10 @@ export function refinementTimes(project,plan,overview=[],max=60){
  for(const offset of [0,-.25,.25,-.5,.5,-1,1])for(const f of borders)add({assetId:f.assetId,time:f.time+offset});
  return result.sort((a,b)=>a.assetId.localeCompare(b.assetId)||a.time-b.time);
 }
-export function scanLocally({project,registry,directory,step=2,signal,onProgress=()=>{}}){
+export function scanLocally({project,registry,directory,step=2,signal,onProgress=()=>{},index=false}){
  if(signal?.aborted)return Promise.reject(new Error('Análise cancelada.'));
  const assets=[...new Set(project.clips.map(c=>c.assetId))].map(id=>({id,...project.assets.find(a=>a.id===id),file:registry.get(id)?.path}));
- return runVisualProcess({data:{assets,directory,models:modelPath(),step},backend:process.platform==='darwin'?'coreml':process.platform==='win32'?'dml':'cpu',signal,onProgress});
+ return runVisualProcess({data:{assets,directory,models:modelPath(),step,index},backend:process.platform==='darwin'?'coreml':process.platform==='win32'?'dml':'cpu',signal,onProgress});
 }
 
 // Screening thumbnails and the preview pool share one decode; the second full decode was the dominant cost on 4K HEVC.

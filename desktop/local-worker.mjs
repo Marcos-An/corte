@@ -4,7 +4,7 @@ import path from 'node:path';
 import {env,AutoProcessor,AutoTokenizer,CLIPVisionModelWithProjection,CLIPTextModelWithProjection,RawImage} from '@huggingface/transformers';
 import {run,binaries} from './media.mjs';
 import {MODEL_ID,frameDirectory,cosineDistance,pixelMetrics,selectEvidence,pixelChange,visualCandidates,samplingArgs,semanticChanges,blurryRanges} from './local.mjs';
-export async function analyzeVisual({assets,directory,models,step,backend:requestedBackend},{signal,onProgress}){
+export async function analyzeVisual({assets,directory,models,step,backend:requestedBackend,index:wantIndex=false},{signal,onProgress}){
 try{
  env.allowRemoteModels=false;env.allowLocalModels=true;env.localModelPath=models;env.useBrowserCache=false;env.useFSCache=false;
  const manifest=JSON.parse(await readFile(path.join(models,'manifest.json'),'utf8'));for(const entry of manifest.files){const actual=createHash('sha256').update(await readFile(path.join(models,entry.path))).digest('hex');if(actual!==entry.sha256)throw new Error('Modelo local corrompido. Reinstale o app.');}
@@ -35,7 +35,8 @@ try{
    inferred++;const vector=Array.from(output.image_embeds.data);vectors.set(i,vector);sharpness.set(i,pixelMetrics(image).sharpness);return vector;
   };
   await semanticChanges(samples,candidates,embed);
-  const perSecond=[];sharpnessByAsset.set(asset.id,perSecond);for(let i=0;i<samples.length;i+=fps){const vector=await embed(i),norm=Math.hypot(...vector)||1;perSecond.push({time:samples[i].time,sharpness:sharpness.get(i)});index.push({assetId:asset.id,time:samples[i].time,path:pool(i),vector:vector.map(x=>Number((x/norm).toFixed(5)))});}
+  // The per-second search index (and the blur map built from it) is only needed by reviewed proposals.
+  const perSecond=[];sharpnessByAsset.set(asset.id,perSecond);if(wantIndex)for(let i=0;i<samples.length;i+=fps){const vector=await embed(i),norm=Math.hypot(...vector)||1;perSecond.push({time:samples[i].time,sharpness:sharpness.get(i)});index.push({assetId:asset.id,time:samples[i].time,path:pool(i),vector:vector.map(x=>Number((x/norm).toFixed(5)))});}
   const times=selectEvidence(candidates,Math.max(6,Math.floor(48/assets.length)));
   for(const time of times)evidence.push({assetId:asset.id,time,path:candidates.find(s=>s.time===time).file});
   reports.push({assetId:asset.id,localFrames:samples.length,inferredFrames:inferred,localStep:1/fps,selected:times,signals:candidates.slice().sort((a,b)=>b.change-a.change).slice(0,12).map(s=>({sourceTime:s.time,visualChange:Number(s.change.toFixed(3)),sharpness:Math.round(s.sharpness)}))});
