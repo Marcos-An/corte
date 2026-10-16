@@ -11,7 +11,7 @@ const root=path.resolve(import.meta.dirname,'..');
 await run(binaries().ffmpeg,['-hide_banner','-loglevel','error','-y','-f','lavfi','-i','testsrc2=size=640x360:rate=30','-f','lavfi','-i','sine=frequency=440:sample_rate=48000','-t','4','-c:v','libx264','-pix_fmt','yuv420p','-c:a','aac',path.join(dir,'source.mp4')]);
 let app;
 try {
- app=await electron.launch({executablePath:require('electron'),args:[root,`--user-data-dir=${path.join(dir,'appdata')}`],env:{...process.env,ELECTRON_RUN_AS_NODE:''}});
+ app=await electron.launch({executablePath:require('electron'),args:[root,`--user-data-dir=${path.join(dir,'appdata')}`],env:Object.fromEntries(Object.entries(process.env).filter(([k])=>k!=='ELECTRON_RUN_AS_NODE'))});
  const page=await app.firstWindow();await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setBounds({width:1200,height:800}));const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});},path.join(dir,'source.mp4'));
  await page.locator('#nav-media').click();
@@ -35,8 +35,8 @@ try {
   ipcMain.removeHandler('editor:login');ipcMain.handle('editor:login',()=>({ok:true,value:{connected:true}}));
   ipcMain.removeHandler('editor:analyze');ipcMain.handle('editor:analyze',(_,p)=>({ok:true,value:{frames:2,plan:{summary:'Reenquadrar e ajustar áudio',questions:[],unsupported:[],operations:[{type:'update',clipId:p.clips[0].id,crop:{x:0,y:0,w:1,h:.75}},{type:'update',clipId:p.clips[0].id,volume:.5},{type:'set_aspect',aspect:'1:1'}]}}}));
  });
- await page.locator('#settings').click();await page.waitForFunction(()=>document.querySelector('#connection-label').textContent==='ChatGPT conectado');await page.locator('#settings-close').click();await page.locator('#nav-ai').click();await page.locator('#ai-engine').selectOption('chatgpt');
- await page.locator('#ai-scope').selectOption('all');
+ await page.locator('#settings').click();await page.waitForFunction(()=>document.querySelector('#connection-label').textContent==='ChatGPT conectado');await page.locator('#settings-close').click();await page.locator('#nav-ai').click();await page.locator('#settings').click();await page.locator('#ai-engine').selectOption('chatgpt');await page.locator('#settings-close').click();
+
  await page.locator('#prompt').fill('Reenquadre e reduza o áudio.');await page.getByRole('button',{name:'Preparar edição',exact:true}).click();
  assert.equal(await page.locator('dialog[open]').count(),0,'send immediately analyzes without consent dialog');
  await page.waitForFunction(()=>document.querySelector('#aspect').value==='1:1',{},{timeout:5000});assert.equal(await page.locator('#crop-h').inputValue(),'75');
@@ -61,15 +61,15 @@ try {
  await page.getByRole('button',{name:'Fechar histórico',exact:true}).click();
  const before=await page.locator('#timeline-summary').textContent();
  await app.evaluate(({ipcMain})=>{ipcMain.removeHandler('editor:analyze');ipcMain.handle('editor:analyze',()=>({ok:true,value:{frames:1,plan:{summary:'Inválido',questions:[],unsupported:[],operations:[{type:'set_aspect',aspect:'4:5'},{type:'delete',clipId:'missing'}]}}}));});
- await page.getByRole('button',{name:'Preparar edição',exact:true}).click();await page.waitForFunction(()=>document.querySelector('#toast').textContent.includes('encontrado'));assert.equal(await page.locator('#aspect').inputValue(),'9:16');assert.equal(await page.locator('#timeline-summary').textContent(),before);
+ await page.getByRole('button',{name:'Preparar edição',exact:true}).click();await page.waitForFunction(()=>document.querySelector('#ai-feedback').textContent.includes('encontrado'));assert.equal(await page.locator('#aspect').inputValue(),'9:16');assert.equal(await page.locator('#timeline-summary').textContent(),before);
  await app.evaluate(({ipcMain})=>{ipcMain.removeHandler('editor:analyze');ipcMain.handle('editor:analyze',()=>({ok:true,value:{frames:1,plan:{summary:'Precisa esclarecer',questions:['Qual trecho?'],unsupported:[],operations:[]}}}));});
  await page.getByRole('button',{name:'Preparar edição',exact:true}).click();await page.getByText('Qual trecho?',{exact:true}).waitFor();assert.equal(await page.locator('#timeline-summary').textContent(),before);
  await app.evaluate(({ipcMain})=>{ipcMain.removeHandler('editor:analyze');ipcMain.handle('editor:analyze',()=>new Promise(resolve=>{globalThis.finishAnalyze=resolve;}));});
- await page.getByRole('button',{name:'Preparar edição',exact:true}).click();await page.locator('#cancel').waitFor();await page.locator('#cancel').click();
+ await page.getByRole('button',{name:'Preparar edição',exact:true}).click();await page.locator('#ai-cancel').waitFor();await page.locator('#ai-cancel').click();
  await app.evaluate(()=>globalThis.finishAnalyze({ok:true,value:{frames:1,plan:{summary:'Cancelado',questions:[],unsupported:[],operations:[{type:'set_aspect',aspect:'4:5'}]}}}));
- await page.waitForFunction(()=>document.querySelector('#busy-message').hidden);assert.equal(await page.locator('#aspect').inputValue(),'9:16');assert.equal(await page.locator('#timeline-summary').textContent(),before);
+ await page.waitForFunction(()=>!document.querySelector('#analyze').disabled);assert.equal(await page.locator('#aspect').inputValue(),'9:16');assert.equal(await page.locator('#timeline-summary').textContent(),before);
  await app.evaluate(({ipcMain})=>{ipcMain.removeHandler('editor:analyze');ipcMain.handle('editor:analyze',()=>({ok:false,error:'Falha de rede simulada'}));});
- await page.getByRole('button',{name:'Preparar edição',exact:true}).click();await page.waitForFunction(()=>document.querySelector('#toast').textContent==='Falha de rede simulada');assert.equal(await page.locator('#timeline-summary').textContent(),before);
+ await page.getByRole('button',{name:'Preparar edição',exact:true}).click();await page.waitForFunction(()=>document.querySelector('#ai-feedback').textContent==='Falha de rede simulada');assert.equal(await page.locator('#timeline-summary').textContent(),before);
  await page.getByRole('button',{name:'Salvar projeto',exact:true}).click();await page.waitForFunction(()=>document.querySelector('#save-state').textContent.includes('Salvo'));
  await rm(path.join(dir,'source.mp4'));
  await page.locator('#open-project').evaluate(b=>b.click());

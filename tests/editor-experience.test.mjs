@@ -39,3 +39,14 @@ test('playhead edge scrolling is proportional, bounded and inactive in the cente
  const {timelineEdgeSpeed}=await import('../src/editor-experience.mjs');
  assert.equal(timelineEdgeSpeed(500,100,900),0);assert.equal(timelineEdgeSpeed(100,100,900),-720);assert.equal(timelineEdgeSpeed(900,100,900),720);assert.equal(timelineEdgeSpeed(124,100,900),-360);assert.equal(timelineEdgeSpeed(876,100,900),360);assert.equal(timelineEdgeSpeed(-200,100,900),-720);assert.equal(timelineEdgeSpeed(1300,100,900),720);assert.equal(timelineEdgeSpeed(105,100,110),0);
 });
+
+test('AI progress uses understandable stages and never regresses across files or refinement',async()=>{
+ const {aiProgress}=await import('../src/editor-experience.mjs');let state=aiProgress(null);
+ assert.deepEqual(state,{step:0,label:'Preparando sua edição…'});
+ for(const event of [{stage:'captions',completed:38,total:60},{stage:'captions',completed:0,total:9},{stage:'local',asset:'private-name',completed:43,total:29},{stage:'frames'},{stage:'analysis'},{stage:'frames',phase:'refinement'},{stage:'analysis',phase:'refinement'},{stage:'captions',completed:0,total:1}]){
+  const next=aiProgress(state,event);assert.ok(next.step>=state.step);assert.doesNotMatch(next.label,/\d|private-name/);state=next;
+ }
+ assert.equal(state.label,'Conferindo a proposta…');
+ assert.deepEqual(aiProgress(state,{stage:'unrelated'}),state);
+ assert.equal(aiProgress(null).step,0,'a new request starts fresh');
+});

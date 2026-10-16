@@ -9,11 +9,12 @@ import {createTextScene} from './text-scene.mjs';
 import {FONTS,FONT_CATEGORIES} from './fonts.mjs';
 import {TEXT_PRESETS,ENTER_ANIMATIONS,EXIT_ANIMATIONS,presetOf,fullLook,textAppearance} from './text-style.mjs';
 import {editCaption,addCaptionAt,alignCaptions} from './caption-editing.mjs';
-import {assignLanes,timelineEdgeSpeed,timelinePointerTime,playbackStart,editorPanel,validateScopedPlan,dragCrop,nextClipTime,previewSize} from './editor-experience.mjs';
+import {aiProgress,assignLanes,timelineEdgeSpeed,timelinePointerTime,playbackStart,editorPanel,validateScopedPlan,dragCrop,nextClipTime,previewSize} from './editor-experience.mjs';
 import {removeTimelineRange,initialRange,moveRange} from './range-selection.mjs';
 import {captionEntries,captionStyle} from './captions.mjs';
 import {transitionRoom,setMotion,createProject,addAsset,addClip,addMusic,editMusic,addTextLayer,editTextLayer,remapWordStyles,addImageLayer,editImageLayer,addVideoLayer,editVideoLayer,addShapeLayer,editShapeLayer,editProject,History,layerOrder,moveLayer,setKeyframe,transitionLimit,setTransition,transitionAt,duration,clipAt,applyPlan} from './project.mjs';
 const $=id=>document.getElementById(id),bridge=window.editor;
+let aiRunning=false,aiProgressState=null;
 let captionPreviewStyle=null,previewCrop=null,adjustmentPreview=null;
 let updateState={phase:'idle'},mediaHydrationState=null,lastHydrationErrors=0;
 let activePanel=null,recorder=null,recordStream=null,recordDiscard=false,recordAt=0,recordTimer=null;
@@ -28,7 +29,7 @@ const decimal=(n,digits=1,min=digits)=>Number(n).toLocaleString('pt-BR',{minimum
 const format=(time,frames=false)=>{const v=Math.max(0,time);const m=Math.floor(v/60),s=Math.floor(v%60);return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}${frames?':'+String(Math.floor(v%1*30)).padStart(2,'0'):''}`;};
 function toast(message,error=false){clearTimeout(toastTimer);$('toast').textContent=message;$('toast').classList.toggle('error',error);$('toast').hidden=false;toastTimer=setTimeout(()=>$('toast').hidden=true,error?12000:4500);}
 function guard(fn){return async(...args)=>{try{await fn(...args);}catch(e){toast(e.message,true);}};}
-function markDirty(value=true){$('share-evidence').checked=false;dirty=value;renderUpdate();$('save-state').textContent=value?'Não salvo':'Salvo no computador';bridge?.setDirty(value).catch(()=>{});}
+function markDirty(value=true){dirty=value;renderUpdate();$('save-state').textContent=value?'Não salvo':'Salvo no computador';bridge?.setDirty(value).catch(()=>{});}
 function stop(){if(recorder?.state==='recording')recorder.stop();removalPreview=null;rangePlaybackEnd=null;playing=false;video.pause();transitionPreview.pause();for(const m of musicPlayers.values())m.el.pause();document.querySelectorAll('.image-layer video').forEach(v=>v.pause());$('play').replaceChildren(icon('play'));$('play').setAttribute('aria-label','Reproduzir');}
 function commit(next,metadata){adjustmentPreview=null;captionPreviewStyle=null;captionPlacePreview=null;textPreview=null;closeClipMenu();if(busy)throw new Error('Aguarde a operação atual.');stop();rangeSelection=null;history.commit(next,metadata||describeChange(project(),next));pending=null;$('proposal').hidden=true;markDirty();position=Math.min(position,timelineDuration());if(!project().clips.some(c=>c.id===selected))selected=project().clips[0]?.id||null;render();}
 function describeChange(before,after){
@@ -64,7 +65,7 @@ function renderHistory(){
 }
 $('history-toggle').addEventListener('click',()=>{$('history-panel').hidden=false;renderHistory();});$('history-close').addEventListener('click',()=>$('history-panel').hidden=true);
 
-function setBusy(value,label='Preparando…',cancellable=true){busy=value;bridge?.setBusy?.(value).catch(()=>{});$('cancel').hidden=value&&!cancellable;$('ai-engine').disabled=value;$('ai-scope').disabled=value;$('prompt').disabled=value;renderTextScene();$('busy-message').hidden=!value;$('busy-label').textContent=label;updateButtons();document.querySelectorAll('#clip-properties input, #clip-properties button').forEach(e=>e.disabled=value);$('aspect').disabled=value;$('project-name').disabled=value;}
+function setBusy(value,label='Preparando…',cancellable=true){busy=value;bridge?.setBusy?.(value).catch(()=>{});$('cancel').hidden=value&&!cancellable;$('ai-engine').disabled=value;$('prompt').disabled=value;renderTextScene();$('busy-message').hidden=!value||aiRunning;$('ai-progress').hidden=!value||!aiRunning;$('ai-panel').setAttribute('aria-busy',String(value&&aiRunning));$('busy-label').textContent=label;updateButtons();document.querySelectorAll('#clip-properties input, #clip-properties button').forEach(e=>e.disabled=value);$('aspect').disabled=value;$('project-name').disabled=value;}
 function updateButtons(){
  renderUpdate();
  $('relink-missing').disabled=busy;
@@ -715,7 +716,6 @@ function render(){
 function showModule(module){
  if(busy&&!recorder){toast('Aguarde ou cancele a operação atual.');return;}
  if(recorder){toast('Conclua ou descarte a gravação antes de trocar de ferramenta.');return;}
- if(module==='ai'){$('ai-scope').value=selected?'selected':'all';$('ai-scope').querySelector('[value=selected]').disabled=!selected;}
  activePanel=module;document.querySelector('.library').hidden=!module;document.querySelector('.inspector').hidden=true;$('context-title').textContent=({components:'Componentes',narration:'Narração',audio:'Música',captions:'Legendas',ai:'Editar com IA'})[module]||'';document.querySelector('.workspace').classList.toggle('has-context',!!module);
  $('components-panel').hidden=module!=='components';renderTextScene();
  $('narration-panel').hidden=module!=='narration';$('music-panel').hidden=module!=='audio';if(module!=='audio')$('music-frame').contentWindow?.postMessage({type:'corte-music-pause'},'*');$('captions-panel').hidden=module!=='captions';$('ai-panel').hidden=module!=='ai';
@@ -934,7 +934,7 @@ $('copy-performance-diagnostics').onclick=guard(async()=>{await bridge.copyPerfo
 async function openSavedProject(token){
  if(busy){if(token)toast('Conclua a operação atual e abra o projeto pelo menu Arquivo.',true);return;}document.activeElement?.blur?.();if(dirty && !confirm('Abrir outro projeto e descartar alterações não salvas?'))return;stop();openingProject=true;setBusy(true,'Abrindo projeto…');
  try{const r=await bridge.openProject(token);
- if(r){mediaHydrationState=r.hydrationId?{id:r.hydrationId,assets:r.assets,pending:r.assets.filter(a=>a.pending).length,errors:[]}:null;lastHydrationErrors=0;$('share-evidence').checked=false;projectFileLabel(r.file);selectedCaptionKey=null;history=r.history?History.from(r.history):new History(r.project);media.clear();for(const a of r.assets)media.set(a.id,a);selected=r.project.clips[0]?.id||null;position=0;pending=null;$('proposal').hidden=true;markDirty(false);render();if(r.errors?.length)toast(r.errors.join('\n'),true);else if(r.assets.some(a=>a.missing))toast('Algumas mídias estão ausentes. Clique com o botão direito no trecho para localizar a mídia.',true);if(r.hydrationId)applyMediaState(await bridge.mediaState(r.hydrationId));}
+ if(r){mediaHydrationState=r.hydrationId?{id:r.hydrationId,assets:r.assets,pending:r.assets.filter(a=>a.pending).length,errors:[]}:null;lastHydrationErrors=0;projectFileLabel(r.file);selectedCaptionKey=null;history=r.history?History.from(r.history):new History(r.project);media.clear();for(const a of r.assets)media.set(a.id,a);selected=r.project.clips[0]?.id||null;position=0;pending=null;$('proposal').hidden=true;markDirty(false);render();if(r.errors?.length)toast(r.errors.join('\n'),true);else if(r.assets.some(a=>a.missing))toast('Algumas mídias estão ausentes. Clique com o botão direito no trecho para localizar a mídia.',true);if(r.hydrationId)applyMediaState(await bridge.mediaState(r.hydrationId));}
  }finally{openingProject=false;setBusy(false);}
 }
 async function relinkAssets(assets){if(busy)return;stop();setBusy(true,'Localizando mídias…',false);try{for(const asset of assets){const result=await bridge.relink(asset);if(!result)break;media.set(asset.id,result);markDirty();render();}}finally{setBusy(false);}}
@@ -1009,13 +1009,13 @@ let connectionRequest=0;
 async function refreshConnection(){if(!bridge)return;const request=++connectionRequest,r=await bridge.status();if(request!==connectionRequest)return;connected=r.connected;$('connect').classList.toggle('connected',connected);$('connection-label').textContent=connected?'ChatGPT conectado':'Não conectado';$('connect').disabled=busy||connected;}
 $('connect').addEventListener('click',guard(async()=>{if(connected){toast('Conectado com ChatGPT. Configure limites e créditos na sua conta; esta versão não possui desconexão integrada.');return;}if(!bridge)throw new Error('O login está disponível no app desktop.');$('connect').disabled=true;$('connection-label').textContent='Conclua no navegador…';try{await bridge.login();await refreshConnection();toast(connected?'ChatGPT conectado. Pronto para analisar.':'Login não concluído.',!connected);}finally{$('connect').disabled=busy||connected;if(!connected)$('connection-label').textContent='Não conectado';}}));
 $('prompt').addEventListener('input',()=>{pending=null;$('proposal').hidden=true;updateButtons();});
-$('ai-engine').addEventListener('change',()=>{$('share-evidence').checked=false;$('share-evidence-label').hidden=$('ai-engine').value!=='hybrid';pending=null;$('proposal').hidden=true;});
+$('ai-engine').addEventListener('change',()=>{pending=null;$('proposal').hidden=true;});
 let cancelRequested=false;
 $('analyze').addEventListener('click',guard(async()=>{
- if(busy)return;const engine=$('ai-engine').value;if(engine==='hybrid'&&!$('share-evidence').checked)throw Error('Autorize o envio da transcrição e dos frames ao ChatGPT para esta análise.');if(!connected)throw new Error('Abra Configurações → ChatGPT para conectar sua conta.');
- stop();const snapshot=project(),prompt=$('prompt').value;cancelRequested=false;setBusy(true,engine==='hybrid'?'Preparando análise híbrida…':'Interpretando pedido por texto…');pending=null;$('proposal').hidden=true;
+ if(busy)return;$('ai-feedback').hidden=true;const engine=$('ai-engine').value;if(!connected){$('ai-feedback').textContent='Abra Configurações → ChatGPT para conectar sua conta.';$('ai-feedback').hidden=false;return;}
+ stop();const snapshot=project(),prompt=$('prompt').value;cancelRequested=false;aiRunning=true;$('ai-cancel').disabled=false;aiProgressState=aiProgress(null);$('ai-progress-label').textContent=aiProgressState.label;setBusy(true);pending=null;$('proposal').hidden=true;
  try{
-  const scope=$('ai-scope').value==='selected'?selected:null;if($('ai-scope').value==='selected'&&!scope)throw Error('Selecione um trecho.');if(engine==='hybrid')$('share-evidence').checked=false;const result=await bridge.analyze(snapshot,prompt,.5,scope,engine,engine==='hybrid');validateScopedPlan(snapshot,result.plan,scope);if(cancelRequested)return;
+  const scope=null;const result=await bridge.analyze(snapshot,prompt,.5,scope,engine,engine==='hybrid');validateScopedPlan(snapshot,result.plan,scope);if(cancelRequested)throw Error('Edição cancelada.');
   if(JSON.stringify(snapshot)!==JSON.stringify(project()))throw new Error('O projeto mudou durante a análise. Resultado descartado.');
   if(engine==='hybrid'){
    if(result.mode!=='hybrid'||result.reviewRequired!==true)throw Error('Resposta do fluxo híbrido inválida.');
@@ -1035,10 +1035,11 @@ $('analyze').addEventListener('click',guard(async()=>{
   const {plan}=result,issues=[...(plan.questions||[]),...(plan.unsupported||[])];
   if(issues.length||!plan.operations?.length){const box=$('proposal');box.replaceChildren();box.hidden=false;for(const text of [plan.summary,...issues]){const p=document.createElement('p');p.textContent=text;box.append(p);}if(!issues.length)toast('Nenhuma alteração necessária.');return;}
   const q=applyPlan(snapshot,plan);setBusy(false);commit(q,{...describeChange(snapshot,q),label:`IA: ${plan.summary}`.slice(0,4000),details:plan.operations.map(op=>describeOperation(snapshot,op))});toast('Edição aplicada. Veja os detalhes no histórico ou desfaça.');
- }finally{setBusy(false);}
+ }catch(e){$('ai-feedback').textContent=cancelRequested?'Edição cancelada. Nenhuma alteração aplicada.':e.message;$('ai-feedback').hidden=false;}finally{setBusy(false);aiRunning=false;}
 }));
-$('cancel').addEventListener('click',guard(()=>{cancelRequested=true;return bridge.cancel();}));
-bridge?.onProgress(p=>{if(p.stage==='media-warning'){toast(p.message,true);}else if(p.stage==='media'){if(busy)$('busy-label').textContent=p.message;}else if(p.stage==='hybrid')$('busy-label').textContent=p.message;else if(p.stage==='captions')$('busy-label').textContent=`Transcrevendo localmente · ${Math.round(p.completed)}/${Math.round(p.total)}…`;else if(p.stage==='transition')$('busy-label').textContent=`Renderizando transição ${p.completed}/${p.total}…`;else if(p.stage==='transcribe'){$('busy-label').textContent=`GPT transcrevendo áudio · ${p.completed+1}/${p.total}…`;if($('captions-panel').getAttribute('aria-busy')==='true')captionFeedback('loading',`Transcrevendo áudio · ${p.completed+1}/${p.total}…`);}else if(p.stage==='intent')$('busy-label').textContent='Interpretando seu pedido (somente texto)…';else if(p.stage==='quality')$('busy-label').textContent=`Detector local · ${p.seconds.toFixed(0)} s analisados…`;else if(p.stage==='local')$('busy-label').textContent=`Análise no PC · ${p.asset} · ${p.completed}/${p.total} imagens…`;else if(p.stage==='frames')$('busy-label').textContent=`Preparando frames ${p.completed}/${p.total}…`;else if(p.stage==='analysis')$('busy-label').textContent='IA analisando as cenas…';else if(p.stage==='render')$('busy-label').textContent=`Renderizando trecho ${p.completed}/${p.total}…`;});
+const cancelOperation=guard(()=>{cancelRequested=true;if(aiRunning){$('ai-progress-label').textContent='Cancelando a edição…';$('ai-cancel').disabled=true;}return bridge.cancel();});
+$('cancel').addEventListener('click',cancelOperation);$('ai-cancel').addEventListener('click',cancelOperation);
+bridge?.onProgress(p=>{if(aiRunning){if(!cancelRequested){aiProgressState=aiProgress(aiProgressState,p);$('ai-progress-label').textContent=aiProgressState.label;}return;}if(p.stage==='media-warning'){toast(p.message,true);}else if(p.stage==='media'){if(busy)$('busy-label').textContent=p.message;}else if(p.stage==='hybrid')$('busy-label').textContent=p.message;else if(p.stage==='captions')$('busy-label').textContent=`Transcrevendo localmente · ${Math.round(p.completed)}/${Math.round(p.total)}…`;else if(p.stage==='transition')$('busy-label').textContent=`Renderizando transição ${p.completed}/${p.total}…`;else if(p.stage==='transcribe'){$('busy-label').textContent=`GPT transcrevendo áudio · ${p.completed+1}/${p.total}…`;if($('captions-panel').getAttribute('aria-busy')==='true')captionFeedback('loading',`Transcrevendo áudio · ${p.completed+1}/${p.total}…`);}else if(p.stage==='intent')$('busy-label').textContent='Interpretando seu pedido (somente texto)…';else if(p.stage==='quality')$('busy-label').textContent=`Detector local · ${p.seconds.toFixed(0)} s analisados…`;else if(p.stage==='local')$('busy-label').textContent=`Análise no PC · ${p.asset} · ${p.completed}/${p.total} imagens…`;else if(p.stage==='frames')$('busy-label').textContent=`Preparando frames ${p.completed}/${p.total}…`;else if(p.stage==='analysis')$('busy-label').textContent='IA analisando as cenas…';else if(p.stage==='render')$('busy-label').textContent=`Renderizando trecho ${p.completed}/${p.total}…`;});
 document.addEventListener('keydown',e=>{
  if(e.target.isContentEditable||e.target.closest('input,textarea,select')||document.querySelector('dialog[open]'))return;
  if(!busy&&e.key==='Enter'&&rangeSelection&&rangeMode==='remove'){e.preventDefault();$('range-delete').click();return;}

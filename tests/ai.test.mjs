@@ -64,3 +64,10 @@ test('non-fatal experimental-feature startup warning is suppressed without enabl
 test('hybrid prompt distinguishes uncertain internal speech from generated subtitles and forbids deleting those regions',()=>{
  const prompt=buildPrompt(p,'Vertical',[],{review:true,speechGaps:[{assetId:p.assets[0].id,start:0,end:1}]});assert.match(prompt,/sem tempos confiáveis/i);assert.match(prompt,/não remova|não exclua/i);assert.match(prompt,/speechGaps/);
 });
+
+test('planner accepts more than ten videos and passes every source to local analysis',async()=>{
+ const {requestPlan}=await import('../desktop/ai.mjs');const {mkdtemp,rm}=await import('node:fs/promises');const {tmpdir}=await import('node:os');const path=await import('node:path');
+ const cache=await mkdtemp(path.join(tmpdir(),'corte-many-videos-'));let project=createProject(),seen=0;
+ for(let i=0;i<11;i++)project=addClip(addAsset(project,{id:`a${i}`,name:`Video ${i}`,duration:2,width:160,height:160,hasAudio:false}),`a${i}`,`c${i}`);
+ try{await assert.rejects(requestPlan({home:cache,cache,project,prompt:'Vertical',registry:new Map(),checkConnection:async()=>({connected:true}),scan:async({project:p})=>{seen=p.assets.length;throw Error('STOP_AT_LOCAL_BOUNDARY');}}),/STOP_AT_LOCAL_BOUNDARY/);assert.equal(seen,11);}finally{await rm(cache,{recursive:true,force:true});}
+});

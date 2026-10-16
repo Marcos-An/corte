@@ -96,23 +96,22 @@ export function startLogin(home,onMessage=()=>{}) {
   // Login oficial: nunca copiar cookies, credenciais ou tokens de outra conta.
   const bin=codexExecutable();return mkdir(home,{recursive:true}).then(()=>run(bin.file,[...bin.prefix,'login'],{env:{...codexEnv(process.env),...bin.env,CODEX_HOME:home},timeout:300000,onData:onMessage}));
 }
-export async function requestPlan({home,cache,project,prompt,registry,step=2,signal,onProgress=()=>{},review=false,transcripts=[],speechGaps=[],scopeClipId=null}) {
+export async function requestPlan({home,cache,project,prompt,registry,step=2,signal,onProgress=()=>{},review=false,transcripts=[],speechGaps=[],scopeClipId=null,checkConnection=loginStatus,scan=scanLocally}) {
   buildPrompt(project,prompt,[]);
   if(![.5,2,5].includes(step))throw new Error('Amostragem inválida.');
-  if(!(await loginStatus(home)).connected)throw new Error('Conecte sua conta ChatGPT. Chaves de API não são usadas neste app.');
+  if(!(await checkConnection(home)).connected)throw new Error('Conecte sua conta ChatGPT. Chaves de API não são usadas neste app.');
   await mkdir(cache,{recursive:true});const temp=await mkdtemp(path.join(cache,'analysis-'));
   try {
     const used=[...new Set(project.clips.map(c=>c.assetId))];if(!used.length)throw new Error('Adicione um vídeo à timeline.');
-    if(used.length>10)throw new Error('Analise até 10 vídeos por pedido nesta versão.');
-    const local=await scanLocally({project,registry,directory:temp,step,signal,onProgress});
+    const local=await scan({project,registry,directory:temp,step,signal,onProgress});
     const overview=review?selectOverview(project,local.frames,60):local.frames;
     const report=review?{model:local.report.model,backend:local.report.backend,fallback:local.report.fallback,warning:local.report.warning,selected:overview.map(({assetId,time})=>({assetId,time}))}:local.report;
     let sentFrames=0;
     const request=async(selected,context)=>{
-      const frames=[];for(const f of (review?includedEvidence(project,selected):selected)){if(f.path)frames.push(f);else{const file=registry.get(f.assetId)?.path;if(!file)throw new Error('Mídia ausente.');const out=path.join(temp,`refine-${frames.length}.jpg`);await frame(file,f.time,out,signal);frames.push({...f,path:out});}onProgress({stage:'frames',completed:frames.length,total:selected.length});}
+      const frames=[];for(const f of (review?includedEvidence(project,selected):selected)){if(f.path)frames.push(f);else{const file=registry.get(f.assetId)?.path;if(!file)throw new Error('Mídia ausente.');const out=path.join(temp,`refine-${frames.length}.jpg`);await frame(file,f.time,out,signal);frames.push({...f,path:out});}onProgress({stage:'frames',phase:context.phase,completed:frames.length,total:selected.length});}
       sentFrames+=frames.length;
     const schema=path.join(temp,'schema.json'),result=path.join(temp,context.phase+'-result.json');await writeFile(schema,JSON.stringify(review?reviewPlanSchema:planSchema));
-    onProgress({stage:'analysis',completed:0,total:frames.length});
+    onProgress({stage:'analysis',phase:context.phase,completed:0,total:frames.length});
     const bin=codexExecutable(),env={...codexEnv(process.env),...bin.env,CODEX_HOME:home};
     // stdin evita limite de command line do Windows e não expõe o prompt no argv.
     const {spawn}=await import('node:child_process');
