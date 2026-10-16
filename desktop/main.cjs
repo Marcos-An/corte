@@ -103,7 +103,12 @@ if(primary)app.whenReady().then(async()=>{
  });
  handler('status',async()=>({...await ai.loginStatus(home),platform:process.platform}));
  handler('login',async()=>{if(loginRunning)throw new Error('O login já está aberto no navegador.');loginRunning=true;try{await ai.startLogin(home);return ai.loginStatus(home);}finally{loginRunning=false;}});
- handler('analyze',async(p,prompt,step,clipId=null)=>{authorized(p);if(abort)throw new Error('Já há uma operação em andamento.');abort=new AbortController();try{const {requestPromptPlan}=await import('./intent.mjs');const {scopeProject,validateScopedPlan}=await import('../src/editor-experience.mjs');const result=await requestPromptPlan({home,cache,project:scopeProject(p,clipId),prompt,registry,signal:abort.signal,onProgress:notify});validateScopedPlan(p,result.plan,clipId);return result;}finally{abort=null;}});
+ handler('analyze',async(p,prompt,step,clipId=null,engine='chatgpt',shareEvidence=false)=>{
+  authorized(p);if(!['hybrid','chatgpt'].includes(engine))throw Error('Motor de IA inválido.');if(abort)throw Error('Já há uma operação em andamento.');abort=new AbortController();
+  try{const {scopeProject,validateScopedPlan}=await import('../src/editor-experience.mjs');const options={home,cache,project:scopeProject(p,clipId),scopeClipId:clipId,prompt,registry,signal:abort.signal,onProgress:notify,shareEvidence};
+   const result=engine==='hybrid'?await (await import('./hybrid.mjs')).requestHybridEdit(options):await (await import('./intent.mjs')).requestPromptPlan(options);validateScopedPlan(p,result.plan,clipId);return result;
+  }finally{abort=null;}
+ });
  handler('api-status',async()=>({configured:!!await keys.read()}));
  handler('api-save',async key=>{if(abort)throw new Error('Aguarde a operação atual.');await keys.save(key);return {configured:true};});
  handler('api-clipboard',async()=>{if(abort)throw new Error('Aguarde a operação atual.');await keys.save(clipboard.readText());return {configured:true};});

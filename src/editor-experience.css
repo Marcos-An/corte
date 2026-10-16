@@ -265,7 +265,9 @@ body.preview-focus #timeline-resizer{display:none}
 body[data-menu-position=left]:not(.preview-focus)>.workspace,
 body[data-menu-position=left]>.timeline,
 body[data-menu-position=left]>#timeline-resizer,
-body[data-menu-position=left]>.clip-actions{margin-left:100px}
+body[data-menu-position=left]>.clip-actions,
+body[data-menu-position=left]:not(.preview-focus)>.busy-message,
+body[data-menu-position=left]:not(.preview-focus)>.missing-media{margin-left:100px}
 body[data-menu-position=left]>.editor-dock{position:absolute;left:0;top:58px;bottom:0;width:100px;height:auto;flex-direction:column;justify-content:flex-start;gap:8px;padding:16px 6px;border-top:0;border-right:1px solid #292b2e;overflow-y:auto}
 body[data-menu-position=left]>.editor-dock button{width:100%;min-width:0;flex:none;white-space:normal;text-align:center}
 #menu-position{display:block;width:100%;margin-top:8px;padding:10px;background:#24252a;color:#eee;border:1px solid #42454e;border-radius:8px}
@@ -601,3 +603,7 @@ dialog>.context-heading strong{font-size:15px}
 /* Picker grids scroll inside a fixed-height dialog: rows take the card's own height, never the 32px button minimum. */
 #caption-font-options,.picker-grid{grid-auto-rows:max-content}
 #caption-font-dialog #caption-font-options button,#picker-dialog .text-preset{min-height:0!important;height:auto}
+
+/* Status rows wrap instead of squeezing their actions in smaller windows. */
+body>.busy-message{flex-wrap:wrap}
+body>.busy-message button{flex-shrink:0}

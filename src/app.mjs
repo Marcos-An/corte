@@ -28,7 +28,7 @@ const decimal=(n,digits=1,min=digits)=>Number(n).toLocaleString('pt-BR',{minimum
 const format=(time,frames=false)=>{const v=Math.max(0,time);const m=Math.floor(v/60),s=Math.floor(v%60);return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}${frames?':'+String(Math.floor(v%1*30)).padStart(2,'0'):''}`;};
 function toast(message,error=false){clearTimeout(toastTimer);$('toast').textContent=message;$('toast').classList.toggle('error',error);$('toast').hidden=false;toastTimer=setTimeout(()=>$('toast').hidden=true,error?12000:4500);}
 function guard(fn){return async(...args)=>{try{await fn(...args);}catch(e){toast(e.message,true);}};}
-function markDirty(value=true){dirty=value;renderUpdate();$('save-state').textContent=value?'Não salvo':'Salvo no computador';bridge?.setDirty(value).catch(()=>{});}
+function markDirty(value=true){$('share-evidence').checked=false;dirty=value;renderUpdate();$('save-state').textContent=value?'Não salvo':'Salvo no computador';bridge?.setDirty(value).catch(()=>{});}
 function stop(){if(recorder?.state==='recording')recorder.stop();removalPreview=null;rangePlaybackEnd=null;playing=false;video.pause();transitionPreview.pause();for(const m of musicPlayers.values())m.el.pause();document.querySelectorAll('.image-layer video').forEach(v=>v.pause());$('play').replaceChildren(icon('play'));$('play').setAttribute('aria-label','Reproduzir');}
 function commit(next,metadata){adjustmentPreview=null;captionPreviewStyle=null;captionPlacePreview=null;textPreview=null;closeClipMenu();if(busy)throw new Error('Aguarde a operação atual.');stop();rangeSelection=null;history.commit(next,metadata||describeChange(project(),next));pending=null;$('proposal').hidden=true;markDirty();position=Math.min(position,timelineDuration());if(!project().clips.some(c=>c.id===selected))selected=project().clips[0]?.id||null;render();}
 function describeChange(before,after){
@@ -64,7 +64,7 @@ function renderHistory(){
 }
 $('history-toggle').addEventListener('click',()=>{$('history-panel').hidden=false;renderHistory();});$('history-close').addEventListener('click',()=>$('history-panel').hidden=true);
 
-function setBusy(value,label='Preparando…',cancellable=true){busy=value;bridge?.setBusy?.(value).catch(()=>{});$('cancel').hidden=value&&!cancellable;renderTextScene();$('busy-message').hidden=!value;$('busy-label').textContent=label;updateButtons();document.querySelectorAll('#clip-properties input, #clip-properties button').forEach(e=>e.disabled=value);$('aspect').disabled=value;$('project-name').disabled=value;}
+function setBusy(value,label='Preparando…',cancellable=true){busy=value;bridge?.setBusy?.(value).catch(()=>{});$('cancel').hidden=value&&!cancellable;$('ai-engine').disabled=value;$('ai-scope').disabled=value;$('prompt').disabled=value;renderTextScene();$('busy-message').hidden=!value;$('busy-label').textContent=label;updateButtons();document.querySelectorAll('#clip-properties input, #clip-properties button').forEach(e=>e.disabled=value);$('aspect').disabled=value;$('project-name').disabled=value;}
 function updateButtons(){
  renderUpdate();
  $('relink-missing').disabled=busy;
@@ -919,7 +919,7 @@ document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLower
 async function openSavedProject(token){
  if(busy){if(token)toast('Conclua a operação atual e abra o projeto pelo menu Arquivo.',true);return;}document.activeElement?.blur?.();if(dirty && !confirm('Abrir outro projeto e descartar alterações não salvas?'))return;stop();setBusy(true,'Abrindo projeto…',false);let r;
  try{r=await bridge.openProject(token);}finally{setBusy(false);}
- if(r){projectFileLabel(r.file);selectedCaptionKey=null;history=r.history?History.from(r.history):new History(r.project);media.clear();for(const a of r.assets)media.set(a.id,a);selected=r.project.clips[0]?.id||null;position=0;pending=null;$('proposal').hidden=true;markDirty(false);render();if(r.assets.some(a=>a.missing))toast('Algumas mídias estão ausentes. Clique com o botão direito no trecho para localizar a mídia.',true);}
+ if(r){$('share-evidence').checked=false;projectFileLabel(r.file);selectedCaptionKey=null;history=r.history?History.from(r.history):new History(r.project);media.clear();for(const a of r.assets)media.set(a.id,a);selected=r.project.clips[0]?.id||null;position=0;pending=null;$('proposal').hidden=true;markDirty(false);render();if(r.assets.some(a=>a.missing))toast('Algumas mídias estão ausentes. Clique com o botão direito no trecho para localizar a mídia.',true);}
 }
 async function relinkAssets(assets){if(busy)return;stop();setBusy(true,'Localizando mídias…',false);try{for(const asset of assets){const result=await bridge.relink(asset);if(!result)break;media.set(asset.id,result);markDirty();render();}}finally{setBusy(false);}}
 $('relink-missing').onclick=guard(()=>relinkAssets(project().assets.filter(a=>media.get(a.id)?.missing)));
@@ -992,21 +992,36 @@ $('export-confirm').addEventListener('click',guard(async()=>{$('export-dialog').
 let connectionRequest=0;
 async function refreshConnection(){if(!bridge)return;const request=++connectionRequest,r=await bridge.status();if(request!==connectionRequest)return;connected=r.connected;$('connect').classList.toggle('connected',connected);$('connection-label').textContent=connected?'ChatGPT conectado':'Não conectado';$('connect').disabled=busy||connected;}
 $('connect').addEventListener('click',guard(async()=>{if(connected){toast('Conectado com ChatGPT. Configure limites e créditos na sua conta; esta versão não possui desconexão integrada.');return;}if(!bridge)throw new Error('O login está disponível no app desktop.');$('connect').disabled=true;$('connection-label').textContent='Conclua no navegador…';try{await bridge.login();await refreshConnection();toast(connected?'ChatGPT conectado. Pronto para analisar.':'Login não concluído.',!connected);}finally{$('connect').disabled=busy||connected;if(!connected)$('connection-label').textContent='Não conectado';}}));
-$('prompt').addEventListener('input',updateButtons);
+$('prompt').addEventListener('input',()=>{pending=null;$('proposal').hidden=true;updateButtons();});
+$('ai-engine').addEventListener('change',()=>{$('share-evidence').checked=false;$('share-evidence-label').hidden=$('ai-engine').value!=='hybrid';pending=null;$('proposal').hidden=true;});
 let cancelRequested=false;
 $('analyze').addEventListener('click',guard(async()=>{
- if(busy)return;if(!connected)throw new Error('Abra Configurações → ChatGPT para conectar sua conta.');
- stop();const snapshot=project(),prompt=$('prompt').value;cancelRequested=false;setBusy(true,'Analisando localmente…');pending=null;$('proposal').hidden=true;
+ if(busy)return;const engine=$('ai-engine').value;if(engine==='hybrid'&&!$('share-evidence').checked)throw Error('Autorize o envio da transcrição e dos frames ao ChatGPT para esta análise.');if(!connected)throw new Error('Abra Configurações → ChatGPT para conectar sua conta.');
+ stop();const snapshot=project(),prompt=$('prompt').value;cancelRequested=false;setBusy(true,engine==='hybrid'?'Preparando análise híbrida…':'Interpretando pedido por texto…');pending=null;$('proposal').hidden=true;
  try{
-  const scope=$('ai-scope').value==='selected'?selected:null;if($('ai-scope').value==='selected'&&!scope)throw Error('Selecione um trecho.');const result=await bridge.analyze(snapshot,prompt,.5,scope);validateScopedPlan(snapshot,result.plan,scope);if(cancelRequested)return;
+  const scope=$('ai-scope').value==='selected'?selected:null;if($('ai-scope').value==='selected'&&!scope)throw Error('Selecione um trecho.');if(engine==='hybrid')$('share-evidence').checked=false;const result=await bridge.analyze(snapshot,prompt,.5,scope,engine,engine==='hybrid');validateScopedPlan(snapshot,result.plan,scope);if(cancelRequested)return;
   if(JSON.stringify(snapshot)!==JSON.stringify(project()))throw new Error('O projeto mudou durante a análise. Resultado descartado.');
+  if(engine==='hybrid'){
+   if(result.mode!=='hybrid'||result.reviewRequired!==true)throw Error('Resposta do fluxo híbrido inválida.');
+   const box=$('proposal');box.replaceChildren();box.hidden=false;
+   const add=text=>{const p=document.createElement('p');p.textContent=text;box.append(p);};
+   add('Proposta híbrida — revise antes de aplicar.');add(result.plan.summary);
+   for(const op of result.plan.operations)add(describeOperation(snapshot,op));
+   for(const text of result.pendingRequests||[])add('Pendente — não será executado: '+text);
+   add(`Evidências compartilhadas: ${result.shared?.transcriptWords||0} palavras transcritas e ${result.shared?.frames||0} frames, incluindo a revisão de bordas. As imagens são amostras; confira os cortes na timeline.`);
+   pending={snapshot:JSON.stringify(snapshot),plan:result.plan,scope,notes:result.pendingRequests||[]};
+   const discard=document.createElement('button');discard.id='discard-hybrid-plan';discard.textContent='Descartar proposta';discard.onclick=()=>{pending=null;box.hidden=true;};box.append(discard);
+   if(result.plan.operations.length){const apply=document.createElement('button');apply.id='apply-hybrid-plan';apply.className='primary';apply.textContent='Aplicar somente estas alterações';apply.onclick=guard(()=>{
+    if(busy||!pending)return;const draft=pending;if(draft.snapshot!==JSON.stringify(project()))throw Error('O projeto mudou. Prepare uma nova proposta.');validateScopedPlan(project(),draft.plan,draft.scope);const before=project(),next=applyPlan(before,draft.plan);commit(next,{...describeChange(before,next),label:`IA híbrida: ${draft.plan.summary}`.slice(0,4000),details:[...draft.plan.operations.map(op=>describeOperation(before,op)),...draft.notes.map(n=>'Pendente: '+n)]});toast('Alterações revisadas aplicadas. Pendências não foram executadas.');
+   });box.append(apply);}return;
+  }
   const {plan}=result,issues=[...(plan.questions||[]),...(plan.unsupported||[])];
   if(issues.length||!plan.operations?.length){const box=$('proposal');box.replaceChildren();box.hidden=false;for(const text of [plan.summary,...issues]){const p=document.createElement('p');p.textContent=text;box.append(p);}if(!issues.length)toast('Nenhuma alteração necessária.');return;}
   const q=applyPlan(snapshot,plan);setBusy(false);commit(q,{...describeChange(snapshot,q),label:`IA: ${plan.summary}`.slice(0,4000),details:plan.operations.map(op=>describeOperation(snapshot,op))});toast('Edição aplicada. Veja os detalhes no histórico ou desfaça.');
  }finally{setBusy(false);}
 }));
 $('cancel').addEventListener('click',guard(()=>{cancelRequested=true;return bridge.cancel();}));
-bridge?.onProgress(p=>{if(p.stage==='transition')$('busy-label').textContent=`Renderizando transição ${p.completed}/${p.total}…`;else if(p.stage==='transcribe'){$('busy-label').textContent=`GPT transcrevendo áudio · ${p.completed+1}/${p.total}…`;if($('captions-panel').getAttribute('aria-busy')==='true')captionFeedback('loading',`Transcrevendo áudio · ${p.completed+1}/${p.total}…`);}else if(p.stage==='intent')$('busy-label').textContent='Interpretando seu pedido (somente texto)…';else if(p.stage==='quality')$('busy-label').textContent=`Detector local · ${p.seconds.toFixed(0)} s analisados…`;else if(p.stage==='local')$('busy-label').textContent=`Análise no PC · ${p.asset} · ${p.completed}/${p.total} imagens…`;else if(p.stage==='frames')$('busy-label').textContent=`Preparando frames ${p.completed}/${p.total}…`;else if(p.stage==='analysis')$('busy-label').textContent='IA analisando as cenas…';else if(p.stage==='render')$('busy-label').textContent=`Renderizando trecho ${p.completed}/${p.total}…`;});
+bridge?.onProgress(p=>{if(p.stage==='hybrid')$('busy-label').textContent=p.message;else if(p.stage==='captions')$('busy-label').textContent=`Transcrevendo localmente · ${Math.round(p.completed)}/${Math.round(p.total)}…`;else if(p.stage==='transition')$('busy-label').textContent=`Renderizando transição ${p.completed}/${p.total}…`;else if(p.stage==='transcribe'){$('busy-label').textContent=`GPT transcrevendo áudio · ${p.completed+1}/${p.total}…`;if($('captions-panel').getAttribute('aria-busy')==='true')captionFeedback('loading',`Transcrevendo áudio · ${p.completed+1}/${p.total}…`);}else if(p.stage==='intent')$('busy-label').textContent='Interpretando seu pedido (somente texto)…';else if(p.stage==='quality')$('busy-label').textContent=`Detector local · ${p.seconds.toFixed(0)} s analisados…`;else if(p.stage==='local')$('busy-label').textContent=`Análise no PC · ${p.asset} · ${p.completed}/${p.total} imagens…`;else if(p.stage==='frames')$('busy-label').textContent=`Preparando frames ${p.completed}/${p.total}…`;else if(p.stage==='analysis')$('busy-label').textContent='IA analisando as cenas…';else if(p.stage==='render')$('busy-label').textContent=`Renderizando trecho ${p.completed}/${p.total}…`;});
 document.addEventListener('keydown',e=>{
  if(e.target.isContentEditable||e.target.closest('input,textarea,select')||document.querySelector('dialog[open]'))return;
  if(!busy&&e.key==='Enter'&&rangeSelection&&rangeMode==='remove'){e.preventDefault();$('range-delete').click();return;}

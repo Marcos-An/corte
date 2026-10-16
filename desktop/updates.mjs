@@ -19,7 +19,7 @@ export function createUpdates({updater,prepare,blocked,installedVersion,notify=(
   install(){
    if(blocked())throw Error('Salve o projeto e conclua a operação atual antes de atualizar.');
    if(state.phase!=='ready'||installing)throw Error('A atualização ainda não está pronta.');
-   installing=true;try{updater.quitAndInstall(false,true);return true;}catch{installing=false;publish('error');throw Error('Não foi possível instalar. Tente novamente.');}
+   installing=true;try{updater.quitAndInstall(true,true);return true;}catch{installing=false;publish('error');throw Error('Não foi possível instalar. Tente novamente.');}
   }
  };
 }

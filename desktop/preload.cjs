@@ -23,7 +23,7 @@ contextBridge.exposeInMainWorld('editor',{
   exportProject:(project,height)=>invoke('editor:export',project,height),
   status:()=>invoke('editor:status'),
   login:()=>invoke('editor:login'),
-  analyze:(project,prompt,step,clipId)=>invoke('editor:analyze',project,prompt,step,clipId),
+  analyze:(project,prompt,step,clipId,engine,shareEvidence)=>invoke('editor:analyze',project,prompt,step,clipId,engine,shareEvidence),
   apiStatus:()=>invoke('editor:api-status'),
   apiSave:key=>invoke('editor:api-save',key),
   apiClipboard:()=>invoke('editor:api-clipboard'),

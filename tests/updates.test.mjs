@@ -34,3 +34,10 @@ test('installed version remains distinct from the downloaded version in every st
  assert.equal(s.updates.status().installedVersion,'0.5.7');assert.equal(s.updates.status().version,'0.5.8');
  assert.equal(s.states.at(-1).installedVersion,'0.5.7');assert.equal(s.installs,0,'ready must not restart an editing session');
 });
+
+test('explicit restart installs silently and reopens only after installation',()=>{
+ const s=setup();let args;s.updater.quitAndInstall=(...a)=>args=a;
+ s.updater.emit('update-downloaded',{version:'0.5.9'});assert.equal(s.updates.install(),true);
+ assert.deepEqual(args,[true,true],'manual restart must skip installer wizard and reopen the app');
+ assert.throws(()=>s.updates.install(),/pronta/i,'duplicate restart is refused');
+});

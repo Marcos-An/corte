@@ -35,7 +35,7 @@ try {
   ipcMain.removeHandler('editor:login');ipcMain.handle('editor:login',()=>({ok:true,value:{connected:true}}));
   ipcMain.removeHandler('editor:analyze');ipcMain.handle('editor:analyze',(_,p)=>({ok:true,value:{frames:2,plan:{summary:'Reenquadrar e ajustar áudio',questions:[],unsupported:[],operations:[{type:'update',clipId:p.clips[0].id,crop:{x:0,y:0,w:1,h:.75}},{type:'update',clipId:p.clips[0].id,volume:.5},{type:'set_aspect',aspect:'1:1'}]}}}));
  });
- await page.locator('#settings').click();await page.waitForFunction(()=>document.querySelector('#connection-label').textContent==='ChatGPT conectado');await page.locator('#settings-close').click();await page.locator('#nav-ai').click();
+ await page.locator('#settings').click();await page.waitForFunction(()=>document.querySelector('#connection-label').textContent==='ChatGPT conectado');await page.locator('#settings-close').click();await page.locator('#nav-ai').click();await page.locator('#ai-engine').selectOption('chatgpt');
  await page.locator('#ai-scope').selectOption('all');
  await page.locator('#prompt').fill('Reenquadre e reduza o áudio.');await page.getByRole('button',{name:'Preparar edição',exact:true}).click();
  assert.equal(await page.locator('dialog[open]').count(),0,'send immediately analyzes without consent dialog');

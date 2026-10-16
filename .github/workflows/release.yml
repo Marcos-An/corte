@@ -149,6 +149,7 @@ jobs:
           node tests/playhead-scroll.e2e.mjs
           node tests/updater-download.integration.mjs
           node tests/update-ui.e2e.mjs
+          node tests/hybrid-edit.e2e.mjs
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: release-${{ matrix.platform }}

@@ -36,3 +36,28 @@ test('shared instructions stay generic across temporal, crop and audio requests'
 test('conservative editing can remove a confirmed core without claiming exact boundaries',()=>{
  assert.match(buildPrompt(p,'Remova obstruções',[]),/núcleo confirmado/);
 });
+
+test('hybrid review prompt includes timed speech, pending requests and no contradictory auto-apply or single-clip restriction',()=>{
+ const text=buildPrompt(p,'Reels; não invente endereço',[],{review:true,transcripts:[{assetId:'a',words:[{start:1,end:2,text:'melão'}]}]});
+ assert.match(text,/melão/);assert.match(text,/pendingRequests/);assert.doesNotMatch(text,/aplicado automaticamente|Escopo com apenas um clipe/);
+});
+test('review payload validates executable operations independently from pending requests without weakening legacy plans',async()=>{
+ const {parseReviewPayload}=await import('../desktop/ai.mjs');
+ const plan={summary:'Vertical',operations:[{type:'set_aspect',aspect:'9:16'}],questions:[],unsupported:[]};
+ assert.equal(parseReviewPayload(p,JSON.stringify({plan,pendingRequests:['Endereço ausente']})).pendingRequests.length,1);
+ assert.throws(()=>parseReviewPayload(p,JSON.stringify({plan:{...plan,operations:[{type:'delete',clipId:'missing'}]},pendingRequests:[]})));
+ assert.throws(()=>parseReviewPayload(p,JSON.stringify({plan:{...plan,questions:['Dúvida que bloqueia operação']},pendingRequests:[]})));
+ assert.throws(()=>parseReviewPayload(p,JSON.stringify({plan,pendingRequests:['x'.repeat(2001)]})));
+});
+
+test('remote prompt cannot leak saved transcripts or narration captions outside the authorized cut',()=>{
+ const project=structuredClone(p);project.clips[0].in=3;project.clips[0].out=7;
+ project.transcripts=[{assetId:'a',words:[{start:1,end:2,text:'PRIVATE_OUTSIDE_CUT'}]}];
+ project.assets.push({id:'voice',name:'Voz',kind:'audio',duration:8,width:0,height:0,hasAudio:true});project.music=[{id:'voice-clip',assetId:'voice',in:3,out:7,start:0,volume:1,role:'narration',captionWords:[{start:1,end:2,text:'PRIVATE_NARRATION_CAPTION'}]}];
+ const text=buildPrompt(project,'Edite',[],{review:true,transcripts:[{assetId:'a',words:[{start:4,end:5,text:'AUTHORIZED_SPEECH'}]}]});
+ assert.doesNotMatch(text,/PRIVATE_OUTSIDE_CUT|PRIVATE_NARRATION_CAPTION/);assert.match(text,/AUTHORIZED_SPEECH/);assert.equal(project.transcripts[0].words[0].text,'PRIVATE_OUTSIDE_CUT');
+});
+
+test('non-fatal experimental-feature startup warning is suppressed without enabling tools',()=>{
+ const args=codexArgs('/tmp/schema','/tmp/result');assert.ok(args.includes('suppress_unstable_features_warning=true'));assert.ok(args.includes('features.skip_host_skill_discovery=true'));assert.ok(args.includes('shell_tool=false'));
+});
