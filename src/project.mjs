@@ -71,6 +71,7 @@ export function validateProject(p) {
     if((c.background==='color'||c.backgroundColor!==undefined)&&!(typeof c.backgroundColor==='string'&&/^#[0-9a-f]{6}$/i.test(c.backgroundColor)))fail('Cor de fundo inválida.');
     if(c.captionWords!==undefined)validateTranscript({assetId:c.assetId,words:c.captionWords},a.duration);
     if(c.speed!==undefined&&(!finite(c.speed)||c.speed<.25||c.speed>4||clipDuration(c)<.02-1e-9))fail('Velocidade inválida. Use 0,25× a 4× e mantenha ao menos 0,02 s de trecho.');
+    if(c.zoom!==undefined){const z=c.zoom;if(!z||typeof z!=='object'||Object.keys(z).some(k=>!['from','to'].includes(k))||![z.from,z.to].every(finite)||z.from<1||z.from>2||z.to<1||z.to>2)fail('Zoom suave inválido. Use fatores de 1 a 2.');}
     if(c.adjustments!==undefined){const a=c.adjustments;if(!a||typeof a!=='object'||Object.keys(a).some(k=>!['brightness','contrast','saturation','temperature','sharpness'].includes(k))||![a.brightness,a.contrast,a.saturation].every(finite)||a.brightness< -1||a.brightness>1||a.contrast<0||a.contrast>2||a.saturation<0||a.saturation>2||a.temperature!==undefined&&(!finite(a.temperature)||a.temperature< -1||a.temperature>1)||a.sharpness!==undefined&&(!finite(a.sharpness)||a.sharpness<0||a.sharpness>1))fail('Ajustes de imagem inválidos.');}
     validateAudioFades(c);clips.add(c.id);
   }
@@ -103,7 +104,7 @@ export function editProject(p,op) {
     case 'trim': c.in=op.in;c.out=op.out;break;
     case 'delete': q.clips.splice(index,1);break;
     case 'move': if(!Number.isInteger(op.index) || op.index<0 || op.index>=q.clips.length) fail('Posição inválida.');q.clips.splice(index,1);q.clips.splice(op.index,0,c);break;
-    case 'update': for(const key of ['volume','crop','background','backgroundColor','fadeIn','fadeOut','adjustments','speed']) if(key in op) c[key]=clone(op[key]);break;
+    case 'update': for(const key of ['volume','crop','background','backgroundColor','fadeIn','fadeOut','adjustments','speed','zoom']) if(key in op){if(key==='zoom'&&(op.zoom===null||op.zoom.from===1&&op.zoom.to===1))delete c.zoom;else c[key]=clone(op[key]);}break;
     default: fail('Operação ainda não suportada.');
   }
   return validateProject(reconcileTransitions(q));
@@ -132,7 +133,7 @@ export class History {
     const h=new History(data.entries[0].state);h.entries=clone(data.entries);h.cursor=data.cursor;return h;
   }
 }
-const keys={split:['clipId','time'],trim:['clipId','in','out'],delete:['clipId'],move:['clipId','index'],update:['clipId','volume','crop','speed','background','backgroundColor','adjustments','fadeIn','fadeOut'],set_aspect:['aspect'],remove_ranges:['clipId','ranges'],keep_ranges:['clipId','ranges'],adjust_ranges:['clipId','ranges','patch'],set_transition:['leftId','rightId','effect','duration'],set_transition_at:['index','effect','duration'],edit_audio:['audioId','patch'],add_text:['layer'],add_image:['layer'],add_video:['layer'],add_shape:['layer'],edit_component:['layerId','patch'],remove_component:['layerId'],move_component:['layerId','direction'],set_keyframe:['layerId','time','pose'],remove_keyframe:['layerId','time'],set_motion:['layerId','enter','exit']};
+const keys={split:['clipId','time'],trim:['clipId','in','out'],delete:['clipId'],move:['clipId','index'],update:['clipId','volume','crop','speed','background','backgroundColor','adjustments','fadeIn','fadeOut','zoom'],set_aspect:['aspect'],remove_ranges:['clipId','ranges'],keep_ranges:['clipId','ranges'],adjust_ranges:['clipId','ranges','patch'],set_transition:['leftId','rightId','effect','duration'],set_transition_at:['index','effect','duration'],edit_audio:['audioId','patch'],add_text:['layer'],add_image:['layer'],add_video:['layer'],add_shape:['layer'],edit_component:['layerId','patch'],remove_component:['layerId'],move_component:['layerId','direction'],set_keyframe:['layerId','time','pose'],remove_keyframe:['layerId','time'],set_motion:['layerId','enter','exit']};
 const visualPlanFields=['start','end','x','y','width','rotation','opacity'];
 const textPlanFields=['text','start','end','style'];
 const stylePlanFields=['font','size','color','position','preset','positionX','positionY','width','accent','strokeColor','strokeWidth','shadow','shadowColor','spacing','boxColor','boxOpacity','bold','italic','uppercase','hollow','accentLast','glowColor','glow','enter','exit'];
@@ -177,7 +178,7 @@ export function validatePlan(p,plan) {
     const allowed=keys[op?.type];if(!allowed || (op.type==='update'? !('clipId' in op):allowed.some(k=>!(k in op))) || Object.keys(op).some(k=>k!=='type' && !allowed.includes(k))) fail('Operação da IA inválida.');
     if(op.type==='update'&&op.crop)planFields(op.crop,['x','y','w','h']);
     if(op.type==='update' && !keys.update.slice(1).some(k=>k in op)) fail('Ajuste vazio.');
-    if(op.type==='adjust_ranges'){planFields(op.patch,['speed','crop','adjustments','volume']);if(op.patch.crop)planFields(op.patch.crop,['x','y','w','h']);}
+    if(op.type==='adjust_ranges'){planFields(op.patch,['speed','crop','adjustments','volume','zoom']);if(op.patch.crop)planFields(op.patch.crop,['x','y','w','h']);}
     if(['remove_ranges','keep_ranges','adjust_ranges'].includes(op.type)) {
       const c=p.clips.find(c=>c.id===op.clipId),a=p.assets.find(a=>a.id===c?.assetId);
       if(!a || !Array.isArray(op.ranges) || op.ranges.length>100 || op.ranges.some(r=>!Array.isArray(r) || r.length!==2 || !r.every(finite) || r[0]<0 || r[1]<=r[0] || r[1]>a.duration+.000001)) fail('Intervalos da IA inválidos.');

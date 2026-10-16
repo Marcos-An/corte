@@ -1,6 +1,6 @@
 import {applyKeyframes,keyframeAt} from './keyframes.mjs';
 import {clipSpeed,clipDuration,sourceTime,montageTime} from './clip-time.mjs';
-import {DEFAULT_ADJUSTMENTS} from './color-adjustments.mjs';
+import {DEFAULT_ADJUSTMENTS} from './color-adjustments.mjs';import {zoomAt,zoomedCrop} from './clip-time.mjs';
 import {audioLevel} from './audio-envelope.mjs';
 import {SHAPES,shapeSvg} from './shapes.mjs';
 import {createTransitionPreview,paintClip} from './transition-preview.mjs';
@@ -39,8 +39,8 @@ function describeChange(before,after){
 function describeOperation(p,op){
  const c=p.clips.find(c=>c.id===op.clipId),name=p.assets.find(a=>a.id===c?.assetId)?.name||'Projeto';
  const seconds=v=>`${Number(v).toFixed(2)}s`;
- if(op.type==='update'&&Object.keys(op).some(k=>['speed','background','backgroundColor','adjustments','fadeIn','fadeOut'].includes(k))){
-  const labels={speed:'Velocidade',background:'Fundo',backgroundColor:'Cor do fundo',adjustments:'Ajustes de imagem',fadeIn:'Fade de entrada',fadeOut:'Fade de saída',volume:'Volume',crop:'Enquadramento'};
+ if(op.type==='update'&&Object.keys(op).some(k=>['speed','background','backgroundColor','adjustments','fadeIn','fadeOut','zoom'].includes(k))){
+  const labels={zoom:'Zoom suave',speed:'Velocidade',background:'Fundo',backgroundColor:'Cor do fundo',adjustments:'Ajustes de imagem',fadeIn:'Fade de entrada',fadeOut:'Fade de saída',volume:'Volume',crop:'Enquadramento'};
   return Object.keys(labels).filter(k=>k in op).map(k=>`${labels[k]} · ${name} · ${JSON.stringify(op[k])}`).join(' / ').slice(0,4000);
  }
  if(op.type==='set_transition_at')return `Transição · junção ${op.index+1} · ${op.effect} · ${seconds(op.duration)}`;
@@ -55,12 +55,12 @@ function describeOperation(p,op){
  if(op.type==='trim')return `Aparar · ${name} · ${seconds(op.in)}–${seconds(op.out)}`;
  if(op.type==='split')return `Dividir · ${name} · ${seconds(op.time)}`;
  if(op.type==='move')return `Mover · ${name} · posição ${op.index+1}`;
- if(op.type==='adjust_ranges')return `${({speed:'Velocidade',crop:'Zoom/enquadramento',adjustments:'Ajustes de imagem',volume:'Volume'})[Object.keys(op.patch)[0]]} em trechos · ${name} · ${op.ranges.map(([start,end])=>`${seconds(start)}–${seconds(end)}`).join(', ')} · ${JSON.stringify(Object.values(op.patch)[0])}`.slice(0,4000);
+ if(op.type==='adjust_ranges')return `${({speed:'Velocidade',zoom:'Zoom suave',crop:'Zoom/enquadramento',adjustments:'Ajustes de imagem',volume:'Volume'})[Object.keys(op.patch)[0]]} em trechos · ${name} · ${op.ranges.map(([start,end])=>`${seconds(start)}–${seconds(end)}`).join(', ')} · ${JSON.stringify(Object.values(op.patch)[0])}`.slice(0,4000);
  if(op.ranges)return `${op.type==='keep_ranges'?'Manter':'Remover'} intervalos · ${name} · ${op.ranges.map(([start,end])=>`${seconds(start)}–${seconds(end)}`).join(', ')}`.slice(0,4000);
  return `Remover · ${name}`;
 }
 const editLabels={set_brief:'Informações do local',trim:'Aparar trecho',split:'Dividir trecho',delete:'Remover trecho',move:'Mover trecho',update:'Volume / reenquadramento',set_aspect:'Formato'};
-function edit(op){const q=editProject(project(),op);commit(q,{...describeChange(project(),q),label:op.type==='update'?(('volume'in op)?'Volume':('fadeIn'in op||'fadeOut'in op)?'Fade de áudio':'adjustments'in op?'Ajustes de imagem':'speed'in op?'Velocidade':'Reenquadramento'):(editLabels[op.type]||'Editar projeto')});}
+function edit(op){const q=editProject(project(),op);commit(q,{...describeChange(project(),q),label:op.type==='update'?(('volume'in op)?'Volume':('fadeIn'in op||'fadeOut'in op)?'Fade de áudio':'adjustments'in op?'Ajustes de imagem':'speed'in op?'Velocidade':'zoom'in op?'Zoom suave':'Reenquadramento'):(editLabels[op.type]||'Editar projeto')});}
 function renderHistory(){
  const list=$('history-list');list.replaceChildren();
  history.entries.forEach((entry,index)=>{const row=document.createElement('div');row.className='history-entry';row.classList.toggle('current',index===history.cursor);const button=document.createElement('button');button.textContent=entry.label;button.setAttribute('aria-label',`Restaurar ${index}: ${entry.label}`);button.setAttribute('aria-current',index===history.cursor?'step':'false');button.disabled=busy;button.addEventListener('click',guard(()=>{if(busy)return;stop();closeClipMenu();history.restore(index);position=Math.min(position,timelineDuration());selected=project().clips[0]?.id||null;pending=null;$('proposal').hidden=true;markDirty();render();}));const time=document.createElement('small');time.textContent=new Date(entry.at).toLocaleTimeString('pt-BR')+` · estado ${index} · origem ${entry.parent??'inicial'}`;row.append(button,time);if(entry.details.length){const details=document.createElement('details'),summary=document.createElement('summary');summary.textContent=`${entry.details.length} detalhe(s)`;details.append(summary);for(const text of entry.details){const item=document.createElement('p');item.textContent=text;details.append(item);}row.append(details);}list.append(row);});
@@ -320,7 +320,7 @@ function renderInspector(){const song=project().music?.find(c=>c.id===selectedMu
  const c=project().clips.find(c=>c.id===selected);$('inspector-empty').hidden=!!c;$('clip-properties').hidden=!c||!!song;if(!c)return;
  $('clip-background').value=c.background||'black';$('clip-background').disabled=busy;$('background-color-field').hidden=c.background!=='color';$('clip-background-color').value=c.backgroundColor||'#000000';$('clip-background-color').disabled=busy;
  $('clip-speed').value=clipSpeed(c);$('clip-speed').disabled=busy;for(const b of document.querySelectorAll('[data-speed]')){b.setAttribute('aria-pressed',String(Number(b.dataset.speed)===clipSpeed(c)));b.disabled=busy;}for(const b of document.querySelectorAll('[data-background]')){b.setAttribute('aria-pressed',String(b.dataset.background===(c.background||'black')));b.disabled=busy;}
- const adjustments={...DEFAULT_ADJUSTMENTS,...c.adjustments};for(const k of Object.keys(DEFAULT_ADJUSTMENTS)){$('adjust-'+k).value=Math.round(adjustments[k]*100);$('adjust-'+k+'-value').textContent=Math.round(adjustments[k]*100)+'%';}
+ const adjustments={...DEFAULT_ADJUSTMENTS,...c.adjustments},zoomPercent=c.zoom?Math.round((c.zoom.to-c.zoom.from)*100):0;$('clip-zoom').value=zoomPercent;$('clip-zoom-value').textContent=(zoomPercent>0?'+':'')+zoomPercent+'%';for(const k of Object.keys(DEFAULT_ADJUSTMENTS)){$('adjust-'+k).value=Math.round(adjustments[k]*100);$('adjust-'+k+'-value').textContent=Math.round(adjustments[k]*100)+'%';}
  $('crop-zoom').value=Math.round(100/c.crop.w);
  const a=project().assets.find(a=>a.id===c.assetId);$('clip-label').textContent=a.name;
  $('trim-in').value=Number(c.in.toFixed(3));$('trim-out').value=Number(c.out.toFixed(3));$('trim-in').max=c.out-.02;$('trim-out').max=a.kind==='image'?21600:a.duration;
@@ -335,6 +335,8 @@ for(const k of Object.keys(DEFAULT_ADJUSTMENTS)){
  input.onchange=guard(()=>{if(busy||!selected)return;edit({type:'update',clipId:selected,adjustments:adjustmentPreview?.id===selected?adjustmentPreview.adjustments:{...(project().clips.find(c=>c.id===selected).adjustments||DEFAULT_ADJUSTMENTS),[k]:Number(input.value)/100}});});
  input.onblur=()=>{if(adjustmentPreview){adjustmentPreview=null;renderInspector();draw();}};
 }
+$('clip-zoom').oninput=()=>{const v=Number($('clip-zoom').value);$('clip-zoom-value').textContent=(v>0?'+':'')+v+'%';};
+$('clip-zoom').onchange=guard(()=>{if(busy||!selected)return;const v=Number($('clip-zoom').value)/100;edit({type:'update',clipId:selected,zoom:v>0?{from:1,to:1+v}:v<0?{from:1-v,to:1}:null});});
 $('reset-adjustments').onclick=guard(()=>{if(!busy&&selected)edit({type:'update',clipId:selected,adjustments:DEFAULT_ADJUSTMENTS});});
 $('clip-speed').onchange=guard(()=>{if(busy||!selected)return;try{edit({type:'update',clipId:selected,speed:Number($('clip-speed').value)});}finally{renderInspector();}});
 $('clip-background').onchange=guard(()=>{if(!busy&&selected)edit({type:'update',clipId:selected,background:$('clip-background').value,...($('clip-background').value==='color'?{backgroundColor:$('clip-background-color').value}:{})});});
@@ -661,7 +663,7 @@ function draw(){
  if(!found){ctx.fillStyle='#000';ctx.fillRect(0,0,canvas.width,canvas.height);return;}
  const asset=p.assets.find(a=>a.id===found.clip.assetId),source=asset.kind==='image'?stillImage(asset):video;
  if(!source||asset.kind!=='image'&&(video.seeking||video.readyState<2||!video.videoWidth))return;
- const crop=previewCrop?.clipId===found.clip.id?previewCrop.crop:found.clip.crop;try{paintClip(ctx,source,found.clip,crop);}catch{/* Await decoding. */}
+ const crop=zoomedCrop(previewCrop?.clipId===found.clip.id?previewCrop.crop:found.clip.crop,zoomAt(found.clip,position-found.start));try{paintClip(ctx,source,found.clip,crop);}catch{/* Await decoding. */}
 }
 
 function syncOriginalAudio(){const found=clipAt(project(),position);const level=found?audioLevel(found.clip,position-found.start,clipDuration(found.clip)):0;if(gain){video.volume=1;gain.gain.value=level;}else video.volume=Math.min(1,level);}

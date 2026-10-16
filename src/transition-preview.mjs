@@ -1,4 +1,4 @@
-import {clipSpeed,clipDuration} from './clip-time.mjs';
+import {clipSpeed,clipDuration,zoomAt,zoomedCrop} from './clip-time.mjs';
 import {hasAdjustments,adjustPixels} from './color-adjustments.mjs';
 import {transitionAt} from './project.mjs';
 const adjustedFrames=new WeakMap();
@@ -38,7 +38,7 @@ export function createTransitionPreview(canvas,{media,image,playing,onFrame,erro
    return null;
   }
   const a=source(p,at.left,at.leftTime,0,play),b=source(p,at.right,at.rightTime,1,play);if(!a||!b){loading(!missing.has(at.left.assetId)&&!missing.has(at.right.assetId));return false;}loading(false);
-  for(const [i,s,c] of [[0,a,at.left],[1,b,at.right]]){if(frames[i].width!==canvas.width||frames[i].height!==canvas.height){frames[i].width=canvas.width;frames[i].height=canvas.height;}paintClip(frames[i].getContext('2d'),s,c);}
+  for(const [i,s,c] of [[0,a,at.left],[1,b,at.right]]){if(frames[i].width!==canvas.width||frames[i].height!==canvas.height){frames[i].width=canvas.width;frames[i].height=canvas.height;}paintClip(frames[i].getContext('2d'),s,c,zoomedCrop(c.crop,zoomAt(c,((i?at.rightTime:at.leftTime)-c.in)/clipSpeed(c))));}
   const ctx=canvas.getContext('2d'),progress=at.progress;ctx.save();ctx.fillStyle='#000';ctx.fillRect(0,0,canvas.width,canvas.height);
   if(at.type==='dissolve'){ctx.drawImage(frames[0],0,0);ctx.globalAlpha=progress;ctx.drawImage(frames[1],0,0);}
   else if(at.type==='fade'){ctx.globalAlpha=progress<.5?1-progress*2:progress*2-1;ctx.drawImage(frames[progress<.5?0:1],0,0);}

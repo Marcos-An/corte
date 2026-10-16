@@ -1,5 +1,7 @@
 import {clipSpeed,clipDuration} from '../src/clip-time.mjs';
 import {adjustmentFilter} from '../src/color-adjustments.mjs';
+// Smooth zoom: per-frame scale from zoom.from to zoom.to over the clip, then a fixed centred crop back to the framed size.
+function zoomFilter(c){if(!c.zoom)return '';const {from,to}=c.zoom,d=clipDuration(c);return `scale=w='trunc(iw*(${from}+${Number((to-from).toFixed(6))}*t/${Number(d.toFixed(6))})/2)*2':h=-2:eval=frame,crop=w='trunc(iw/${from}/2)*2':h='trunc(ih/${from}/2)*2':x='(iw-ow)/2':y='(ih-oh)/2',`;}
 import {audioFadeFilter} from '../src/audio-envelope.mjs';
 import {shapeAss} from '../src/shapes.mjs';
 import {keyframeExpression,pointsOf,animated} from '../src/keyframes.mjs';
@@ -64,12 +66,12 @@ export function buildSegmentArgs(c,a,input,out,aspect,height=720) {
   validateProject({version:1,name:'Render',aspect,assets:[a],clips:[c]});
   const speed=clipSpeed(c),timing=speed===1?'':`trim=duration=${c.out-c.in},setpts=(PTS-STARTPTS)/${speed},`,audioTiming=speed===1?'':`atrim=duration=${c.out-c.in},asetpts=PTS-STARTPTS,${tempoFilter(speed)}`;
   const size=dimensions(aspect,height),r=c.crop,bg=c.background==='color'?c.backgroundColor.replace('#','0x'):'black';
-  const filter=`${timing}${adjustmentFilter(c.adjustments)}crop=iw*${r.w}:ih*${r.h}:iw*${r.x}:ih*${r.y},scale=${size.width}:${size.height}:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=${size.width}:${size.height}:(ow-iw)/2:(oh-ih)/2:${bg},setsar=1,fps=30,format=yuv420p`;
+  const filter=`${timing}${adjustmentFilter(c.adjustments)}crop=iw*${r.w}:ih*${r.h}:iw*${r.x}:ih*${r.y},${zoomFilter(c)}scale=${size.width}:${size.height}:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=${size.width}:${size.height}:(ow-iw)/2:(oh-ih)/2:${bg},setsar=1,fps=30,format=yuv420p`;
   const args=['-hide_banner','-loglevel','error','-y',...(a.kind==='image'?['-loop','1']:['-ss',String(c.in)]),'-i',input];
   if(!a.hasAudio)args.push('-f','lavfi','-i','anullsrc=channel_layout=stereo:sample_rate=48000');
-  let vf=c.background==='blur'?['-filter_complex',`[0:v]${timing}${adjustmentFilter(c.adjustments)}crop=iw*${r.w}:ih*${r.h}:iw*${r.x}:ih*${r.y},split=2[bg][fg];[bg]scale=${size.width}:${size.height}:force_original_aspect_ratio=increase,crop=${size.width}:${size.height},gblur=sigma=${size.width*.015}[blur];[fg]scale=${size.width}:${size.height}:force_original_aspect_ratio=decrease:force_divisible_by=2[front];[blur][front]overlay=(W-w)/2:(H-h)/2,setsar=1,fps=30,format=yuv420p[v]`]:['-vf',filter];
+  let vf=c.background==='blur'?['-filter_complex',`[0:v]${timing}${adjustmentFilter(c.adjustments)}crop=iw*${r.w}:ih*${r.h}:iw*${r.x}:ih*${r.y},${zoomFilter(c)}split=2[bg][fg];[bg]scale=${size.width}:${size.height}:force_original_aspect_ratio=increase,crop=${size.width}:${size.height},gblur=sigma=${size.width*.015}[blur];[fg]scale=${size.width}:${size.height}:force_original_aspect_ratio=decrease:force_divisible_by=2[front];[blur][front]overlay=(W-w)/2:(H-h)/2,setsar=1,fps=30,format=yuv420p[v]`]:['-vf',filter];
   if(a.kind==='image'){
-    const source=`[0:v]${timing}format=rgba,${adjustmentFilter(c.adjustments,true)}crop=iw*${r.w}:ih*${r.h}:iw*${r.x}:ih*${r.y}`,front=`scale=${size.width}:${size.height}:force_original_aspect_ratio=decrease:force_divisible_by=2[front]`,canvas=`color=c=${bg}:s=${size.width}x${size.height}:r=30,format=rgba[base]`;
+    const source=`[0:v]${timing}format=rgba,${adjustmentFilter(c.adjustments,true)}crop=iw*${r.w}:ih*${r.h}:iw*${r.x}:ih*${r.y}${c.zoom?','+zoomFilter(c).slice(0,-1):''}`,front=`scale=${size.width}:${size.height}:force_original_aspect_ratio=decrease:force_divisible_by=2[front]`,canvas=`color=c=${bg}:s=${size.width}x${size.height}:r=30,format=rgba[base]`;
     const layers=c.background==='blur'?`${source},split=2[bg][fg];[bg]scale=${size.width}:${size.height}:force_original_aspect_ratio=increase,crop=${size.width}:${size.height},gblur=sigma=${size.width*.015}[blur];${canvas};[base][blur]overlay=format=auto[canvas];[fg]${front}`:`${source},${front};${canvas};[base]null[canvas]`;
     vf=['-filter_complex',`${layers};[canvas][front]overlay=(W-w)/2:(H-h)/2:format=auto,setsar=1,fps=30,format=yuv420p[v]`];
   }
