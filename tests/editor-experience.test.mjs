@@ -50,3 +50,6 @@ test('AI progress uses understandable stages and never regresses across files or
  assert.deepEqual(aiProgress(state,{stage:'unrelated'}),state);
  assert.equal(aiProgress(null).step,0,'a new request starts fresh');
 });
+test('starting vision updates the visible stage immediately, before model initialization completes',async()=>{
+ const {aiProgress}=await import('../src/editor-experience.mjs');const listening=aiProgress(null,{stage:'captions'});assert.equal(aiProgress(listening,{stage:'vision-start'}).label,'Analisando as cenas…');
+});

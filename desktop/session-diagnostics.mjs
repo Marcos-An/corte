@@ -1,6 +1,6 @@
 import {mkdirSync,readFileSync,writeFileSync,appendFileSync,renameSync,rmSync,statSync,openSync,fsyncSync,closeSync} from 'node:fs';
 import path from 'node:path';import os from 'node:os';import {randomUUID} from 'node:crypto';
-const stages=new Set(['startup','idle','models','hybrid','captions','transcribe','local','frames','analysis','intent','quality','render','renderer','main','worker']);
+const stages=new Set(['startup','idle','models','vision-start','hybrid','captions','transcribe','local','frames','analysis','intent','quality','render','renderer','main','worker']);
 const events=new Set(['session-start','session-end','previous-interruption','ai-start','ai-progress','ai-heartbeat','ai-error','ai-end','process-gone','uncaught-exception','worker-start','worker-exit','worker-error','renderer-error']);
 const reasons=new Set(['clean-exit','abnormal-exit','killed','crashed','oom','launch-failed','integrity-failure','memory-eviction']);
 const codes=new Set(['ENOENT','EACCES','EPERM','ENOSPC','EIO','ENOMEM','ETIMEDOUT','ECONNRESET','ECONNREFUSED','ENOTFOUND','ABORT_ERR','ERR_WORKER_OUT_OF_MEMORY']);

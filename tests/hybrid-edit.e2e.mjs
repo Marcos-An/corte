@@ -24,6 +24,8 @@ try{
   ipcMain.removeHandler('editor:cancel');ipcMain.handle('editor:cancel',()=>{global.aiResolve({ok:false,error:'Análise cancelada.'});return {ok:true,value:true};});
  });
  await page.locator('#analyze').click();await page.locator('#ai-progress').waitFor();assert.equal(await page.locator('#busy-message').isVisible(),false,'AI never uses the header progress');assert.equal(await page.locator('#analyze').isDisabled(),true);
+ await app.evaluate(()=>global.aiProgressSender.send('editor:progress',{stage:'captions'}));await page.waitForFunction(()=>document.querySelector('#ai-progress-label').textContent==='Ouvindo o vídeo…');
+ await app.evaluate(()=>global.aiProgressSender.send('editor:progress',{stage:'vision-start'}));await page.waitForFunction(()=>document.querySelector('#ai-progress-label').textContent==='Analisando as cenas…');
  for(const progress of [{stage:'captions',completed:43,total:29},{stage:'local',asset:'food.mp4',completed:1,total:8},{stage:'analysis'},{stage:'frames',phase:'refinement'},{stage:'captions',completed:0,total:1}]){
   await app.evaluate((_,p)=>global.aiProgressSender.send('editor:progress',p),progress);
  }

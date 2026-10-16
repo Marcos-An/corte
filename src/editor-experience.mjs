@@ -67,6 +67,6 @@ export function timelineEdgeSpeed(x,left,right){
 // Stages, not percentages: workers report different units and restart per source.
 export function aiProgress(previous,event={}){
  const steps=['Preparando sua edição…','Ouvindo o vídeo…','Analisando as cenas…','Preparando a edição…','Conferindo a proposta…'];
- const candidate=event.phase==='refinement'?4:({captions:1,transcribe:1,local:2,quality:2,frames:2,analysis:3,intent:3})[event.stage]??0;
+ const candidate=event.phase==='refinement'?4:({captions:1,transcribe:1,local:2,'vision-start':2,quality:2,frames:2,analysis:3,intent:3})[event.stage]??0;
  const step=Math.max(previous?.step??0,candidate);return {step,label:steps[step]};
 }
