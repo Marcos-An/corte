@@ -1,4 +1,4 @@
-import {transcribeLocally} from './transcribe.mjs';
+import {transcribeLocally} from './transcribe.mjs';import {speechHints} from './speech-edit.mjs';
 import {validateProject,applyPlan,validatePlan} from '../src/project.mjs';
 import {refinementTimes} from './local.mjs';
 export async function refineVisualPlan({project,prompt,frames,request,signal}){
@@ -52,8 +52,11 @@ export async function requestHybridEdit({project,prompt,shareEvidence,signal,onP
    for(const clip of project.clips.filter(c=>c.assetId===asset.id)){const start=Math.max(clip.in,gap.start),end=Math.min(clip.out,gap.end);if(end>start)speechGaps.push({assetId:asset.id,start,end,reason:gap.reason});}
   }
   if(t.context!==undefined&&(!Array.isArray(t.context)||t.context.length>10000||t.context.some(c=>typeof c.text!=='string'||c.text.length>12000||!Number.isFinite(c.start)||!Number.isFinite(c.end)||c.start<0||c.end<=c.start||c.end>asset.duration+.000001)))throw Error('Contexto de fala inválido.');
+  if(t.pauses!==undefined&&(!Array.isArray(t.pauses)||t.pauses.length>20000||t.pauses.some(p=>!Number.isFinite(p.start)||!Number.isFinite(p.end)||p.start<0||p.end<=p.start||p.end>asset.duration+.000001)))throw Error('Pausas de fala inválidas.');
   const included=w=>project.clips.some(c=>c.assetId===t.assetId&&w.start>=c.in&&w.end<=c.out);
-  transcripts.push({assetId:t.assetId,words:t.words.filter(included).map(({start,end,text})=>({start,end,text})),...(t.context?{context:t.context.filter(included).map(({start,end,text})=>({start,end,text}))}:{})});
+  const words=t.words.filter(included).map(({start,end,text},i)=>({i,start,end,text})),hints=speechHints(words);
+  const pauses=[...new Map((t.pauses||[]).flatMap(p=>project.clips.filter(c=>c.assetId===t.assetId).map(c=>({start:Math.max(p.start,c.in),end:Math.min(p.end,c.out)}))).filter(p=>p.end-p.start>=.2).map(p=>[p.start+':'+p.end,p])).values()].sort((a,b)=>a.start-b.start);
+  transcripts.push({assetId:t.assetId,words,...(t.pauses?{pauses}:{}),...(hints.length?{hints}:{}),...(t.context?{context:t.context.filter(included).map(({start,end,text})=>({start,end,text}))}:{})});
  }
  onProgress({stage:'hybrid',message:'Selecionando frames localmente e preparando plano com o ChatGPT…'});
  const result=await planRequest({...options,project,prompt,signal,onProgress,transcripts,speechGaps,review:true});check();

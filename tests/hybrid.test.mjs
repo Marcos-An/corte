@@ -20,7 +20,7 @@ test('hybrid editing transcribes locally, shares only included speech and requir
  const {requestHybridEdit}=await import('../desktop/hybrid.mjs');const project=structuredClone(p);project.clips[0].in=30;project.clips[0].out=40;let calls=0;
  const result=await requestHybridEdit({project,prompt:'Reels, corte a fala ruim e importe Melona',shareEvidence:true,registry:new Map([['a',{path:'/private/source.mp4'}]]),connected:async()=>true,
  transcribe:async()=>[{assetId:'a',words:[{start:1,end:2,text:'fora'},{start:35,end:36,text:'radioativa'},{start:39.5,end:40.5,text:'fora também'}]}],
- planRequest:async options=>{calls++;assert.equal(options.review,true);assert.deepEqual(options.transcripts,[{assetId:'a',words:[{start:35,end:36,text:'radioativa'}]}]);return {plan:structuredClone(base),pendingRequests:['Importe a foto Melona.'],frames:3};}});
+ planRequest:async options=>{calls++;assert.equal(options.review,true);assert.deepEqual(options.transcripts,[{assetId:'a',words:[{i:0,start:35,end:36,text:'radioativa'}]}]);return {plan:structuredClone(base),pendingRequests:['Importe a foto Melona.'],frames:3};}});
  assert.equal(calls,1);assert.equal(result.reviewRequired,true);assert.equal(result.mode,'hybrid');assert.deepEqual(result.pendingRequests,['Importe a foto Melona.']);assert.equal(result.shared.transcriptWords,1);
 });
 test('missing consent/login and cancellation never process media or contact the planner',async()=>{
@@ -66,4 +66,17 @@ test('when uncertain-speech safety discards operations, coverage cannot keep cla
  const coverage=[{request:'Cortar a fala',kind:'cut',status:'planned',operationIndexes:[0],reason:'Hipótese inicial'}];
  const out=await requestHybridEdit({project:p,prompt:'Cortar fala',shareEvidence:true,registry,connected:async()=>true,transcribe:async()=>[{assetId:'a',words:[],gaps:[{start:0,end:30,reason:'unreliable-word-times'}]}],planRequest:async()=>({plan:{...base,operations:[{type:'remove_ranges',clipId:'c',ranges:[[1,2]]}]},pendingRequests:[],coverage,frames:1})});
  assert.deepEqual(out.plan.operations,[]);assert.equal(out.coverage[0].status,'pending');assert.deepEqual(out.coverage[0].operationIndexes,[]);assert.ok(out.pendingRequests.some(s=>s.includes('Cortar a fala')));assert.equal(coverage[0].status,'planned','do not mutate provider response');
+});
+test('provider sees indexed words, the measured pauses inside the clip and hesitation hints',async()=>{
+ const scoped=structuredClone(p);scoped.clips[0].in=10;scoped.clips[0].out=20;
+ const words=[['antes',5,5.4],['éé',11,11.4],['eu',12,12.2],['eu',12.3,12.5],['quero',14,14.4],['depois',25,25.5]].map(([text,start,end])=>({text,start,end}));
+ const out=await requestHybridEdit({project:scoped,prompt:'Tire hesitações',shareEvidence:true,registry,connected:async()=>true,
+  transcribe:async()=>[{assetId:'a',words,gaps:[],pauses:[{start:2,end:4},{start:9,end:11},{start:12.6,end:13.9},{start:30,end:31}]}],
+  planRequest:async options=>{const t=options.transcripts[0];
+   assert.deepEqual(t.words.map(w=>[w.i,w.text]),[[0,'éé'],[1,'eu'],[2,'eu'],[3,'quero']],'indexes are positions in the shared list');
+   assert.deepEqual(t.pauses,[{start:10,end:11},{start:12.6,end:13.9}],'pauses are clipped to the included source');
+   assert.deepEqual(t.hints,[{type:'filler',from:0,to:0,text:'éé'},{type:'repeat',from:1,to:1,text:'eu'}]);
+   return {plan:{...base,operations:[]},pendingRequests:[],coverage:[],frames:0};}});
+ assert.equal(out.mode,'hybrid');
+ await assert.rejects(requestHybridEdit({project:scoped,prompt:'x',shareEvidence:true,registry,connected:async()=>true,transcribe:async()=>[{assetId:'a',words,gaps:[],pauses:[{start:5,end:4}]}],planRequest:async()=>{throw Error('unreachable');}}),/pausa/i);
 });

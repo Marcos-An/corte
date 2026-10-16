@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {parseReviewPayload,reviewPlanSchema,buildPrompt,reviewWithRetry} from '../desktop/ai.mjs';
+import {parseReviewPayload,reviewPlanSchema,buildPrompt,reviewWithRetry,planSchema} from '../desktop/ai.mjs';
 import {createProject,addAsset,addClip} from '../src/project.mjs';
 const p=addClip(addAsset(createProject(),{id:'a',name:'Video',duration:10,width:320,height:240,hasAudio:false}),'a','c');
 const plan={summary:'Ajuste parcial',operations:[{type:'trim',clipId:'c',in:1,out:9}],questions:[],unsupported:[]};
@@ -43,4 +43,12 @@ test('background colour alone is framing, and a split that keeps the junction do
  assert.equal(parseReviewPayload(two,JSON.stringify({plan:colour,pendingRequests:[],coverage:[item('framing','planned',[0])]})).plan.operations.length,1);
  const kept={summary:'T',operations:[{type:'set_transition',leftId:'c1',rightId:'c2',effect:'dissolve',duration:.2},{type:'split',clipId:'c1',time:4}],questions:[],unsupported:[]};
  assert.equal(parseReviewPayload(two,JSON.stringify({plan:kept,pendingRequests:[],coverage:[item('transition','planned',[0]),item('cut','planned',[1])]})).plan.operations.length,2);
+});
+test('speech operations are resolved to source ranges before validation, only in reviewed proposals',()=>{
+ const words=[{text:'oi',start:1,end:1.4},{text:'radioativo',start:2,end:2.8},{text:'bom',start:4,end:4.3}],transcripts=[{assetId:'a',words,pauses:[{start:2.9,end:3.9}]}];
+ const out=parseReviewPayload(p,JSON.stringify({plan:{...plan,operations:[{type:'remove_words',clipId:'c',ranges:[[1,1]]}]},pendingRequests:[],coverage:[item('cut','planned',[0])]}),{transcripts});
+ assert.equal(out.plan.operations[0].type,'remove_ranges');assert.ok(out.plan.operations[0].ranges[0][0]>1.4&&out.plan.operations[0].ranges[0][1]>3.7);
+ const kinds=s=>s.properties.operations.items.anyOf.map(o=>o.properties.type.const);
+ assert.ok(kinds(reviewPlanSchema.properties.plan).includes('remove_words')&&kinds(reviewPlanSchema.properties.plan).includes('tighten_pauses'));assert.ok(!kinds(planSchema).includes('remove_words'));
+ assert.match(buildPrompt(p,'Corte',[],{review:true}),/remove_words/);
 });

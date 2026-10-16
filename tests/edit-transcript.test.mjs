@@ -47,3 +47,8 @@ test('window overlap tolerates timing jitter between decodes: no duplicated and 
  assert.deepEqual(run([{text:'eu',start:26.8,end:27.1},{text:'não',start:27.3,end:27.5}],[{text:'eu',start:1.9,end:2.2},{text:'Não',start:2.6,end:2.8},{text:'quero',start:3,end:3.4}]),['eu@26.8','não@27.3','quero@28'],'same word seen at 27.3 and 27.6 is kept once');
  assert.deepEqual(run([{text:'eu',start:26.8,end:27.1},{text:'não',start:27.6,end:27.8}],[{text:'eu',start:1.85,end:2.1},{text:'não',start:2.4,end:2.6},{text:'quero',start:3,end:3.4}]),['eu@26.8','não@27.4','quero@28'],'a word on the far side of the midpoint in both decodes is not lost');
 });
+test('pauses travel with the window merge and a pause split by the boundary is joined back',()=>{
+ const [a,b]=speechWindows(35),m={words:[],gaps:[],context:[],pauses:[]};
+ mergeSpeechWindow(m,{words:[],gaps:[],pauses:[{start:1,end:2},{start:26.5,end:30}]},a);mergeSpeechWindow(m,{words:[],gaps:[],pauses:[{start:1.5,end:3.2},{start:8,end:9}]},b);
+ assert.deepEqual(m.pauses,[{start:1,end:2},{start:26.5,end:28.2},{start:33,end:34}]);
+});

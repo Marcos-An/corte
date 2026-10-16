@@ -54,5 +54,7 @@ export function mergeSpeechWindow(target,recognized,window){
   target.words.push(w);
  }
  for(const key of ['gaps','context'])target[key].push(...(recognized[key]||[]).map(shift).map(clip).filter(x=>x.end>x.start));
+ // A pause crossing the ownership boundary arrives in two pieces; join them back.
+ for(const p of (recognized.pauses||[]).map(shift).map(clip).filter(x=>x.end>x.start)){const last=(target.pauses??=[]).at(-1);if(last&&p.start<=last.end+.01)last.end=Math.max(last.end,p.end);else target.pauses.push({start:p.start,end:p.end});}
  return target;
 }
