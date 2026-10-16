@@ -14,6 +14,8 @@ Features retained for the editor: H.264 (x264), AAC, image/audio/video decoding,
 
 The release uses FFmpeg/FFprobe 6.1.1 compiled by `build-windows.sh` in a native MSYS2 MINGW64 environment. The recipe uses GPL components, disables nonfree components and links dependency libraries statically. DirectWrite supplies system fonts for ASS subtitles.
 
+The recipe builds x264 and FFmpeg with x86 assembly (NASM required in MSYS2: `pacman -S mingw-w64-x86_64-nasm`) and enables D3D11VA/DXVA2 hardware decoding, which works on NVIDIA, AMD and Intel GPUs. The editor asks for `-hwaccel auto` when sampling video for AI analysis; FFmpeg falls back to software decoding when no accelerator is available. After rebuilding, update the hashes in `manifest.json` and the sources archive before releasing.
+
 `ffmpeg-windows-sources.tar.gz` contains the same pinned dependency sources listed for macOS, plus zlib 1.3.1, the Windows recipe and checksums. It is bundled and distributed alongside the installers. The manual GitHub workflow verifies H.264/AAC encoding, probing, actual ASS subtitle pixels and absence of non-system GNU runtime DLL imports. This does not replace Windows application installation/GUI QA.
 
 ## Distribution controls

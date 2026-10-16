@@ -53,7 +53,7 @@ export function scanLocally({project,registry,directory,step=2,signal,onProgress
 // Screening thumbnails and the preview pool share one decode; the second full decode was the dominant cost on 4K HEVC.
 export function samplingArgs(file,fps,folder){
  if(!Number.isFinite(fps)||fps<=0)throw Error('Amostragem visual inválida.');
- return ['-hide_banner','-loglevel','error','-y','-i',file,'-filter_complex',`[0:v]fps=${fps}:start_time=0,split=2[a][b];[a]scale=96:-2,format=rgb24[s];[b]${PREVIEW_SCALE},format=rgb24[p]`,
+ return ['-hide_banner','-loglevel','error','-y','-hwaccel','auto','-i',file,'-filter_complex',`[0:v]fps=${fps}:start_time=0,split=2[a][b];[a]scale=96:-2,format=rgb24[s];[b]${PREVIEW_SCALE},format=rgb24[p]`,
   '-map','[s]','-pix_fmt','rgb24',path.join(folder,'%06d.png'),'-map','[p]',...PREVIEW_JPEG,path.join(folder,'pool-%06d.jpg')];
 }
 // Distance to the previous candidate grows with the time between them; the frame one step earlier measures the change itself.
