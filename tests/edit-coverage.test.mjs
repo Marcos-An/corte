@@ -68,3 +68,9 @@ test('placeholder text on screen is never reported as finished work',()=>{
  assert.ok(out.pendingRequests.some(s=>s.includes('[INSERIR ENDEREÇO]')&&s.includes('endereco')),JSON.stringify(out.pendingRequests));assert.equal(out.pendingRequests.length,1);
  const input=buildPrompt(p,'Narração em off será adicionada depois',[],{review:true});assert.match(input,/narração/i);assert.match(input,/temperature/);
 });
+test('the overview may ask for visual searches and the final round sees which frame answers which query',()=>{
+ const ok=parseReviewPayload(p,JSON.stringify({plan,pendingRequests:[],coverage:[item('cut','planned',[0])],visualQueries:[{query:'umbrellas hanging from the ceiling',purpose:'ambiente'}]}));assert.equal(ok.visualQueries.length,1);
+ for(const bad of [[{query:'',purpose:'x'}],[{query:'x'.repeat(201),purpose:'x'}],Array.from({length:13},()=>({query:'q',purpose:'p'})),'facade'])assert.throws(()=>parseReviewPayload(p,JSON.stringify({plan,pendingRequests:[],coverage:[item('cut','planned',[0])],visualQueries:bad})),/visual/i);
+ assert.ok(reviewPlanSchema.required.includes('visualQueries'));
+ assert.match(buildPrompt(p,'x',[{assetId:'a',time:3,path:'/x.jpg',match:'takoyaki cut open'}],{review:true}),/"match":"takoyaki cut open"/);
+});

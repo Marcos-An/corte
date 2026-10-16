@@ -95,3 +95,11 @@ test('Windows bootstrap extracts only regular resource trees, never macOS framew
  const {windowsBootstrapArgs}=await import('../scripts/prepare-release.mjs');const args=windowsBootstrapArgs('base.zip','out');
  assert.deepEqual(args,['x','base.zip','-oout','-y','Corte.app/Contents/Resources/models/*','Corte.app/Contents/Resources/distribution/*']);
 });
+test('model files missing from the bootstrap release are fetched from the pinned model revision',async()=>{
+ const {readFile}=await import('node:fs/promises'),{modelDownloadUrl}=await import('../scripts/prepare-release.mjs'),manifest=JSON.parse(await readFile(new URL('../vendor/models/manifest.json',import.meta.url),'utf8')),search=JSON.parse(await readFile(new URL('../vendor/models/search-manifest.json',import.meta.url),'utf8'));
+ assert.equal(modelDownloadUrl(manifest,'Xenova/clip-vit-base-patch32/onnx/text_model_quantized.onnx'),`https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/${manifest.revision}/onnx/text_model_quantized.onnx`);
+ assert.equal(modelDownloadUrl(manifest,'onnx-community/whisper-small_timestamped/tokenizer.json'),`https://huggingface.co/onnx-community/whisper-small_timestamped/resolve/${manifest.speech.revision}/tokenizer.json`);
+ assert.throws(()=>modelDownloadUrl(manifest,'someone/else/model.onnx'),/modelo/i);
+ assert.ok(search.files.some(f=>f.path.endsWith('text_model_quantized.onnx'))&&!manifest.files.some(f=>f.path.endsWith('text_model_quantized.onnx')),'the search encoder is pinned in its own optional manifest, so code-only updates keep working');
+ assert.equal(modelDownloadUrl(search,search.files[1].path),`https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/${search.revision}/onnx/text_model_quantized.onnx`);
+});

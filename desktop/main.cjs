@@ -163,7 +163,9 @@ if(primary)app.whenReady().then(async()=>{
   const manifest=JSON.parse(await fs.readFile(path.join(__dirname,'../vendor/models/manifest.json'),'utf8'));
   process.env.CORTE_MODEL_PATH=modelStorePath(app.getPath('userData'),manifest);
   const {autoUpdater}=require('electron-updater');autoUpdater.logger=null;autoUpdater.disableWebInstaller=true;
-  let modelsReady;ensureModels=()=>{if(!modelsReady)modelsReady=timed('models',async()=>{process.env.CORTE_MODEL_PATH=await preserveModels({bundled:path.join(process.resourcesPath,'models'),userData:app.getPath('userData'),manifest});}).catch(error=>{modelsReady=null;throw error;});return modelsReady;};
+  let modelsReady;ensureModels=()=>{if(!modelsReady)modelsReady=timed('models',async()=>{process.env.CORTE_MODEL_PATH=await preserveModels({bundled:path.join(process.resourcesPath,'models'),userData:app.getPath('userData'),manifest});
+   // Optional visual-search encoder: a code-only update may not carry it; search then stays off.
+   try{const search=JSON.parse(await fs.readFile(path.join(__dirname,'../vendor/models/search-manifest.json'),'utf8'));process.env.CORTE_SEARCH_MODEL_PATH=await preserveModels({bundled:path.join(process.resourcesPath,'models'),userData:app.getPath('userData'),manifest:search});}catch{}}).catch(error=>{modelsReady=null;throw error;});return modelsReady;};
   updates=createUpdates({updater:autoUpdater,installedVersion:app.getVersion(),prepare:ensureModels,busy:()=>savingProject||!!abort||rendererBusy||activeOperations>0||!!hydration?.state.pending,blocked:()=>dirty||savingProject||!!abort||rendererBusy||activeOperations>0||microphoneArmedUntil>Date.now(),notify:state=>{if(!window.isDestroyed())window.webContents.send('editor:update',state);}});
  }
  await window.loadFile(path.join(__dirname,'../src/index.html'));window.show();

@@ -1,0 +1,35 @@
+{
+  "model": "Xenova/clip-vit-base-patch32",
+  "revision": "d15189d7028b43f1d3e65039190477f6af591c2a",
+  "purpose": "Optional text-to-image search. Not required by visual analysis; code-only updates may lack it.",
+  "files": [
+    {
+      "path": "Xenova/clip-vit-base-patch32/config.json",
+      "sha256": "493ef57ff783e42d1530c91b53469b7fdf8db8a9c1408e86998fcb7899a4f495"
+    },
+    {
+      "path": "Xenova/clip-vit-base-patch32/onnx/text_model_quantized.onnx",
+      "sha256": "73baab855d406190da9faa498cfedf65f15cf309f4cc7385b7b032e6d08e5c3a"
+    },
+    {
+      "path": "Xenova/clip-vit-base-patch32/tokenizer.json",
+      "sha256": "f7f3b7af117d467b58374797691a6438d3e6b9e9cef800dfd5dced7f697a90cd"
+    },
+    {
+      "path": "Xenova/clip-vit-base-patch32/tokenizer_config.json",
+      "sha256": "60ba2912bc6344c94bc16bbdec27fa1209409167b6f2fdf3cfe9e65462ea3967"
+    },
+    {
+      "path": "Xenova/clip-vit-base-patch32/special_tokens_map.json",
+      "sha256": "c4864a9376a8401918425bed71fc14fc0e81f9b59ec45c1cf96cccb2df508eac"
+    },
+    {
+      "path": "Xenova/clip-vit-base-patch32/vocab.json",
+      "sha256": "5047b556ce86ccaf6aa22b3ffccfc52d391ea4accdab9c2f2407da5b742d4363"
+    },
+    {
+      "path": "Xenova/clip-vit-base-patch32/merges.txt",
+      "sha256": "9fd691f7c8039210e0fced15865466c65820d09b63988b0174bfe25de299051a"
+    }
+  ]
+}

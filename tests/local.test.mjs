@@ -53,3 +53,19 @@ test('final evidence keeps time coverage even when candidates cluster around ear
  const holes=times.slice(1).map((t,i)=>t-times[i]);assert.ok(Math.max(...holes)<=60,`largest blind stretch ${Math.max(...holes)}s`);
  assert.deepEqual(selectEvidence(samples.slice(0,400),20),selectEvidence(samples.slice(0,400),20),'deterministic');
 });
+test('visual search ranks frames by text similarity, spreads picks in time and labels each match',async()=>{
+ const {searchFrames}=await import('../desktop/local.mjs');
+ const unit=v=>{const n=Math.hypot(...v);return v.map(x=>x/n);},index=[];
+ for(let t=0;t<20;t++)index.push({assetId:'facade',time:t,path:`f${t}`,vector:unit([1,t===7?.2:1,0])});
+ for(let t=0;t<20;t++)index.push({assetId:'food',time:t,path:`d${t}`,vector:unit([0,1,t===3||t===4?3:1])});
+ const found=searchFrames(index,[{query:'restaurant facade sign',vector:unit([1,0,0])},{query:'takoyaki cut open',vector:unit([0,0,1])}],{k:2,spacing:2});
+ assert.deepEqual(found.map(f=>[f.match,f.assetId,f.time]),[['restaurant facade sign','facade',7],['restaurant facade sign','facade',0],['takoyaki cut open','food',3],['takoyaki cut open','food',0]].map(([m,a,t],i)=>i===1?[m,a,found[1].time]:i===3?[m,a,found[3].time]:[m,a,t]));
+ assert.ok(Math.abs(found[3].time-3)>=2,'the second pick for a query is not the neighbour of the first');
+ assert.ok(found.every(f=>typeof f.score==='number'&&f.path));
+ assert.deepEqual(searchFrames(index,[],{}),[]);
+});
+test('blurry stretches are reported per asset from the sharpness of real previews',async()=>{
+ const {blurryRanges}=await import('../desktop/local.mjs');
+ const s=Array.from({length:12},(_,t)=>({time:t,sharpness:t>=4&&t<=6?5:100}));
+ assert.deepEqual(blurryRanges(s),[[4,7]]);assert.deepEqual(blurryRanges(s.map(x=>({...x,sharpness:100}))),[]);assert.deepEqual(blurryRanges([]),[]);
+});

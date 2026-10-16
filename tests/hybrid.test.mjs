@@ -85,3 +85,12 @@ test('the speech safety check follows every piece of a clip across several cuts'
   planRequest:async()=>({plan:{...base,operations:[{type:'remove_ranges',clipId:'c',ranges:[[10,20]]},{type:'remove_ranges',clipId:'c',ranges:[[70.5,71]]}]},pendingRequests:[],frames:1})});
  assert.deepEqual(out.plan.operations,[],'the second cut hits uncertain speech in a later piece of the same clip');
 });
+test('visual queries from the overview bring matching frames, labelled, into the final round',async()=>{
+ const calls=[],searched=[];const plan={...base,operations:[{type:'update',clipId:'c',volume:.5}]};
+ const out=await refineVisualPlan({project:p,prompt:'Comece pela fachada',frames:[{assetId:'a',time:10}],
+  search:async queries=>{searched.push(queries);return [{assetId:'a',time:42,path:'/tmp/pool-42.jpg',match:'restaurant facade sign'}];},
+  request:async(frames,context)=>{calls.push({frames,context});return {plan:structuredClone(plan),pendingRequests:[],visualQueries:context.phase==='overview'?[{query:'restaurant facade sign',purpose:'abertura'}]:[]};}});
+ assert.deepEqual(searched,[[{query:'restaurant facade sign',purpose:'abertura'}]]);assert.equal(out.rounds,2,'a search alone justifies the final round');
+ assert.ok(calls[1].frames.some(f=>f.time===42&&f.match==='restaurant facade sign'&&f.path));
+ const none=[];await refineVisualPlan({project:p,prompt:'x',frames:[],search:async()=>{none.push(1);return [];},request:async()=>({plan:structuredClone(plan),pendingRequests:[],visualQueries:[]})});assert.equal(none.length,0,'no queries, no search');
+});

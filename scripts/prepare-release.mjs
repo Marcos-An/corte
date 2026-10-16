@@ -1,7 +1,7 @@
 import {realpathSync} from 'node:fs';
 // Reuse only hash-pinned dependencies, never execute the bootstrap application.
 import {createReadStream} from 'node:fs';
-import {readFile,mkdtemp,cp,mkdir,chmod,rm} from 'node:fs/promises';
+import {readFile,writeFile,mkdtemp,cp,mkdir,chmod,rm} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
@@ -19,6 +19,18 @@ async function verify(platform){
  for(const tool of ['ffmpeg','ffprobe'])await verifyFile(root+`vendor/${platform==='mac'?'darwin-arm64':'windows'}/${tool}${platform==='win'?'.exe':''}`,manifest[platform][tool].sha256);
  for(const [name,hash] of Object.entries(seed.extraTools[platform]))await verifyFile(root+`vendor/${platform==='mac'?'darwin-arm64':'windows'}/${name}`,hash);
  const models=JSON.parse(await readFile(root+'vendor/models/manifest.json'));for(const f of models.files)await verifyFile(root+'vendor/models/'+f.path,f.sha256);
+ const search=JSON.parse(await readFile(root+'vendor/models/search-manifest.json'));for(const f of search.files)await verifyFile(root+'vendor/models/'+f.path,f.sha256);
+}
+// Files added after the bootstrap release (e.g. a new model part) come from the revision pinned in the manifest.
+export function modelDownloadUrl(manifest,file){
+ const repo=file.split('/').slice(0,2).join('/'),rest=file.split('/').slice(2).join('/');
+ const revision=repo===manifest.model?manifest.revision:repo===manifest.speech?.model?manifest.speech.revision:null;
+ if(!revision||!rest)throw Error('Arquivo de modelo sem revisão fixada: '+file);
+ return `https://huggingface.co/${repo}/resolve/${revision}/${rest}`;
+}
+async function fetchModelFile(manifest,file,to,sha256){
+ const response=await fetch(modelDownloadUrl(manifest,file));if(!response.ok)throw Error(`Download do modelo falhou (${response.status}): ${file}`);
+ await writeFile(to,Buffer.from(await response.arrayBuffer()));await verifyFile(to,sha256);
 }
 export function windowsBootstrapArgs(zip,mac){return ['x',zip,'-o'+mac,'-y','Corte.app/Contents/Resources/models/*','Corte.app/Contents/Resources/distribution/*'];}
 async function prepare(platform){
@@ -31,7 +43,9 @@ async function prepare(platform){
  if(platform==='mac')run('ditto',['-x','-k',zip,mac]);else run('7z',windowsBootstrapArgs(zip,mac));
  const resources=path.join(mac,'Corte.app/Contents/Resources');
  const models=JSON.parse(await readFile(root+'vendor/models/manifest.json'));
- for(const f of models.files){const to=path.join(root,'vendor/models',f.path);await mkdir(path.dirname(to),{recursive:true});await cp(path.join(resources,'models',f.path),to);}
+ for(const f of models.files){const to=path.join(root,'vendor/models',f.path);await mkdir(path.dirname(to),{recursive:true});try{await cp(path.join(resources,'models',f.path),to);}catch(error){if(error.code!=='ENOENT')throw error;await fetchModelFile(models,f.path,to,f.sha256);}}
+ const search=JSON.parse(await readFile(root+'vendor/models/search-manifest.json'));
+ for(const f of search.files){const to=path.join(root,'vendor/models',f.path);await mkdir(path.dirname(to),{recursive:true});try{await verifyFile(to,f.sha256);}catch{try{await cp(path.join(resources,'models',f.path),to);await verifyFile(to,f.sha256);}catch{await fetchModelFile(search,f.path,to,f.sha256);}}}
  for(const p of ['macos','windows'])await cp(path.join(resources,'distribution',`ffmpeg-${p}-sources.tar.gz`),root+`vendor/distribution/ffmpeg-${p}-sources.tar.gz`);
  let tools=path.join(resources,'tools');
  if(platform==='win'){

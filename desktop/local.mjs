@@ -2,6 +2,7 @@ import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {runVisualProcess} from './visual-process.mjs';
 import {existsSync} from 'node:fs';
+import {readFile} from 'node:fs/promises';
 import {PREVIEW_SCALE,PREVIEW_JPEG} from './media.mjs';
 export function frameDirectory(root,assetId){return path.join(root,createHash('sha256').update(assetId).digest('hex'));}
 export const MODEL_ID='Xenova/clip-vit-base-patch32';
@@ -60,4 +61,32 @@ export async function semanticChanges(samples,candidates,embed){
  const index=new Map(samples.map((s,i)=>[s.time,i])),vectors=new Map(),vector=async i=>{if(!vectors.has(i))vectors.set(i,await embed(i));return vectors.get(i);};
  for(const c of candidates){const i=index.get(c.time);c.change=i>0?cosineDistance(await vector(i-1),await vector(i)):0;}
  return candidates;
+}
+// Text-to-image search over the per-second index: best frames per query, at least `spacing` seconds apart within an asset.
+export function searchFrames(index,queries,{k=3,spacing=2}={}){
+ const found=[];
+ for(const {query,vector} of queries){
+  const ranked=index.map(f=>({...f,score:f.vector.reduce((s,x,i)=>s+x*vector[i],0)})).sort((a,b)=>b.score-a.score),picked=[];
+  for(const f of ranked){if(picked.length>=k)break;if(picked.some(p=>p.assetId===f.assetId&&Math.abs(p.time-f.time)<spacing))continue;picked.push(f);}
+  found.push(...picked.map(({assetId,time,path,score})=>({assetId,time,path,score:Number(score.toFixed(4)),match:query})));
+ }
+ return found;
+}
+// Frames far below the asset's median sharpness, as [start,end) source ranges.
+export function blurryRanges(samples,ratio=.3){
+ if(samples.length<3)return [];
+ const sorted=samples.map(s=>s.sharpness).sort((a,b)=>a-b),limit=sorted[Math.floor(sorted.length/2)]*ratio,step=samples.length>1?samples[1].time-samples[0].time:1,ranges=[];
+ for(const s of samples){if(s.sharpness>=limit)continue;const last=ranges.at(-1);if(last&&Math.abs(last[1]-s.time)<1e-6)last[1]=s.time+step;else ranges.push([s.time,s.time+step]);}
+ return ranges;
+}
+// The search encoder ships in its own manifest: code-only Windows updates may lack it, and search then turns off.
+export async function searchModels(){
+ const manifest=JSON.parse(await readFile(path.resolve(import.meta.dirname,'../vendor/models/search-manifest.json'),'utf8'));
+ const folders=[process.env.CORTE_SEARCH_MODEL_PATH,modelPath(),process.resourcesPath&&path.join(process.resourcesPath,'models'),path.resolve(import.meta.dirname,'../vendor/models')].filter(Boolean);
+ const folder=folders.find(dir=>manifest.files.every(f=>existsSync(path.join(dir,f.path))));
+ return folder?{path:folder,manifest}:null;
+}
+export async function embedQueries({texts,signal}){
+ const found=await searchModels();if(!found)return null;
+ return runVisualProcess({data:{texts,models:found.path,manifest:found.manifest},backend:'cpu',signal,onProgress:()=>{}});
 }

@@ -46,7 +46,8 @@
       "!node_modules/ffmpeg-static/ffmpeg",
       "!node_modules/ffmpeg-static/ffmpeg.exe",
       "!node_modules/ffprobe-static/bin/**/*",
-      "vendor/models/manifest.json"
+      "vendor/models/manifest.json",
+      "vendor/models/search-manifest.json"
     ],
     "asarUnpack": [
       "node_modules/ffmpeg-static/**",

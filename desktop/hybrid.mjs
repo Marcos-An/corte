@@ -1,17 +1,19 @@
 import {transcribeLocally} from './transcribe.mjs';import {speechHints} from './speech-edit.mjs';
 import {validateProject,applyPlan,validatePlan} from '../src/project.mjs';
 import {refinementTimes} from './local.mjs';
-export async function refineVisualPlan({project,prompt,frames,request,signal}){
+// A visual query from the overview is answered by local search before the final round, even without cut borders to inspect.
+export async function refineVisualPlan({project,prompt,frames,request,signal,search=null}){
  const check=()=>{if(signal?.aborted)throw new Error('Análise cancelada.');};check();
  const first=await request(frames,{phase:'overview'});check();
  if(first.plan.questions?.length||first.plan.unsupported?.length)return {...first,rounds:1};
  validatePlan(project,first.plan);applyPlan(project,first.plan);
- const dense=refinementTimes(project,first.plan,frames,60);
+ const matched=search&&first.visualQueries?.length?(await search(first.visualQueries)).slice(0,30):[];check();
+ const dense=[...matched,...refinementTimes(project,first.plan,frames,60-matched.length)];
  if(!dense.length)return {...first,rounds:1};
  const refined=await request(dense,{phase:'refinement',preliminary:first.plan,preliminaryPending:first.pendingRequests||[]});check();
  if(!refined.plan.questions?.length&&!refined.plan.unsupported?.length){validatePlan(project,refined.plan);applyPlan(project,refined.plan);}
  const usage={};for(const result of [first,refined])for(const [k,v]of Object.entries(result.usage||{}))if(typeof v==='number')usage[k]=(usage[k]||0)+v;
- return {...refined,rounds:2,usage,refinementFrames:dense.length};
+ return {...refined,rounds:2,usage,refinementFrames:dense.length,...(matched.length?{searchMatches:matched.length}:{})};
 }
 export function includedEvidence(project,frames){
  return frames.filter(f=>Number.isFinite(f.time)&&project.clips.some(c=>c.assetId===f.assetId&&f.time>=c.in&&f.time<c.out));
@@ -64,11 +66,11 @@ export async function requestHybridEdit({project,prompt,shareEvidence,signal,onP
  const result=await planRequest({...options,project,prompt,signal,onProgress,transcripts,speechGaps,review:true});check();
  validatePlan(project,result.plan);applyPlan(project,result.plan);
  if(!Array.isArray(result.pendingRequests)||result.pendingRequests.length>40||result.pendingRequests.some(s=>typeof s!=='string'||s.length>2000))throw Error('Pendências da proposta inválidas.');
- const safe=preservesUncertainSpeech(project,result.plan,speechGaps),analysisWarnings=speechGaps.length?[`A transcrição interna encontrou ${speechGaps.length} trecho(s) sem tempos confiáveis. Não foram criadas legendas. Cortes nesses trechos precisam de revisão.${safe?'':' A proposta contém remoções nesses trechos e não será aplicada, inclusive operações dependentes; prepare outra proposta preservando-os.'}`]:[];
+ const safe=preservesUncertainSpeech(project,result.plan,speechGaps),searchWarning=result.visualSearch==='unavailable'?['A busca visual por conteúdo não está instalada nesta versão; as cenas foram escolhidas pelas amostras gerais.']:[],analysisWarnings=speechGaps.length?[`A transcrição interna encontrou ${speechGaps.length} trecho(s) sem tempos confiáveis. Não foram criadas legendas. Cortes nesses trechos precisam de revisão.${safe?'':' A proposta contém remoções nesses trechos e não será aplicada, inclusive operações dependentes; prepare outra proposta preservando-os.'}`]:[];
  const plan=safe?result.plan:{...result.plan,operations:[],summary:'Proposta preservada para revisão: não foi possível garantir os cortes nos trechos sem tempos de fala confiáveis.'};
  const coverage=safe?result.coverage:result.coverage?.map(item=>['planned','partial'].includes(item.status)?{...item,status:'pending',operationIndexes:[],reason:'Plano não aplicável: os cortes atingem fala sem tempos confiáveis; operações dependentes também foram preservadas.'}:item);
  const pendingRequests=safe?result.pendingRequests:[...new Set([...result.pendingRequests,...(coverage||[]).filter(c=>c.status==='pending').map(c=>`${c.request}: ${c.reason}`)])];
- return {...result,...(coverage?{coverage}:{}),pendingRequests,plan,analysisWarnings,reviewRequired:true,mode:'hybrid',shared:{transcriptWords:transcripts.reduce((n,t)=>n+t.words.length,0),frames:result.frames}};
+ return {...result,...(coverage?{coverage}:{}),pendingRequests,plan,analysisWarnings:[...analysisWarnings,...searchWarning],reviewRequired:true,mode:'hybrid',shared:{transcriptWords:transcripts.reduce((n,t)=>n+t.words.length,0),frames:result.frames}};
 }
 export function selectOverview(project,candidates,max=60){
  if(!Number.isInteger(max)||max<1)throw Error('Orçamento de imagens inválido.');
