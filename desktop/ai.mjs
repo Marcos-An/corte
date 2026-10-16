@@ -25,7 +25,7 @@ export const planSchema={type:'object',properties:{summary:str,operations:{type:
   op('trim',{clipId:str,in:num,out:num}),op('split',{clipId:str,time:num}),op('delete',{clipId:str}),op('move',{clipId:str,index:{type:'integer'}}),
   op('update',{clipId:str,volume:num}),op('update',{clipId:str,crop:{type:'object',properties:{x:num,y:num,w:num,h:num},required:['x','y','w','h'],additionalProperties:false}}),
   op('set_aspect',{aspect:{type:'string',enum:['9:16','16:9','1:1','4:5']}}),
-  ...Object.entries({speed:num,background:choice(['black','blur','color']),backgroundColor:str,fadeIn:num,fadeOut:num,adjustments:object({brightness:num,contrast:num,saturation:num})}).map(([key,value])=>op('update',{clipId:str,[key]:value})),
+  ...Object.entries({speed:num,background:choice(['black','blur','color']),backgroundColor:str,fadeIn:num,fadeOut:num,adjustments:object({brightness:num,contrast:num,saturation:num,temperature:num,sharpness:num})}).map(([key,value])=>op('update',{clipId:str,[key]:value})),
   op('update',{clipId:str,background:choice(['color']),backgroundColor:str}),
   op('set_motion',{layerId:str,enter:animation,exit:animation}),
   op('set_transition_at',{index:{type:'integer'},effect:choice(['none','dissolve','fade','slide']),duration:num}),
@@ -39,7 +39,7 @@ export const planSchema={type:'object',properties:{summary:str,operations:{type:
   op('remove_component',{layerId:str}),op('move_component',{layerId:str,direction:choice(['front','back'])}),
   op('set_keyframe',{layerId:str,time:num,pose:object({x:num,y:num,size:num,opacity:num})}),op('remove_keyframe',{layerId:str,time:num}),
   ...['keep_ranges','remove_ranges'].map(type=>op(type,{clipId:str,ranges:{type:'array',items:{type:'array',items:num,minItems:2,maxItems:2}}})),
-  op('adjust_ranges',{clipId:str,ranges:{type:'array',items:{type:'array',items:num,minItems:2,maxItems:2}},patch:{anyOf:[object({speed:num}),object({crop:object({x:num,y:num,w:num,h:num})}),object({adjustments:object({brightness:num,contrast:num,saturation:num})}),object({volume:num})]}})
+  op('adjust_ranges',{clipId:str,ranges:{type:'array',items:{type:'array',items:num,minItems:2,maxItems:2}},patch:{anyOf:[object({speed:num}),object({crop:object({x:num,y:num,w:num,h:num})}),object({adjustments:object({brightness:num,contrast:num,saturation:num,temperature:num,sharpness:num})}),object({volume:num})]}})
 ]}},questions:{type:'array',items:str},unsupported:{type:'array',items:str}},required:['summary','operations','questions','unsupported'],additionalProperties:false};
 const coverageKinds=['cut','order','transition','color','framing','speed','audio','text','image','composition','motion','other'];
 // Speech-anchored operations exist only in reviewed proposals, where a local transcript resolves them to source ranges.

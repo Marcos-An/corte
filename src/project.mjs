@@ -70,7 +70,7 @@ export function validateProject(p) {
     if((c.background==='color'||c.backgroundColor!==undefined)&&!(typeof c.backgroundColor==='string'&&/^#[0-9a-f]{6}$/i.test(c.backgroundColor)))fail('Cor de fundo inválida.');
     if(c.captionWords!==undefined)validateTranscript({assetId:c.assetId,words:c.captionWords},a.duration);
     if(c.speed!==undefined&&(!finite(c.speed)||c.speed<.25||c.speed>4||clipDuration(c)<.02-1e-9))fail('Velocidade inválida. Use 0,25× a 4× e mantenha ao menos 0,02 s de trecho.');
-    if(c.adjustments!==undefined){const a=c.adjustments;if(!a||typeof a!=='object'||Object.keys(a).some(k=>!['brightness','contrast','saturation'].includes(k))||![a.brightness,a.contrast,a.saturation].every(finite)||a.brightness< -1||a.brightness>1||a.contrast<0||a.contrast>2||a.saturation<0||a.saturation>2)fail('Ajustes de imagem inválidos.');}
+    if(c.adjustments!==undefined){const a=c.adjustments;if(!a||typeof a!=='object'||Object.keys(a).some(k=>!['brightness','contrast','saturation','temperature','sharpness'].includes(k))||![a.brightness,a.contrast,a.saturation].every(finite)||a.brightness< -1||a.brightness>1||a.contrast<0||a.contrast>2||a.saturation<0||a.saturation>2||a.temperature!==undefined&&(!finite(a.temperature)||a.temperature< -1||a.temperature>1)||a.sharpness!==undefined&&(!finite(a.sharpness)||a.sharpness<0||a.sharpness>1))fail('Ajustes de imagem inválidos.');}
     validateAudioFades(c);clips.add(c.id);
   }
   validateTransitions(p);

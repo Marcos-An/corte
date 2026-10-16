@@ -9,7 +9,7 @@ export function paintClip(ctx,source,clip,crop=clip.crop){
  if(hasAdjustments(clip.adjustments)){
   let frame=adjustedFrames.get(ctx);if(!frame){frame=ctx.canvas.ownerDocument.createElement('canvas');adjustedFrames.set(ctx,frame);}
   const resolution=Math.min(1,Math.max(width/sw,height/sh)),w=Math.max(2,Math.round(sw*resolution)),h=Math.max(2,Math.round(sh*resolution));if(frame.width!==w||frame.height!==h){frame.width=w;frame.height=h;}
-  const pixels=frame.getContext('2d',{willReadFrequently:true});pixels.clearRect(0,0,w,h);pixels.drawImage(source,iw*crop.x,ih*crop.y,sw,sh,0,0,w,h);const data=pixels.getImageData(0,0,w,h);adjustPixels(data.data,clip.adjustments);pixels.putImageData(data,0,0);
+  const pixels=frame.getContext('2d',{willReadFrequently:true});pixels.clearRect(0,0,w,h);pixels.drawImage(source,iw*crop.x,ih*crop.y,sw,sh,0,0,w,h);const data=pixels.getImageData(0,0,w,h);adjustPixels(data.data,clip.adjustments,w);pixels.putImageData(data,0,0);
   drawable=frame;sx=0;sy=0;sampleWidth=w;sampleHeight=h;
  }
  ctx.fillStyle=clip.background==='color'?clip.backgroundColor:'#000';ctx.fillRect(0,0,width,height);

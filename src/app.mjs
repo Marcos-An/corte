@@ -319,7 +319,7 @@ function renderInspector(){const song=project().music?.find(c=>c.id===selectedMu
  const c=project().clips.find(c=>c.id===selected);$('inspector-empty').hidden=!!c;$('clip-properties').hidden=!c||!!song;if(!c)return;
  $('clip-background').value=c.background||'black';$('clip-background').disabled=busy;$('background-color-field').hidden=c.background!=='color';$('clip-background-color').value=c.backgroundColor||'#000000';$('clip-background-color').disabled=busy;
  $('clip-speed').value=clipSpeed(c);$('clip-speed').disabled=busy;for(const b of document.querySelectorAll('[data-speed]')){b.setAttribute('aria-pressed',String(Number(b.dataset.speed)===clipSpeed(c)));b.disabled=busy;}for(const b of document.querySelectorAll('[data-background]')){b.setAttribute('aria-pressed',String(b.dataset.background===(c.background||'black')));b.disabled=busy;}
- const adjustments=c.adjustments||DEFAULT_ADJUSTMENTS;for(const k of Object.keys(DEFAULT_ADJUSTMENTS)){$('adjust-'+k).value=Math.round(adjustments[k]*100);$('adjust-'+k+'-value').textContent=Math.round(adjustments[k]*100)+'%';}
+ const adjustments={...DEFAULT_ADJUSTMENTS,...c.adjustments};for(const k of Object.keys(DEFAULT_ADJUSTMENTS)){$('adjust-'+k).value=Math.round(adjustments[k]*100);$('adjust-'+k+'-value').textContent=Math.round(adjustments[k]*100)+'%';}
  $('crop-zoom').value=Math.round(100/c.crop.w);
  const a=project().assets.find(a=>a.id===c.assetId);$('clip-label').textContent=a.name;
  $('trim-in').value=Number(c.in.toFixed(3));$('trim-out').value=Number(c.out.toFixed(3));$('trim-in').max=c.out-.02;$('trim-out').max=a.kind==='image'?21600:a.duration;
