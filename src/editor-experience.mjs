@@ -72,3 +72,8 @@ export function aiProgress(previous,event={}){
  const candidate=event.phase==='refinement'?4:({captions:1,transcribe:1,local:2,'vision-start':2,quality:2,frames:2,analysis:3,intent:3})[event.stage]??0;
  const step=Math.max(previous?.step??0,candidate);return {step,label:steps[step]};
 }
+// A long request runs as three reviewed proposals; each sees the montage with the previous ones applied.
+export const EDIT_STAGES=[
+ {name:'Cortes e ordem',kinds:['cut','order','speed','framing'],does:'cortes de fala e de cenas, pausas, ordem, velocidade e formato'},
+ {name:'Imagens e sobreposições',kinds:['image','composition','framing','motion'],does:'sobreposições de imagem e vídeo, b-roll sobre a fala, zoom e enquadramento'},
+ {name:'Textos e acabamento',kinds:['text','color','transition','audio','motion'],does:'textos na tela, correção de cor e nitidez, transições e áudio'}];

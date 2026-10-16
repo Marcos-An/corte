@@ -153,6 +153,7 @@ jobs:
           node tests/update-ui.e2e.mjs
           node tests/hybrid-edit.e2e.mjs
           node tests/ai-scope.e2e.mjs
+          node tests/ai-stages.e2e.mjs
           node tests/session-diagnostics.e2e.mjs
           node tests/visual-process.e2e.mjs
           node tests/edit-quality.integration.mjs

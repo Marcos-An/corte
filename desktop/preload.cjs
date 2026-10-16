@@ -34,7 +34,7 @@ contextBridge.exposeInMainWorld('editor',{
   installSpeechModel:()=>invoke('editor:speech-model-install'),
   onSpeechModel:listener=>{const handler=(_event,progress)=>listener(progress);ipcRenderer.on('editor:speech-model',handler);return ()=>ipcRenderer.removeListener('editor:speech-model',handler);},
   login:()=>invoke('editor:login'),
-  analyze:(project,prompt,step,clipId,engine,shareEvidence)=>invoke('editor:analyze',project,prompt,step,clipId,engine,shareEvidence),
+  analyze:(project,prompt,step,clipId,engine,shareEvidence,stage=null)=>invoke('editor:analyze',project,prompt,step,clipId,engine,shareEvidence,stage),
   apiStatus:()=>invoke('editor:api-status'),
   apiSave:key=>invoke('editor:api-save',key),
   apiClipboard:()=>invoke('editor:api-clipboard'),

@@ -9,7 +9,7 @@ import {createTextScene} from './text-scene.mjs';
 import {FONTS,FONT_CATEGORIES} from './fonts.mjs';
 import {TEXT_PRESETS,ENTER_ANIMATIONS,EXIT_ANIMATIONS,presetOf,fullLook,textAppearance} from './text-style.mjs';
 import {editCaption,addCaptionAt,alignCaptions} from './caption-editing.mjs';
-import {aiProgress,assignLanes,timelineEdgeSpeed,timelinePointerTime,playbackStart,editorPanel,validateScopedPlan,dragCrop,nextClipTime,previewSize} from './editor-experience.mjs';
+import {aiProgress,assignLanes,timelineEdgeSpeed,timelinePointerTime,playbackStart,editorPanel,validateScopedPlan,dragCrop,nextClipTime,previewSize,EDIT_STAGES} from './editor-experience.mjs';
 import {removeTimelineRange,initialRange,moveRange} from './range-selection.mjs';
 import {captionEntries,captionStyle} from './captions.mjs';
 import {transitionRoom,setMotion,createProject,addAsset,addClip,addMusic,editMusic,addTextLayer,editTextLayer,remapWordStyles,addImageLayer,editImageLayer,addVideoLayer,editVideoLayer,addShapeLayer,editShapeLayer,editProject,History,layerOrder,moveLayer,setKeyframe,transitionLimit,setTransition,transitionAt,duration,clipAt,applyPlan} from './project.mjs';
@@ -67,7 +67,7 @@ function renderHistory(){
 }
 $('history-toggle').addEventListener('click',()=>{$('history-panel').hidden=false;renderHistory();});$('history-close').addEventListener('click',()=>$('history-panel').hidden=true);
 
-function setBusy(value,label='Preparando…',cancellable=true){busy=value;bridge?.setBusy?.(value).catch(()=>{});$('cancel').hidden=value&&!cancellable;$('ai-engine').disabled=value;$('prompt').disabled=value;renderTextScene();$('busy-message').hidden=!value||aiRunning;$('ai-progress').hidden=!value||!aiRunning;$('ai-panel').setAttribute('aria-busy',String(value&&aiRunning));$('busy-label').textContent=label;updateButtons();document.querySelectorAll('#clip-properties input, #clip-properties button').forEach(e=>e.disabled=value);$('aspect').disabled=value;$('project-name').disabled=value;}
+function setBusy(value,label='Preparando…',cancellable=true){busy=value;bridge?.setBusy?.(value).catch(()=>{});$('cancel').hidden=value&&!cancellable;$('ai-engine').disabled=value;$('ai-mode').disabled=value;$('prompt').disabled=value;renderTextScene();$('busy-message').hidden=!value||aiRunning;$('ai-progress').hidden=!value||!aiRunning;$('ai-panel').setAttribute('aria-busy',String(value&&aiRunning));$('busy-label').textContent=label;updateButtons();document.querySelectorAll('#clip-properties input, #clip-properties button').forEach(e=>e.disabled=value);$('aspect').disabled=value;$('project-name').disabled=value;}
 function updateButtons(){
  if(document.activeElement!==$('ai-facts'))$('ai-facts').value=project().brief?.facts||'';$('ai-facts-state').textContent=project().brief?.facts?'· preenchido':'';$('ai-facts').disabled=busy;
  renderUpdate();
@@ -1033,20 +1033,29 @@ let connectionRequest=0;
 async function refreshConnection(){if(!bridge)return;const request=++connectionRequest,r=await bridge.status();if(request!==connectionRequest)return;connected=r.connected;$('connect').classList.toggle('connected',connected);$('connection-label').textContent=connected?'ChatGPT conectado':'Não conectado';$('connect').disabled=busy||connected;}
 $('connect').addEventListener('click',guard(async()=>{if(connected){toast('Conectado com ChatGPT. Configure limites e créditos na sua conta; esta versão não possui desconexão integrada.');return;}if(!bridge)throw new Error('O login está disponível no app desktop.');$('connect').disabled=true;$('connection-label').textContent='Conclua no navegador…';try{await bridge.login();await refreshConnection();toast(connected?'ChatGPT conectado. Pronto para analisar.':'Login não concluído.',!connected);}finally{$('connect').disabled=busy||connected;if(!connected)$('connection-label').textContent='Não conectado';}}));
 $('prompt').addEventListener('input',()=>{pending=null;$('proposal').hidden=true;updateButtons();});
+$('ai-mode').addEventListener('change',()=>{pending=null;$('proposal').hidden=true;});
 $('ai-engine').addEventListener('change',()=>{pending=null;$('proposal').hidden=true;void refreshSpeechModel().catch(()=>{});});
 $('ai-scope').addEventListener('change',()=>{pending=null;$('proposal').hidden=true;$('ai-feedback').hidden=true;updateButtons();});
 let cancelRequested=false;
+// A staged run keeps the same request; after each stage is applied or skipped, the next one can be prepared.
+let requestedStage=null;
+function offerNextStage(stage){
+ const box=$('proposal');box.replaceChildren();box.hidden=false;const p=document.createElement('p');box.append(p);
+ if(stage>=EDIT_STAGES.length){p.textContent='Todas as etapas foram concluídas.';return;}
+ p.textContent=`Etapa ${stage} de ${EDIT_STAGES.length} concluída.`;const next=document.createElement('button');next.id='continue-stage';next.className='primary';next.textContent=`Continuar: etapa ${stage+1} · ${EDIT_STAGES[stage].name}`;
+ next.onclick=()=>{requestedStage=stage+1;$('analyze').click();};const stop=document.createElement('button');stop.textContent='Encerrar etapas';stop.onclick=()=>{box.hidden=true;};box.append(next,stop);
+}
 $('analyze').addEventListener('click',guard(async()=>{
- if(busy)return;$('ai-feedback').hidden=true;const engine=$('ai-engine').value;if(!connected){$('ai-feedback').textContent='Abra Configurações → ChatGPT para conectar sua conta.';$('ai-feedback').hidden=false;return;}
+ if(busy)return;$('ai-feedback').hidden=true;const engine=$('ai-engine').value,stage=engine==='hybrid'&&$('ai-mode').value==='stages'?requestedStage||1:null;requestedStage=null;if(!connected){$('ai-feedback').textContent='Abra Configurações → ChatGPT para conectar sua conta.';$('ai-feedback').hidden=false;return;}
  stop();const snapshot=project(),prompt=$('prompt').value;cancelRequested=false;aiRunning=true;$('ai-cancel').disabled=false;aiProgressState=aiProgress(null);$('ai-progress-label').textContent=aiProgressState.label;setBusy(true);pending=null;$('proposal').hidden=true;
  try{
-  const scope=$('ai-scope').value==='selected'?selected:null;if($('ai-scope').value==='selected'&&!snapshot.clips.some(c=>c.id===scope))throw Error('Selecione um trecho válido.');const result=await bridge.analyze(snapshot,prompt,.5,scope,engine,engine==='hybrid');validateScopedPlan(snapshot,result.plan,scope);if(cancelRequested)throw Error('Edição cancelada.');
+  const scope=$('ai-scope').value==='selected'?selected:null;if($('ai-scope').value==='selected'&&!snapshot.clips.some(c=>c.id===scope))throw Error('Selecione um trecho válido.');const result=await bridge.analyze(snapshot,prompt,.5,scope,engine,engine==='hybrid',stage);validateScopedPlan(snapshot,result.plan,scope);if(cancelRequested)throw Error('Edição cancelada.');
   if(JSON.stringify(snapshot)!==JSON.stringify(project()))throw new Error('O projeto mudou durante a análise. Resultado descartado.');
   if(engine==='hybrid'){
    if(result.mode!=='hybrid'||result.reviewRequired!==true)throw Error('Resposta do fluxo híbrido inválida.');
    const box=$('proposal');box.replaceChildren();box.hidden=false;
    const add=text=>{const p=document.createElement('p');p.textContent=text;box.append(p);};
-   add('Proposta híbrida — revise antes de aplicar.');add(result.plan.summary);
+   add(stage?`Etapa ${stage} de ${EDIT_STAGES.length} · ${EDIT_STAGES[stage-1].name} — revise antes de aplicar.`:'Proposta híbrida — revise antes de aplicar.');add(result.plan.summary);
    // One line per part of the request, in the user's own order, before the technical operations.
    const coverage=result.coverage||[],statusLabels={planned:'Feito',partial:'Parcial',pending:'Pendente',not_needed:'Não se aplica'};
    if(coverage.length){const list=document.createElement('ul');list.className='proposal-coverage';list.setAttribute('aria-label','Partes do pedido');for(const item of coverage){const li=document.createElement('li');li.className='coverage-'+item.status;const badge=document.createElement('span');badge.className='coverage-status';badge.textContent=statusLabels[item.status]||item.status;const text=document.createElement('span');text.textContent=item.status==='planned'?item.request:`${item.request} — ${item.reason}`;li.append(badge,text);list.append(li);}box.append(list);}
@@ -1056,9 +1065,9 @@ $('analyze').addEventListener('click',guard(async()=>{
    for(const warning of result.analysisWarnings||[])add('Revisão da fala: '+warning);
    add(`Evidências compartilhadas: ${result.shared?.transcriptWords||0} palavras transcritas e ${result.shared?.frames||0} frames, incluindo a revisão de bordas. As imagens são amostras; confira os cortes na timeline.`);
    pending={snapshot:JSON.stringify(snapshot),plan:result.plan,scope,notes:[...(result.pendingRequests||[]),...(result.analysisWarnings||[])]};
-   const discard=document.createElement('button');discard.id='discard-hybrid-plan';discard.textContent='Descartar proposta';discard.onclick=()=>{pending=null;box.hidden=true;};box.append(discard);
+   const discard=document.createElement('button');discard.id='discard-hybrid-plan';discard.textContent='Descartar proposta';discard.onclick=()=>{pending=null;box.hidden=true;if(stage)offerNextStage(stage);};box.append(discard);
    if(result.plan.operations.length){const apply=document.createElement('button');apply.id='apply-hybrid-plan';apply.className='primary';apply.textContent='Aplicar somente estas alterações';apply.onclick=guard(()=>{
-    if(busy||!pending)return;const draft=pending;if(draft.snapshot!==JSON.stringify(project()))throw Error('O projeto mudou. Prepare uma nova proposta.');validateScopedPlan(project(),draft.plan,draft.scope);const before=project(),next=applyPlan(before,draft.plan);commit(next,{...describeChange(before,next),label:`IA híbrida: ${draft.plan.summary}`.slice(0,4000),details:[...draft.plan.operations.map(op=>describeOperation(before,op)),...draft.notes.map(n=>'Pendente: '+n)]});toast('Alterações revisadas aplicadas. Pendências não foram executadas.');
+    if(busy||!pending)return;const draft=pending;if(draft.snapshot!==JSON.stringify(project()))throw Error('O projeto mudou. Prepare uma nova proposta.');validateScopedPlan(project(),draft.plan,draft.scope);const before=project(),next=applyPlan(before,draft.plan);commit(next,{...describeChange(before,next),label:`IA híbrida: ${draft.plan.summary}`.slice(0,4000),details:[...draft.plan.operations.map(op=>describeOperation(before,op)),...draft.notes.map(n=>'Pendente: '+n)]});toast('Alterações revisadas aplicadas. Pendências não foram executadas.');if(stage)offerNextStage(stage);
    });box.append(apply);}return;
   }
   const {plan}=result,issues=[...(plan.questions||[]),...(plan.unsupported||[])];
