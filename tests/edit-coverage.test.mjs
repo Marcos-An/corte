@@ -61,3 +61,10 @@ test('an overlay anchored to speech resolves after the speech cuts into an ordin
  assert.equal(overlay.type,'add_video');assert.ok(Math.abs(overlay.layer.start-(5-removed))<1e-6&&Math.abs(overlay.layer.end-(5.6-removed))<1e-6,JSON.stringify({removed,layer:overlay.layer}));
  assert.match(buildPrompt(two,'x',[],{review:true}),/place_overlay/);
 });
+test('placeholder text on screen is never reported as finished work',()=>{
+ const style={font:'Arial',size:5,color:'#ffffff',position:'bottom',preset:'outline',enter:'fade',exit:'fade'};
+ const ops=[{type:'add_text',layer:{id:'endereco',text:'Endereço: [INSERIR ENDEREÇO]',start:1,end:3,style}},{type:'add_text',layer:{id:'nome',text:'Kokoro — novo restaurante em Dourados',start:0,end:1,style}}];
+ const out=parseReviewPayload(p,JSON.stringify({plan:{...plan,operations:ops},pendingRequests:[],coverage:[item('text','planned',[0,1])]}));
+ assert.ok(out.pendingRequests.some(s=>s.includes('[INSERIR ENDEREÇO]')&&s.includes('endereco')),JSON.stringify(out.pendingRequests));assert.equal(out.pendingRequests.length,1);
+ const input=buildPrompt(p,'Narração em off será adicionada depois',[],{review:true});assert.match(input,/narração/i);assert.match(input,/temperature/);
+});
