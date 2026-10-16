@@ -108,8 +108,9 @@
 <section id="ai-panel"  class="ai-panel" aria-label="Assistente de edição" hidden>
 <div class="ai-heading"><svg class="icon"><use href="#i-ai"/></svg>Editar com IA</div>
 
+<label class="ai-scope-label" for="ai-scope">Aplicar a<select id="ai-scope"><option value="all">Montagem inteira</option><option value="selected" disabled>Trecho selecionado</option></select></label>
 <div class="prompt-box"><textarea id="prompt" aria-label="Pedido de edição" maxlength="6000" placeholder="Descreva o que quer mudar no vídeo…"></textarea>
-<div class="prompt-bottom"><button id="analyze" class="send" aria-label="Preparar edição" title="Enviar pedido e autorizar a análise da montagem inteira"><svg class="icon"><use href="#i-send"/></svg></button></div></div>
+<div class="prompt-bottom"><button id="analyze" class="send" aria-label="Preparar edição" title="Enviar pedido e autorizar a análise do escopo escolhido"><svg class="icon"><use href="#i-send"/></svg></button></div></div>
 
 <div id="ai-progress" class="ai-progress" role="status" hidden><span class="loader" aria-hidden="true"></span><strong id="ai-progress-label">Preparando sua edição…</strong><button id="ai-cancel" class="reset">Cancelar</button></div>
 <p id="ai-feedback" role="alert" hidden></p>

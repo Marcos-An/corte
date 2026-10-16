@@ -129,7 +129,7 @@ export class History {
     const h=new History(data.entries[0].state);h.entries=clone(data.entries);h.cursor=data.cursor;return h;
   }
 }
-const keys={split:['clipId','time'],trim:['clipId','in','out'],delete:['clipId'],move:['clipId','index'],update:['clipId','volume','crop','speed','background','backgroundColor','adjustments','fadeIn','fadeOut'],set_aspect:['aspect'],remove_ranges:['clipId','ranges'],keep_ranges:['clipId','ranges'],set_transition:['leftId','rightId','effect','duration'],edit_audio:['audioId','patch'],add_text:['layer'],add_image:['layer'],add_video:['layer'],add_shape:['layer'],edit_component:['layerId','patch'],remove_component:['layerId'],move_component:['layerId','direction'],set_keyframe:['layerId','time','pose'],remove_keyframe:['layerId','time'],set_motion:['layerId','enter','exit']};
+const keys={split:['clipId','time'],trim:['clipId','in','out'],delete:['clipId'],move:['clipId','index'],update:['clipId','volume','crop','speed','background','backgroundColor','adjustments','fadeIn','fadeOut'],set_aspect:['aspect'],remove_ranges:['clipId','ranges'],keep_ranges:['clipId','ranges'],set_transition:['leftId','rightId','effect','duration'],set_transition_at:['index','effect','duration'],edit_audio:['audioId','patch'],add_text:['layer'],add_image:['layer'],add_video:['layer'],add_shape:['layer'],edit_component:['layerId','patch'],remove_component:['layerId'],move_component:['layerId','direction'],set_keyframe:['layerId','time','pose'],remove_keyframe:['layerId','time'],set_motion:['layerId','enter','exit']};
 const visualPlanFields=['start','end','x','y','width','rotation','opacity'];
 const textPlanFields=['text','start','end','style'];
 const stylePlanFields=['font','size','color','position','preset','positionX','positionY','width','accent','strokeColor','strokeWidth','shadow','shadowColor','spacing','boxColor','boxOpacity','bold','italic','uppercase','hollow','accentLast','glowColor','glow','enter','exit'];
@@ -140,6 +140,10 @@ function componentEditor(p,layerId){
  }fail('Componente da IA não encontrado.');
 }
 function applyPlanOperation(p,op){
+ if(op.type==='set_transition_at'){
+  if(!Number.isInteger(op.index)||op.index<0||op.index>=p.clips.length-1)fail('Posição de transição inválida.');
+  return applyPlanOperation(p,{type:'set_transition',leftId:p.clips[op.index].id,rightId:p.clips[op.index+1].id,effect:op.effect,duration:op.duration});
+ }
  if(op.type==='set_transition'){
   if(!finite(op.duration))fail('Duração de transição inválida.');
   if(op.effect!=='none'&&op.duration>transitionLimit(p,op.leftId,op.rightId)+1e-9)fail('Duração acima da margem disponível para a transição.');

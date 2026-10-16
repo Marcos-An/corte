@@ -12,7 +12,9 @@ export function editorPanel(current,requested){return current===requested?null:r
 export function scopeProject(project,clipId){
  if(!clipId)return structuredClone(project);
  const c=project.clips.find(c=>c.id===clipId);if(!c)throw Error('Selecione um trecho válido.');
- return {...structuredClone(project),clips:[structuredClone(c)],transitions:[]};
+ const scoped={...structuredClone(project),clips:[structuredClone(c)],assets:structuredClone(project.assets.filter(a=>a.id===c.assetId))};
+ for(const field of ['transitions','music','textLayers','imageLayers','videoLayers','shapeLayers'])scoped[field]=[];
+ delete scoped.layerOrder;delete scoped.transcripts;delete scoped.clips[0].captionWords;return scoped;
 }
 export function validateScopedPlan(project,plan,clipId){
  if(!clipId)return plan;scopeProject(project,clipId);

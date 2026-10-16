@@ -1,0 +1,20 @@
+{
+ "pauseSeconds": 2,
+ "segments": [
+  {
+   "text": "Oi, hoje eu tô aqui no Kokoro, um restaurante novo em Dourados.",
+   "start": 0,
+   "end": 5.343
+  },
+  {
+   "text": "Essa bebida de melão tem um verde radioativo, mas o sabor é muito bom, lembra bastante o picolé de melão que eu tomava quando era criança, e a cor chama muita atenção. Eu escolhi a de melão porque não gosto muito de manga, mas também tinha uma bebida de manga no cardápio, com uma cor alaranjada bem bonita.",
+   "start": 7.343,
+   "end": 31.916
+  },
+  {
+   "text": "Agora o takoyaki, que está muito gostoso.",
+   "start": 33.916,
+   "end": 37.615
+  }
+ ]
+}

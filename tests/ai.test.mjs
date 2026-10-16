@@ -44,7 +44,7 @@ test('hybrid review prompt includes timed speech, pending requests and no contra
 test('review payload validates executable operations independently from pending requests without weakening legacy plans',async()=>{
  const {parseReviewPayload}=await import('../desktop/ai.mjs');
  const plan={summary:'Vertical',operations:[{type:'set_aspect',aspect:'9:16'}],questions:[],unsupported:[]};
- assert.equal(parseReviewPayload(p,JSON.stringify({plan,pendingRequests:['Endereço ausente']})).pendingRequests.length,1);
+ assert.equal(parseReviewPayload(p,JSON.stringify({plan,pendingRequests:['Endereço ausente'],coverage:[{request:'Vertical',kind:'framing',status:'planned',operationIndexes:[0],reason:'Formato solicitado'}]})).pendingRequests.length,1);
  assert.throws(()=>parseReviewPayload(p,JSON.stringify({plan:{...plan,operations:[{type:'delete',clipId:'missing'}]},pendingRequests:[]})));
  assert.throws(()=>parseReviewPayload(p,JSON.stringify({plan:{...plan,questions:['Dúvida que bloqueia operação']},pendingRequests:[]})));
  assert.throws(()=>parseReviewPayload(p,JSON.stringify({plan,pendingRequests:['x'.repeat(2001)]})));

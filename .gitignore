@@ -40,6 +40,11 @@ credentials/
 /tests/*
 !/tests/*.mjs
 !/tests/fixtures-legacy-text-ass.json
+# Synthetic TTS speech with known word times (regenerate: scripts/make-speech-fixture.mjs).
+!/tests/fixtures/
+/tests/fixtures/*
+!/tests/fixtures/speech-pt.m4a
+!/tests/fixtures/speech-pt.json
 
 # Keep app icon outputs; exclude design experiments and large duplicate exports.
 /build-resources/*
@@ -100,6 +105,8 @@ credentials/
 !/scripts/prepare-release.mjs
 !/scripts/release-assets.mjs
 !/scripts/release-bootstrap.json
+!/scripts/make-speech-fixture.mjs
+!/scripts/bench-analysis.mjs
 !/.github/workflows/release.yml
 
 !/scripts/update-build.cjs

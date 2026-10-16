@@ -125,9 +125,9 @@ if(primary)app.whenReady().then(async()=>{
  handler('status',async()=>({...await ai.loginStatus(home),platform:process.platform}));
  handler('login',async()=>{if(loginRunning)throw new Error('O login já está aberto no navegador.');loginRunning=true;try{await ai.startLogin(home);return ai.loginStatus(home);}finally{loginRunning=false;}});
  handler('analyze',async(p,prompt,step,clipId=null,engine='chatgpt',shareEvidence=false)=>{
-  authorized(p);if(!['hybrid','chatgpt'].includes(engine))throw Error('Motor de IA inválido.');if(engine==='hybrid'&&shareEvidence!==true)throw Error('Autorize o envio das evidências para esta análise.');if(abort)throw Error('Já há uma operação em andamento.');abort=new AbortController();
+  core.validateProject(p);const {scopeProject,validateScopedPlan}=await import('../src/editor-experience.mjs');const scoped=scopeProject(p,clipId);authorized(scoped);if(!['hybrid','chatgpt'].includes(engine))throw Error('Motor de IA inválido.');if(engine==='hybrid'&&shareEvidence!==true)throw Error('Autorize o envio das evidências para esta análise.');if(abort)throw Error('Já há uma operação em andamento.');abort=new AbortController();
   const diagnosticOperation=sessionLog.begin();const diagnosticTimer=setInterval(()=>sessionLog.heartbeat(),5000);diagnosticTimer.unref();let outcome='ok';
-  try{await ensureModels();const {scopeProject,validateScopedPlan}=await import('../src/editor-experience.mjs');const options={home,cache,project:scopeProject(p,clipId),scopeClipId:clipId,prompt,registry,signal:abort.signal,onProgress:p=>{sessionLog.progress(p,diagnosticOperation);notify(p);},shareEvidence};
+  try{await ensureModels();const options={home,cache,project:scoped,scopeClipId:clipId,prompt,registry,signal:abort.signal,onProgress:p=>{sessionLog.progress(p,diagnosticOperation);notify(p);},shareEvidence};
    const result=engine==='hybrid'?await (await import('./hybrid.mjs')).requestHybridEdit(options):await (await import('./intent.mjs')).requestPromptPlan(options);validateScopedPlan(p,result.plan,clipId);return result;
   }catch(error){outcome=abort?.signal.aborted?'canceled':'error';sessionLog.failure(error);throw error;}finally{clearInterval(diagnosticTimer);sessionLog.end(outcome);abort=null;}
  });

@@ -152,8 +152,11 @@ jobs:
           node tests/updater-download.integration.mjs
           node tests/update-ui.e2e.mjs
           node tests/hybrid-edit.e2e.mjs
+          node tests/ai-scope.e2e.mjs
           node tests/session-diagnostics.e2e.mjs
           node tests/visual-process.e2e.mjs
+          node tests/edit-quality.integration.mjs
+          node tests/speech-timing.integration.mjs
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: release-${{ matrix.platform }}

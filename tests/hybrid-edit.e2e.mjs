@@ -10,8 +10,8 @@ try{
  await app.evaluate(({ipcMain})=>{ipcMain.removeHandler('editor:status');ipcMain.handle('editor:status',()=>({ok:true,value:{connected:true}}));});await page.locator('#settings').click();await page.waitForFunction(()=>document.querySelector('#connection-label').textContent==='ChatGPT conectado');await page.locator('#settings-close').click();
  await app.evaluate(({ipcMain})=>{ipcMain.removeHandler('editor:analyze');ipcMain.handle('editor:analyze',(_e,_p,_prompt,_step,_scope,mode,shareEvidence)=>{if(_scope!==null)throw Error('Whole montage required');if(mode!=='hybrid'||shareEvidence!==true)throw Error('Evidence consent is required');global.hybridCalls=(global.hybridCalls||0)+1;return {ok:true,value:{mode:'hybrid',reviewRequired:true,shared:{transcriptWords:2,frames:3},frames:3,plan:{summary:'Reels preservando a degustação',questions:[],unsupported:[],operations:[{type:'set_aspect',aspect:'9:16'}]},pendingRequests:['Importe a imagem do Melona; endereço não informado.'],analysisWarnings:['Transcrição interna com trechos sem tempos confiáveis. Nenhuma legenda criada.'],evidence:[{assetId:'a',start:0,end:2,summary:'Comida visível',samples:[{time:0,description:'Prato'}]}]}};});});
  await page.locator('#nav-ai').click();
- assert.equal(await page.locator('#ai-panel input[type=checkbox], #ai-panel select, #ai-panel .hint').count(),0,'only the prompt and send control remain');
- assert.equal(await page.locator('#ai-scope').count(),0,'whole montage is unconditional');
+ assert.equal(await page.locator('#ai-panel input[type=checkbox], #ai-panel .hint').count(),0,'no extra authorization checkbox or explanatory wall of text');
+ assert.equal(await page.locator('#ai-scope').inputValue(),'all','whole montage is the default even with a selected clip');
  await page.locator('#prompt').fill('Faça Reels e use a foto do Melona sem inventar endereço');
  const before=await page.locator('.history-entry').count();await page.locator('#analyze').click();await page.locator('#apply-hybrid-plan').waitFor();
  assert.equal(await app.evaluate(()=>global.hybridCalls),1,'click grants consent for this request');

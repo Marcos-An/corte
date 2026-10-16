@@ -43,6 +43,7 @@ function describeOperation(p,op){
   const labels={speed:'Velocidade',background:'Fundo',backgroundColor:'Cor do fundo',adjustments:'Ajustes de imagem',fadeIn:'Fade de entrada',fadeOut:'Fade de saída',volume:'Volume',crop:'Enquadramento'};
   return Object.keys(labels).filter(k=>k in op).map(k=>`${labels[k]} · ${name} · ${JSON.stringify(op[k])}`).join(' / ').slice(0,4000);
  }
+ if(op.type==='set_transition_at')return `Transição · junção ${op.index+1} · ${op.effect} · ${seconds(op.duration)}`;
  if(op.type==='set_transition')return `Transição · ${op.leftId} → ${op.rightId} · ${op.effect} · ${seconds(op.duration)}`;
  if(op.type==='edit_audio')return `Áudio · ${op.audioId} · ${JSON.stringify(op.patch)}`;
  if(op.type.startsWith('add_'))return `${({add_text:'Texto',add_image:'Imagem',add_video:'Vídeo sobreposto',add_shape:'Forma'})[op.type]} · ${op.layer.id} · ${seconds(op.layer.start)}–${seconds(op.layer.end)}`;
@@ -78,7 +79,9 @@ function updateButtons(){
  for(const id of ['split','delete','move-left','move-right'])$(id).disabled=busy||!selected;
  for(const id of ['nav-media','preview-add','open-project','save-project','save-as-project','save-portable-project'])$(id).disabled=busy;
  $('export').disabled=busy||!project().clips.length;
- $('analyze').disabled=busy||!project().clips.length||!$('prompt').value.trim();
+ const hasSelected=project().clips.some(c=>c.id===selected);$('ai-scope').disabled=busy;$('ai-scope').querySelector('[value=selected]').disabled=!hasSelected;
+ if(pending?.scope&&pending.scope!==selected){pending=null;$('proposal').hidden=true;}
+ $('analyze').disabled=busy||!project().clips.length||!$('prompt').value.trim()||($('ai-scope').value==='selected'&&!hasSelected);
  $('range-delete').disabled=busy||rangeMode!=='remove'||!rangeSelection;
  $('play').disabled=openingProject||timelineDuration()<=0||!!media.get(clipAt(project(),Math.min(position,Math.max(0,duration(project())-.001)))?.clip.assetId)?.pending;$('connect').disabled=busy||connected;
  for(const type of Object.keys(SHAPES))$('add-shape-'+type).disabled=busy||!project().clips.length;renderComponents();
@@ -946,7 +949,7 @@ $('copy-performance-diagnostics').onclick=guard(async()=>{await bridge.copyPerfo
 async function openSavedProject(token){
  if(busy){if(token)toast('Conclua a operação atual e abra o projeto pelo menu Arquivo.',true);return;}document.activeElement?.blur?.();if(dirty && !confirm('Abrir outro projeto e descartar alterações não salvas?'))return;stop();openingProject=true;setBusy(true,'Abrindo projeto…');
  try{const r=await bridge.openProject(token);
- if(r){mediaHydrationState=r.hydrationId?{id:r.hydrationId,assets:r.assets,pending:r.assets.filter(a=>a.pending).length,errors:[]}:null;lastHydrationErrors=0;projectFileLabel(r.file);selectedCaptionKey=null;history=r.history?History.from(r.history):new History(r.project);media.clear();for(const a of r.assets)media.set(a.id,a);selected=r.project.clips[0]?.id||null;position=0;pending=null;$('proposal').hidden=true;markDirty(false);render();if(r.errors?.length)toast(r.errors.join('\n'),true);else if(r.assets.some(a=>a.missing))toast('Algumas mídias estão ausentes. Clique com o botão direito no trecho para localizar a mídia.',true);if(r.hydrationId)applyMediaState(await bridge.mediaState(r.hydrationId));}
+ if(r){$('ai-scope').value='all';mediaHydrationState=r.hydrationId?{id:r.hydrationId,assets:r.assets,pending:r.assets.filter(a=>a.pending).length,errors:[]}:null;lastHydrationErrors=0;projectFileLabel(r.file);selectedCaptionKey=null;history=r.history?History.from(r.history):new History(r.project);media.clear();for(const a of r.assets)media.set(a.id,a);selected=r.project.clips[0]?.id||null;position=0;pending=null;$('proposal').hidden=true;markDirty(false);render();if(r.errors?.length)toast(r.errors.join('\n'),true);else if(r.assets.some(a=>a.missing))toast('Algumas mídias estão ausentes. Clique com o botão direito no trecho para localizar a mídia.',true);if(r.hydrationId)applyMediaState(await bridge.mediaState(r.hydrationId));}
  }finally{openingProject=false;setBusy(false);}
 }
 async function relinkAssets(assets){if(busy)return;stop();setBusy(true,'Localizando mídias…',false);try{for(const asset of assets){const result=await bridge.relink(asset);if(!result)break;media.set(asset.id,result);markDirty();render();}}finally{setBusy(false);}}
@@ -1022,12 +1025,13 @@ async function refreshConnection(){if(!bridge)return;const request=++connectionR
 $('connect').addEventListener('click',guard(async()=>{if(connected){toast('Conectado com ChatGPT. Configure limites e créditos na sua conta; esta versão não possui desconexão integrada.');return;}if(!bridge)throw new Error('O login está disponível no app desktop.');$('connect').disabled=true;$('connection-label').textContent='Conclua no navegador…';try{await bridge.login();await refreshConnection();toast(connected?'ChatGPT conectado. Pronto para analisar.':'Login não concluído.',!connected);}finally{$('connect').disabled=busy||connected;if(!connected)$('connection-label').textContent='Não conectado';}}));
 $('prompt').addEventListener('input',()=>{pending=null;$('proposal').hidden=true;updateButtons();});
 $('ai-engine').addEventListener('change',()=>{pending=null;$('proposal').hidden=true;});
+$('ai-scope').addEventListener('change',()=>{pending=null;$('proposal').hidden=true;$('ai-feedback').hidden=true;updateButtons();});
 let cancelRequested=false;
 $('analyze').addEventListener('click',guard(async()=>{
  if(busy)return;$('ai-feedback').hidden=true;const engine=$('ai-engine').value;if(!connected){$('ai-feedback').textContent='Abra Configurações → ChatGPT para conectar sua conta.';$('ai-feedback').hidden=false;return;}
  stop();const snapshot=project(),prompt=$('prompt').value;cancelRequested=false;aiRunning=true;$('ai-cancel').disabled=false;aiProgressState=aiProgress(null);$('ai-progress-label').textContent=aiProgressState.label;setBusy(true);pending=null;$('proposal').hidden=true;
  try{
-  const scope=null;const result=await bridge.analyze(snapshot,prompt,.5,scope,engine,engine==='hybrid');validateScopedPlan(snapshot,result.plan,scope);if(cancelRequested)throw Error('Edição cancelada.');
+  const scope=$('ai-scope').value==='selected'?selected:null;if($('ai-scope').value==='selected'&&!snapshot.clips.some(c=>c.id===scope))throw Error('Selecione um trecho válido.');const result=await bridge.analyze(snapshot,prompt,.5,scope,engine,engine==='hybrid');validateScopedPlan(snapshot,result.plan,scope);if(cancelRequested)throw Error('Edição cancelada.');
   if(JSON.stringify(snapshot)!==JSON.stringify(project()))throw new Error('O projeto mudou durante a análise. Resultado descartado.');
   if(engine==='hybrid'){
    if(result.mode!=='hybrid'||result.reviewRequired!==true)throw Error('Resposta do fluxo híbrido inválida.');

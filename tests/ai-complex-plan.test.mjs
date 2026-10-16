@@ -58,3 +58,14 @@ test('missing required fields, unknown nested fields and excessive transition du
 test('AI uses the editor animation names instead of guessing Portuguese preset translations',async()=>{
  const {buildPrompt}=await import('../desktop/ai.mjs');const input=buildPrompt(fixture(),'Entrada Surgir, saída Encolher',[]);assert.ok(input.includes('Surgir → fade'));assert.ok(input.includes('Encolher → pop'));
 });
+test('transitions resolve final adjacent clips after cuts generate IDs; invalid positions fail atomically',()=>{
+ const p=fixture(),before=structuredClone(p),cuts={type:'keep_ranges',clipId:'c1',ranges:[[1,2],[3,5]]};
+ const q=m.applyPlan(p,plan([cuts,{type:'set_transition_at',index:0,effect:'dissolve',duration:.2}]));
+ assert.equal(q.clips.length,3);assert.equal(q.transitions[0].leftId,q.clips[0].id);assert.equal(q.transitions[0].rightId,q.clips[1].id);assert.equal(q.transitions[0].duration,.2);
+ for(const index of [-1,.5,2,99])assert.throws(()=>m.applyPlan(p,plan([cuts,{type:'set_transition_at',index,effect:'dissolve',duration:.2}])));
+ assert.deepEqual(p,before);assert.throws(()=>validateScopedPlan(p,plan([{type:'set_transition_at',index:0,effect:'fade',duration:.2}]),'c1'),/fora/);
+ assert.ok(planSchema.properties.operations.items.anyOf.some(s=>s.properties.type.const==='set_transition_at'));
+});
+test('planner is warned that transition handles must not reintroduce speech or events explicitly removed',async()=>{
+ const {buildPrompt}=await import('../desktop/ai.mjs');assert.match(buildPrompt(fixture(),'Corte a queimadura e use cortes limpos',[],{review:true}),/margens fora de in\/out/);assert.match(buildPrompt(fixture(),'Editar',[],{review:true}),/reintroduzir/);
+});

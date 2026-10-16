@@ -51,7 +51,9 @@ export async function requestHybridEdit({project,prompt,shareEvidence,signal,onP
    if(!Number.isFinite(gap.start)||!Number.isFinite(gap.end)||gap.start<0||gap.end<=gap.start||gap.end>asset.duration+.000001||gap.reason!=='unreliable-word-times')throw Error('Lacuna de reconhecimento com tempo inválido.');
    for(const clip of project.clips.filter(c=>c.assetId===asset.id)){const start=Math.max(clip.in,gap.start),end=Math.min(clip.out,gap.end);if(end>start)speechGaps.push({assetId:asset.id,start,end,reason:gap.reason});}
   }
-  transcripts.push({assetId:t.assetId,words:t.words.filter(w=>project.clips.some(c=>c.assetId===t.assetId&&w.start>=c.in&&w.end<=c.out)).map(({start,end,text})=>({start,end,text}))});
+  if(t.context!==undefined&&(!Array.isArray(t.context)||t.context.length>10000||t.context.some(c=>typeof c.text!=='string'||c.text.length>12000||!Number.isFinite(c.start)||!Number.isFinite(c.end)||c.start<0||c.end<=c.start||c.end>asset.duration+.000001)))throw Error('Contexto de fala inválido.');
+  const included=w=>project.clips.some(c=>c.assetId===t.assetId&&w.start>=c.in&&w.end<=c.out);
+  transcripts.push({assetId:t.assetId,words:t.words.filter(included).map(({start,end,text})=>({start,end,text})),...(t.context?{context:t.context.filter(included).map(({start,end,text})=>({start,end,text}))}:{})});
  }
  onProgress({stage:'hybrid',message:'Selecionando frames localmente e preparando plano com o ChatGPT…'});
  const result=await planRequest({...options,project,prompt,signal,onProgress,transcripts,speechGaps,review:true});check();
@@ -59,7 +61,9 @@ export async function requestHybridEdit({project,prompt,shareEvidence,signal,onP
  if(!Array.isArray(result.pendingRequests)||result.pendingRequests.length>40||result.pendingRequests.some(s=>typeof s!=='string'||s.length>2000))throw Error('Pendências da proposta inválidas.');
  const safe=preservesUncertainSpeech(project,result.plan,speechGaps),analysisWarnings=speechGaps.length?[`A transcrição interna encontrou ${speechGaps.length} trecho(s) sem tempos confiáveis. Não foram criadas legendas. Cortes nesses trechos precisam de revisão.${safe?'':' A proposta contém remoções nesses trechos e não será aplicada, inclusive operações dependentes; prepare outra proposta preservando-os.'}`]:[];
  const plan=safe?result.plan:{...result.plan,operations:[],summary:'Proposta preservada para revisão: não foi possível garantir os cortes nos trechos sem tempos de fala confiáveis.'};
- return {...result,plan,analysisWarnings,reviewRequired:true,mode:'hybrid',shared:{transcriptWords:transcripts.reduce((n,t)=>n+t.words.length,0),frames:result.frames}};
+ const coverage=safe?result.coverage:result.coverage?.map(item=>['planned','partial'].includes(item.status)?{...item,status:'pending',operationIndexes:[],reason:'Plano não aplicável: os cortes atingem fala sem tempos confiáveis; operações dependentes também foram preservadas.'}:item);
+ const pendingRequests=safe?result.pendingRequests:[...new Set([...result.pendingRequests,...(coverage||[]).filter(c=>c.status==='pending').map(c=>`${c.request}: ${c.reason}`)])];
+ return {...result,...(coverage?{coverage}:{}),pendingRequests,plan,analysisWarnings,reviewRequired:true,mode:'hybrid',shared:{transcriptWords:transcripts.reduce((n,t)=>n+t.words.length,0),frames:result.frames}};
 }
 export function selectOverview(project,candidates,max=60){
  if(!Number.isInteger(max)||max<1)throw Error('Orçamento de imagens inválido.');

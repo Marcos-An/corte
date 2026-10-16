@@ -55,3 +55,15 @@ test('uncertain source coverage survives trim/keep/delete, repeated sources and 
  const repeated=addClip(p,'a','repeat');assert.deepEqual((await run(repeated,[{type:'delete',clipId:'c'}])).plan.operations,[],'another instance of the same source does not hide an unsafe deletion');
  for(const op of [{type:'remove_ranges',clipId:'c',ranges:[[35,37]]},{type:'keep_ranges',clipId:'c',ranges:[[0,30],[35,100]]}])assert.equal((await run(p,[op])).plan.operations.length,1,'reliable source regions may still be edited');
 });
+test('coarse speech remains contextual evidence, cannot leak across trimmed boundaries or authorize cuts',async()=>{
+ const scoped=structuredClone(p);scoped.clips[0].in=30;scoped.clips[0].out=40;
+ const out=await requestHybridEdit({project:scoped,prompt:'Edite preservando o não',shareEvidence:true,registry,connected:async()=>true,
+ transcribe:async()=>[{assetId:'a',words:[],gaps:[{start:30,end:40,reason:'unreliable-word-times'}],context:[{start:0,end:31,text:'privado'},{start:30,end:40,text:'Não cortar a reação'},{start:39,end:41,text:'privado'}]}],
+ planRequest:async options=>{assert.deepEqual(options.transcripts[0].context,[{start:30,end:40,text:'Não cortar a reação'}]);return {plan:{...base,operations:[{type:'remove_ranges',clipId:'c',ranges:[[31,32]]}]},pendingRequests:[],frames:1};}});
+ assert.deepEqual(out.plan.operations,[]);
+});
+test('when uncertain-speech safety discards operations, coverage cannot keep claiming those edits are planned',async()=>{
+ const coverage=[{request:'Cortar a fala',kind:'cut',status:'planned',operationIndexes:[0],reason:'Hipótese inicial'}];
+ const out=await requestHybridEdit({project:p,prompt:'Cortar fala',shareEvidence:true,registry,connected:async()=>true,transcribe:async()=>[{assetId:'a',words:[],gaps:[{start:0,end:30,reason:'unreliable-word-times'}]}],planRequest:async()=>({plan:{...base,operations:[{type:'remove_ranges',clipId:'c',ranges:[[1,2]]}]},pendingRequests:[],coverage,frames:1})});
+ assert.deepEqual(out.plan.operations,[]);assert.equal(out.coverage[0].status,'pending');assert.deepEqual(out.coverage[0].operationIndexes,[]);assert.ok(out.pendingRequests.some(s=>s.includes('Cortar a fala')));assert.equal(coverage[0].status,'planned','do not mutate provider response');
+});

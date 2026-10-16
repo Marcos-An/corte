@@ -2,6 +2,7 @@ import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {runVisualProcess} from './visual-process.mjs';
 import {existsSync} from 'node:fs';
+import {PREVIEW_SCALE,PREVIEW_JPEG} from './media.mjs';
 export function frameDirectory(root,assetId){return path.join(root,createHash('sha256').update(assetId).digest('hex'));}
 export const MODEL_ID='Xenova/clip-vit-base-patch32';
 export function modelPath(){const saved=process.env.CORTE_MODEL_PATH;if(saved&&existsSync(saved))return saved;const packed=process.resourcesPath&&path.join(process.resourcesPath,'models');return packed&&existsSync(packed)?packed:path.resolve(import.meta.dirname,'../vendor/models');}
@@ -15,11 +16,23 @@ export function pixelMetrics(image){
 export function selectEvidence(samples,max=60){
  if(!Number.isInteger(max)||max<2)throw new Error('Orçamento de imagens inválido.');if(samples.length<=max)return samples.map(s=>s.time);
  const times=new Set(),add=i=>{if(i>=0&&i<samples.length&&times.size<max)times.add(samples[i].time);};
- const coverage=Math.max(2,Math.ceil(max/3));for(let i=0;i<coverage;i++)add(Math.round(i*(samples.length-1)/(coverage-1)));
+ // Coverage is spread over time, not over list positions: candidate lists cluster around changes.
+ const first=samples[0].time,last=samples.at(-1).time,coverage=Math.max(2,Math.ceil(max/3)),step=(last-first)/(samples.length-1)||1;
+ for(let k=0;k<coverage;k++){const target=first+k*(last-first)/(coverage-1);let best=0;for(let i=1;i<samples.length;i++)if(Math.abs(samples[i].time-target)<=Math.abs(samples[best].time-target))best=i;add(best);}
  const sharp=[...samples].map(s=>s.sharpness??s.blur??0).sort((a,b)=>a-b),median=sharp[Math.floor(sharp.length/2)]||1;
  const candidates=samples.map((s,i)=>({i,score:(s.change||0)+Math.min(1,Math.max(0,1-(s.sharpness??s.blur??median)/median))*.25})).sort((a,b)=>b.score-a.score),centers=[];
- for(const {i}of candidates){if(centers.some(j=>Math.abs(samples[j].time-samples[i].time)<1))continue;centers.push(i);for(const offset of [0,-1,1,-2,2])add(i+offset);if(times.size>=max)break;}
+ for(const {i}of candidates){if(centers.some(j=>Math.abs(samples[j].time-samples[i].time)<1))continue;centers.push(i);for(const offset of [0,-1,1,-2,2])if(Math.abs((samples[i+offset]?.time??Infinity)-samples[i].time)<=Math.abs(offset)*step*1.5)add(i+offset);if(times.size>=max)break;}
  return [...times].sort((a,b)=>a-b);
+}
+// Cheap RGB screening precedes semantic inference; neither is proof of an event.
+export function pixelChange(a,b){
+ if(!a||a.data.length!==b.data.length)return 0;
+ let delta=0;for(let i=0;i<a.data.length;i++)delta+=Math.abs(a.data[i]-b.data[i]);
+ return a.data.length?delta/(255*a.data.length):0;
+}
+export function visualCandidates(samples,assetCount){
+ const times=new Set(selectEvidence(samples,Math.max(12,Math.floor(96/assetCount))));
+ return samples.filter(s=>times.has(s.time));
 }
 export function refinementTimes(project,plan,overview=[],max=60){
  const borders=[];for(const op of plan.operations||[]){const c=project.clips.find(c=>c.id===op.clipId);if(!c)continue;const ranges=['keep_ranges','remove_ranges'].includes(op.type)?op.ranges:op.type==='trim'?[[op.in,op.out]]:op.type==='split'?[[op.time,op.time]]:[];for(const range of ranges)for(const edge of range)if(Number.isFinite(edge))borders.push({assetId:c.assetId,time:edge});}
@@ -34,4 +47,17 @@ export function scanLocally({project,registry,directory,step=2,signal,onProgress
  if(signal?.aborted)return Promise.reject(new Error('Análise cancelada.'));
  const assets=[...new Set(project.clips.map(c=>c.assetId))].map(id=>({id,...project.assets.find(a=>a.id===id),file:registry.get(id)?.path}));
  return runVisualProcess({data:{assets,directory,models:modelPath(),step},backend:process.platform==='darwin'?'coreml':process.platform==='win32'?'dml':'cpu',signal,onProgress});
+}
+
+// Screening thumbnails and the preview pool share one decode; the second full decode was the dominant cost on 4K HEVC.
+export function samplingArgs(file,fps,folder){
+ if(!Number.isFinite(fps)||fps<=0)throw Error('Amostragem visual inválida.');
+ return ['-hide_banner','-loglevel','error','-y','-i',file,'-filter_complex',`[0:v]fps=${fps}:start_time=0,split=2[a][b];[a]scale=96:-2,format=rgb24[s];[b]${PREVIEW_SCALE},format=rgb24[p]`,
+  '-map','[s]','-pix_fmt','rgb24',path.join(folder,'%06d.png'),'-map','[p]',...PREVIEW_JPEG,path.join(folder,'pool-%06d.jpg')];
+}
+// Distance to the previous candidate grows with the time between them; the frame one step earlier measures the change itself.
+export async function semanticChanges(samples,candidates,embed){
+ const index=new Map(samples.map((s,i)=>[s.time,i])),vectors=new Map(),vector=async i=>{if(!vectors.has(i))vectors.set(i,await embed(i));return vectors.get(i);};
+ for(const c of candidates){const i=index.get(c.time);c.change=i>0?cosineDistance(await vector(i-1),await vector(i)):0;}
+ return candidates;
 }

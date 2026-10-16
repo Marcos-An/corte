@@ -22,3 +22,34 @@ test('refinement targets proposed source ranges including both borders and retai
 test('media output directories cannot escape temporary root or collide through path sanitization',async()=>{
  const {frameDirectory}=await import('../desktop/local.mjs');const root='/tmp/analysis';assert.notEqual(frameDirectory(root,'a/b'),frameDirectory(root,'a_b'));assert.equal(path.dirname(frameDirectory(root,'../../secret')),path.normalize(root));assert.equal(frameDirectory(root,'asset'),frameDirectory(root,'asset'));
 });
+test('visual candidate screening bounds expensive inference while retaining coverage and abrupt changes',async()=>{
+ const {visualCandidates,pixelChange}=await import('../desktop/local.mjs');
+ const a={width:4,height:4,channels:3,data:new Uint8Array(48)},b={...a,data:new Uint8Array(48).fill(255)};
+ assert.equal(pixelChange(a,a),0);assert.equal(pixelChange(a,b),1);
+ const samples=Array.from({length:1724},(_,i)=>({time:i/4,change:i===681?1:0,sharpness:20}));
+ const candidates=visualCandidates(samples,12);assert.ok(candidates.length<=12);assert.ok(candidates.some(s=>s.time===681/4));assert.equal(candidates[0].time,0);assert.equal(candidates.at(-1).time,1723/4);
+ assert.deepEqual(visualCandidates(samples.slice(0,3),1),samples.slice(0,3));
+});
+test('one decode pass writes the screening thumbnails and the preview pool on the same clock',async()=>{
+ const {samplingArgs}=await import('../desktop/local.mjs');const args=samplingArgs('in.mov',4,'dir');
+ assert.equal(args.filter(a=>a==='-i').length,1,'the source is decoded once');
+ const graph=args[args.indexOf('-filter_complex')+1];assert.match(graph,/^\[0:v\]fps=4:start_time=0,split=2/);assert.match(graph,/scale=96:-2/);assert.match(graph,/scale=720:720:force_original_aspect_ratio=decrease/);
+ assert.ok(args.includes(path.join('dir','%06d.png'))&&args.includes(path.join('dir','pool-%06d.jpg')));assert.equal(args[args.indexOf('-q:v')+1],'5');
+ for(const fps of [0,NaN,-1])assert.throws(()=>samplingArgs('in.mov',fps,'dir'));
+});
+test('semantic change compares each candidate with its temporal neighbour, never with a distant candidate',async()=>{
+ const {semanticChanges,selectEvidence}=await import('../desktop/local.mjs');
+ const samples=Array.from({length:140},(_,i)=>({time:i/4,change:0,sharpness:20})),candidates=[0,40,69,70,139].map(i=>({...samples[i]}));
+ const calls=[];const embed=async i=>{calls.push(i);const a=i*.02;return [Math.cos(a),Math.sin(a),i>=69?1.5:0];};
+ await semanticChanges(samples,candidates,embed);
+ const top=candidates.slice().sort((a,b)=>b.change-a.change)[0];assert.equal(top.time,69/4,'the real cut wins over slow drift across a long gap');
+ assert.ok(candidates.find(c=>c.time===139/4).change<.01);assert.equal(candidates[0].change,0);
+ assert.equal(new Set(calls).size,calls.length,'each frame is embedded once');assert.ok(calls.length<=candidates.length*2);
+ assert.ok(selectEvidence(candidates,3).includes(69/4),"beyond the first and last coverage frames, the cut is chosen");
+});
+test('final evidence keeps time coverage even when candidates cluster around early changes',async()=>{
+ const {visualCandidates,selectEvidence}=await import('../desktop/local.mjs');
+ const samples=Array.from({length:2400},(_,i)=>({time:i/4,change:i<240&&i%7===0?1:0,sharpness:20})),times=selectEvidence(visualCandidates(samples,1),48);
+ const holes=times.slice(1).map((t,i)=>t-times[i]);assert.ok(Math.max(...holes)<=60,`largest blind stretch ${Math.max(...holes)}s`);
+ assert.deepEqual(selectEvidence(samples.slice(0,400),20),selectEvidence(samples.slice(0,400),20),'deterministic');
+});

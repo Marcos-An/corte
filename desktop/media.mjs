@@ -46,9 +46,12 @@ export function sampleTimes(duration,step=2,max=60) {
   if(!Number.isFinite(duration)||duration<=0||!Number.isFinite(step)||step<=0||!Number.isInteger(max)||max<1)throw new Error('Amostragem inválida.');
   const actualStep=Math.max(step,duration/max);const result=[];for(let i=0;i<max && i*actualStep<duration;i++)result.push(Number((i*actualStep).toFixed(3)));return result;
 }
+// Previews sent to the provider are bounded by their long side: a vertical 720-wide frame costs ~2.6x the image tokens.
+export const PREVIEW_SCALE='scale=720:720:force_original_aspect_ratio=decrease:force_divisible_by=2',PREVIEW_JPEG=['-pix_fmt','yuvj420p','-q:v','5'];
 export async function frame(file,time,out,signal,options={}) {
+  const {width=480,...runOptions}=options;if(!Number.isInteger(width)||width<64||width>1920)throw new Error('Resolução da amostra inválida.');
   await rm(out,{force:true});
-  await run(binaries().ffmpeg,['-hide_banner','-loglevel','error','-y','-ss',String(time),'-i',file,'-frames:v','1','-vf','scale=480:-2',out],{...options,signal});
+  await run(binaries().ffmpeg,['-hide_banner','-loglevel','error','-y','-ss',String(time),'-i',file,'-frames:v','1','-vf',width===720?`${PREVIEW_SCALE},format=rgb24`:`scale=${width}:-2`,...(width===720&&/\.jpe?g$/i.test(out)?PREVIEW_JPEG:[]),out],{...runOptions,signal});
   const image=await stat(out).catch(error=>{if(error.code==='ENOENT')return null;throw error;});
   if(!image?.size)throw new Error('Nenhum frame disponível nesse instante. A análise não pode reutilizar uma imagem anterior.');
 }

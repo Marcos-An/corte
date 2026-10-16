@@ -23,3 +23,8 @@ test('recordings have bounded typed bytes and strict audio-only permission',()=>
  assert.equal(microphoneAllowed('media',{mediaTypes:['video'],isMainFrame:true},true),false);
  assert.equal(microphoneAllowed('media',{mediaTypes:['audio'],isMainFrame:true},false),false);
 });
+test('selected scope excludes unrelated media, tracks, components and saved speech without mutating the montage',()=>{
+ const p=fixture();p.assets.push({id:'b',name:'PRIVATE_OTHER_VIDEO',duration:10,width:640,height:360,hasAudio:true});p.clips.push({...structuredClone(p.clips[0]),id:'b1',assetId:'b'});
+ p.transcripts=[{assetId:'a',words:[{start:0,end:1,text:'PRIVATE_SAVED_SPEECH'}]}];p.clips[1].captionWords=[{start:0,end:1,text:'PRIVATE_CAPTION_CACHE'}];p.music=[];p.textLayers=[{text:'PRIVATE_TEXT'}];p.imageLayers=[{assetId:'b'}];p.videoLayers=[{assetId:'b'}];p.shapeLayers=[{id:'PRIVATE_SHAPE'}];
+ const before=structuredClone(p),q=scopeProject(p,'a2');assert.deepEqual(q.assets.map(a=>a.id),['a']);assert.deepEqual(q.clips.map(c=>c.id),['a2']);assert.doesNotMatch(JSON.stringify(q),/PRIVATE|"b1"/);assert.deepEqual(p,before);
+});

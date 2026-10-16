@@ -10,3 +10,12 @@ test('frame extraction rejects empty EOF output rather than reusing a previous i
  await assert.rejects(readFile(out),{code:'ENOENT'});
  }finally{await rm(dir,{recursive:true,force:true});}
 });
+test('AI refinement supports compact 8-bit RGB evidence at 720px without changing the default thumbnail size',async()=>{
+ const dir=await mkdtemp(path.join(tmpdir(),'corte-frame-rgb-'));try{
+ const video=path.join(dir,'source.mp4');await run(binaries().ffmpeg,['-v','error','-y','-f','lavfi','-i','color=red:s=160x90:r=4','-t','1','-c:v','libx264',video]);
+ const out=path.join(dir,'evidence.jpg');await frame(video,.25,out,undefined,{width:720});const {RawImage}=await import('@huggingface/transformers'),image=await RawImage.read(out);assert.equal(image.width,720);assert.equal(image.channels,3);assert.ok(image.data[0]>200&&image.data[1]<10);await assert.rejects(frame(video,0,out,undefined,{width:NaN}),/resolução/i);
+ const normal=path.join(dir,'thumbnail.jpg');await frame(video,0,normal);assert.equal((await RawImage.read(normal)).width,480);
+ const tall=path.join(dir,'tall.mp4');await run(binaries().ffmpeg,['-v','error','-y','-f','lavfi','-i','color=blue:s=1080x1920:r=4','-t','1','-c:v','libx264',tall]);
+ const preview=path.join(dir,'tall.jpg');await frame(tall,.25,preview,undefined,{width:720});const t=await RawImage.read(preview);assert.equal(t.height,720,'vertical previews are bounded by their long side');assert.ok(t.width<=406);
+ }finally{await rm(dir,{recursive:true,force:true});}
+});
