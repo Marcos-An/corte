@@ -64,18 +64,20 @@ export function dimensions(aspect,height=720) {
 function tempoFilter(speed){const filters=[];while(speed<.5){filters.push('atempo=0.5');speed/=.5;}while(speed>2){filters.push('atempo=2');speed/=2;}if(speed!==1)filters.push('atempo='+speed);return filters.length?filters.join(',')+',':'';}
 export function buildSegmentArgs(c,a,input,out,aspect,height=720) {
   validateProject({version:1,name:'Render',aspect,assets:[a],clips:[c]});
-  const speed=clipSpeed(c),timing=speed===1?'':`trim=duration=${c.out-c.in},setpts=(PTS-STARTPTS)/${speed},`,audioTiming=speed===1?'':`atrim=duration=${c.out-c.in},asetpts=PTS-STARTPTS,${tempoFilter(speed)}`;
+  // A frozen frame loops its first decoded frame for the hold; its sound is silence.
+  const speed=clipSpeed(c),timing=c.freeze?'trim=end_frame=1,loop=loop=-1:size=1:start=0,setpts=N/30/TB,':speed===1?'':`trim=duration=${c.out-c.in},setpts=(PTS-STARTPTS)/${speed},`,audioTiming=speed===1?'':`atrim=duration=${c.out-c.in},asetpts=PTS-STARTPTS,${tempoFilter(speed)}`;
   const size=dimensions(aspect,height),r=c.crop,bg=c.background==='color'?c.backgroundColor.replace('#','0x'):'black';
   const filter=`${timing}${adjustmentFilter(c.adjustments)}crop=iw*${r.w}:ih*${r.h}:iw*${r.x}:ih*${r.y},${zoomFilter(c)}scale=${size.width}:${size.height}:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=${size.width}:${size.height}:(ow-iw)/2:(oh-ih)/2:${bg},setsar=1,fps=30,format=yuv420p`;
   const args=['-hide_banner','-loglevel','error','-y',...(a.kind==='image'?['-loop','1']:['-ss',String(c.in)]),'-i',input];
-  if(!a.hasAudio)args.push('-f','lavfi','-i','anullsrc=channel_layout=stereo:sample_rate=48000');
+  const silent=!a.hasAudio||!!c.freeze;
+  if(silent)args.push('-f','lavfi','-i','anullsrc=channel_layout=stereo:sample_rate=48000');
   let vf=c.background==='blur'?['-filter_complex',`[0:v]${timing}${adjustmentFilter(c.adjustments)}crop=iw*${r.w}:ih*${r.h}:iw*${r.x}:ih*${r.y},${zoomFilter(c)}split=2[bg][fg];[bg]scale=${size.width}:${size.height}:force_original_aspect_ratio=increase,crop=${size.width}:${size.height},gblur=sigma=${size.width*.015}[blur];[fg]scale=${size.width}:${size.height}:force_original_aspect_ratio=decrease:force_divisible_by=2[front];[blur][front]overlay=(W-w)/2:(H-h)/2,setsar=1,fps=30,format=yuv420p[v]`]:['-vf',filter];
   if(a.kind==='image'){
     const source=`[0:v]${timing}format=rgba,${adjustmentFilter(c.adjustments,true)}crop=iw*${r.w}:ih*${r.h}:iw*${r.x}:ih*${r.y}${c.zoom?','+zoomFilter(c).slice(0,-1):''}`,front=`scale=${size.width}:${size.height}:force_original_aspect_ratio=decrease:force_divisible_by=2[front]`,canvas=`color=c=${bg}:s=${size.width}x${size.height}:r=30,format=rgba[base]`;
     const layers=c.background==='blur'?`${source},split=2[bg][fg];[bg]scale=${size.width}:${size.height}:force_original_aspect_ratio=increase,crop=${size.width}:${size.height},gblur=sigma=${size.width*.015}[blur];${canvas};[base][blur]overlay=format=auto[canvas];[fg]${front}`:`${source},${front};${canvas};[base]null[canvas]`;
     vf=['-filter_complex',`${layers};[canvas][front]overlay=(W-w)/2:(H-h)/2:format=auto,setsar=1,fps=30,format=yuv420p[v]`];
   }
-  args.push('-t',String(clipDuration(c)),'-map',a.kind==='image'||c.background==='blur'?'[v]':'0:v:0','-map',a.hasAudio?'0:a:0':'1:a:0',...vf,'-af',`${audioTiming}volume=${c.volume}${audioFadeFilter(c,clipDuration(c))},aresample=48000,apad`,'-c:v','libx264','-preset','fast','-crf','20','-c:a','aac','-ar','48000','-ac','2','-movflags','+faststart',out);
+  args.push('-t',String(clipDuration(c)),'-map',a.kind==='image'||c.background==='blur'?'[v]':'0:v:0','-map',silent?'1:a:0':'0:a:0',...vf,'-af',`${audioTiming}volume=${c.volume}${audioFadeFilter(c,clipDuration(c))},aresample=48000,apad`,'-c:v','libx264','-preset','fast','-crf','20','-c:a','aac','-ar','48000','-ac','2','-movflags','+faststart',out);
   return args;
 }
 export async function renderProject(project,registry,destination,{height=720,signal,onProgress=()=>{}}={}) {

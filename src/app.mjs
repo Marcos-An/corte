@@ -52,6 +52,7 @@ function describeOperation(p,op){
  if(op.type==='set_aspect')return `Formato · ${op.aspect}`;
  if(op.type==='update'&&'volume'in op)return `${op.volume===0?'Silenciar':'Volume'} · ${name} · ${Math.round(op.volume*100)}%`;
  if(op.type==='update'&&op.crop)return `Reenquadramento · ${name} · x ${Math.round(op.crop.x*100)}%, y ${Math.round(op.crop.y*100)}%, largura ${Math.round(op.crop.w*100)}%, altura ${Math.round(op.crop.h*100)}%`;
+ if(op.type==='freeze_frame')return `Congelar quadro · ${name} · ${seconds(op.time)} por ${seconds(op.duration)}`;
  if(op.type==='trim')return `Aparar · ${name} · ${seconds(op.in)}–${seconds(op.out)}`;
  if(op.type==='split')return `Dividir · ${name} · ${seconds(op.time)}`;
  if(op.type==='move')return `Mover · ${name} · posição ${op.index+1}`;
@@ -59,7 +60,7 @@ function describeOperation(p,op){
  if(op.ranges)return `${op.type==='keep_ranges'?'Manter':'Remover'} intervalos · ${name} · ${op.ranges.map(([start,end])=>`${seconds(start)}–${seconds(end)}`).join(', ')}`.slice(0,4000);
  return `Remover · ${name}`;
 }
-const editLabels={set_brief:'Informações do local',trim:'Aparar trecho',split:'Dividir trecho',delete:'Remover trecho',move:'Mover trecho',update:'Volume / reenquadramento',set_aspect:'Formato'};
+const editLabels={set_brief:'Informações do local',freeze:'Congelar quadro',trim:'Aparar trecho',split:'Dividir trecho',delete:'Remover trecho',move:'Mover trecho',update:'Volume / reenquadramento',set_aspect:'Formato'};
 function edit(op){const q=editProject(project(),op);commit(q,{...describeChange(project(),q),label:op.type==='update'?(('volume'in op)?'Volume':('fadeIn'in op||'fadeOut'in op)?'Fade de áudio':'adjustments'in op?'Ajustes de imagem':'speed'in op?'Velocidade':'zoom'in op?'Zoom suave':'Reenquadramento'):(editLabels[op.type]||'Editar projeto')});}
 function renderHistory(){
  const list=$('history-list');list.replaceChildren();
@@ -78,7 +79,7 @@ function updateButtons(){
  $('cut-mode').disabled=busy;
  for(const id of ['range-play','range-delete','range-clear'])$(id).disabled=busy||!rangeSelection||rangeSelection.end-rangeSelection.start<.02;
  document.querySelectorAll('#captions-panel input,#captions-panel select,#captions-panel button:not(#caption-cancel),#settings-dialog button').forEach(e=>e.disabled=busy);$('align-captions').disabled=busy||!captionEntries(project()).some(w=>w.place);$('settings').disabled=busy;$('history-toggle').disabled=busy;$('undo').disabled=busy||!history.canUndo;$('redo').disabled=busy||!history.canRedo;
- for(const id of ['split','delete','move-left','move-right'])$(id).disabled=busy||!selected;
+ for(const id of ['split','delete','move-left','move-right'])$(id).disabled=busy||!selected;$('freeze-frame').disabled=busy||!project().clips.length;
  for(const id of ['nav-media','preview-add','open-project','save-project','save-as-project','save-portable-project'])$(id).disabled=busy;
  $('export').disabled=busy||!project().clips.length;
  const hasSelected=project().clips.some(c=>c.id===selected);$('ai-scope').disabled=busy;$('ai-scope').querySelector('[value=selected]').disabled=!hasSelected;
@@ -678,6 +679,8 @@ function seek(time){
  if(p.assets.find(a=>a.id===found.clip.assetId)?.kind==='image'){
   video.pause();if(activeSource!==m.url){video.removeAttribute('src');video.load();}activeSource=m.url;activeClip=found.clip.id;draw();return;
  }
+ // A frozen frame keeps the video paused on its instant while the timeline clock advances, like a photo.
+ if(found.clip.freeze){video.pause();activeClip=found.clip.id;const show=()=>{video.currentTime=Math.max(0,Math.min(found.clip.in,video.duration-.001));};if(activeSource!==m.url){activeSource=m.url;video.src=m.url;video.addEventListener('loadedmetadata',show,{once:true});video.load();}else if(video.readyState>=1)show();draw();return;}
  activeClip=found.clip.id;syncOriginalAudio();
  const setTime=()=>{const latest=clipAt(project(),Math.min(position,Math.max(0,duration(project())-.001)));if(!latest || media.get(latest.clip.assetId)?.url!==m.url)return;video.playbackRate=clipSpeed(latest.clip);video.preservesPitch=true;video.currentTime=Math.max(0,Math.min(latest.sourceTime,video.duration-.001));if(playing)video.play().catch(e=>{stop();toast(`Não foi possível reproduzir: ${e.message}`,true);});};
  if(activeSource!==m.url){activeSource=m.url;video.src=m.url;video.addEventListener('loadedmetadata',setTime,{once:true});video.load();}else if(video.readyState>=1){setTime();}
@@ -692,7 +695,7 @@ async function togglePlay(){
 let lastFrame=performance.now();
 function animate(now=performance.now()){
  const elapsed=Math.max(0,(now-lastFrame)/1000);lastFrame=now;
- const current=clipAt(project(),Math.min(position,Math.max(0,duration(project())-.001))),isStill=current&&project().assets.find(a=>a.id===current.clip.assetId)?.kind==='image';
+ const current=clipAt(project(),Math.min(position,Math.max(0,duration(project())-.001))),isStill=current&&(!!current.clip.freeze||project().assets.find(a=>a.id===current.clip.assetId)?.kind==='image');
  if(playing&&isStill){
  position=Math.min(timelineDuration(),position+elapsed);const next=clipAt(project(),position);if(position>=timelineDuration())stop();else if(next?.clip.id!==current.clip.id)seek(position);updatePlayhead();syncMusic();draw();
  }else if(playing&&(!project().clips.length||position>=duration(project()))){position=Math.min(timelineDuration(),position+elapsed);if(position>=timelineDuration())stop();updatePlayhead();syncMusic();}
@@ -1020,6 +1023,7 @@ $('playhead').addEventListener('keydown',e=>{if(busy||!['ArrowLeft','ArrowRight'
 $('context-close').onclick=()=>showModule(null);
 $('inspector-close').onclick=()=>showModule(null);
 function showInspector(mode){showModule(null);document.querySelector('.inspector').hidden=false;document.querySelector('.workspace').classList.add('has-context');tab(mode);renderInspector();}
+$('freeze-frame').addEventListener('click',guard(()=>{const found=clipAt(project(),position);if(!found)throw new Error('Posicione o cursor dentro de um trecho.');if(found.clip.freeze)throw new Error('Este trecho já é um quadro congelado.');if(project().assets.find(a=>a.id===found.clip.assetId)?.kind==='image')throw new Error('Fotos já são imagens paradas.');selected=found.clip.id;edit({type:'freeze',clipId:found.clip.id,time:found.sourceTime,duration:2});}));
 $('clip-split').onclick=()=>$('split').click();$('clip-delete').onclick=()=>$('delete').click();
 $('clip-crop').onclick=()=>{selectedMusic=null;showInspector('video');};$('clip-volume').onclick=()=>{selectedMusic=null;showInspector('audio');};
 

@@ -71,6 +71,7 @@ export function validateProject(p) {
     if((c.background==='color'||c.backgroundColor!==undefined)&&!(typeof c.backgroundColor==='string'&&/^#[0-9a-f]{6}$/i.test(c.backgroundColor)))fail('Cor de fundo inválida.');
     if(c.captionWords!==undefined)validateTranscript({assetId:c.assetId,words:c.captionWords},a.duration);
     if(c.speed!==undefined&&(!finite(c.speed)||c.speed<.25||c.speed>4||clipDuration(c)<.02-1e-9))fail('Velocidade inválida. Use 0,25× a 4× e mantenha ao menos 0,02 s de trecho.');
+    if(c.freeze!==undefined&&(!finite(c.freeze)||c.freeze<.1||c.freeze>10||p.assets.find(x=>x.id===c.assetId)?.kind==='image'||c.out-c.in>.1||c.speed!==undefined&&c.speed!==1))fail('Quadro congelado inválido: use de 0,1 a 10 segundos em um único quadro de vídeo.');
     if(c.zoom!==undefined){const z=c.zoom;if(!z||typeof z!=='object'||Object.keys(z).some(k=>!['from','to'].includes(k))||![z.from,z.to].every(finite)||z.from<1||z.from>2||z.to<1||z.to>2)fail('Zoom suave inválido. Use fatores de 1 a 2.');}
     if(c.adjustments!==undefined){const a=c.adjustments;if(!a||typeof a!=='object'||Object.keys(a).some(k=>!['brightness','contrast','saturation','temperature','sharpness'].includes(k))||![a.brightness,a.contrast,a.saturation].every(finite)||a.brightness< -1||a.brightness>1||a.contrast<0||a.contrast>2||a.saturation<0||a.saturation>2||a.temperature!==undefined&&(!finite(a.temperature)||a.temperature< -1||a.temperature>1)||a.sharpness!==undefined&&(!finite(a.sharpness)||a.sharpness<0||a.sharpness>1))fail('Ajustes de imagem inválidos.');}
     validateAudioFades(c);clips.add(c.id);
@@ -97,6 +98,17 @@ export function editProject(p,op) {
   const index=q.clips.findIndex(c=>c.id===op.clipId);if(index<0) fail('Trecho não encontrado.');
   const c=q.clips[index];
   switch(op.type) {
+    case 'freeze': {
+      // The still sits between the two halves of the clip, or before/after it at its edges.
+      const a=q.assets.find(x=>x.id===c.assetId),hold=op.duration;
+      if(a.kind==='image'||!finite(hold)||hold<.1||hold>10||!finite(op.time)||op.time<c.in-1e-6||op.time>c.out+1e-6)fail('Não foi possível congelar o quadro: escolha um instante do vídeo e de 0,1 a 10 segundos.');
+      const at=Math.max(0,Math.min(op.time,a.duration-.04)),still={id:id(),assetId:c.assetId,in:at,out:at+.04,volume:c.volume,crop:clone(c.crop),freeze:hold};
+      for(const k of ['adjustments','background','backgroundColor'])if(c[k]!==undefined)still[k]=clone(c[k]);
+      if(op.time-c.in<.02)q.clips.splice(index,0,still);
+      else if(c.out-op.time<.02)q.clips.splice(index+1,0,still);
+      else{const right={...clone(c),id:id(),in:op.time};c.out=op.time;if(c.fadeOut!==undefined)c.fadeOut=0;if(right.fadeIn!==undefined)right.fadeIn=0;q.clips.splice(index+1,0,still,right);}
+      break;
+    }
     case 'split': {
       if(!finite(op.time) || op.time-c.in<.02 || c.out-op.time<.02) fail('Posicione o cursor dentro do trecho para dividir.');
       const right={...clone(c),id:op.newId||id(),in:op.time};if(c.fadeOut!==undefined)c.fadeOut=0;if(right.fadeIn!==undefined)right.fadeIn=0;c.out=op.time;q.clips.splice(index+1,0,right);for(const t of q.transitions||[])if(t.leftId===c.id)t.leftId=right.id;break;
@@ -133,7 +145,7 @@ export class History {
     const h=new History(data.entries[0].state);h.entries=clone(data.entries);h.cursor=data.cursor;return h;
   }
 }
-const keys={split:['clipId','time'],trim:['clipId','in','out'],delete:['clipId'],move:['clipId','index'],update:['clipId','volume','crop','speed','background','backgroundColor','adjustments','fadeIn','fadeOut','zoom'],set_aspect:['aspect'],remove_ranges:['clipId','ranges'],keep_ranges:['clipId','ranges'],adjust_ranges:['clipId','ranges','patch'],set_transition:['leftId','rightId','effect','duration'],set_transition_at:['index','effect','duration'],edit_audio:['audioId','patch'],add_text:['layer'],add_image:['layer'],add_video:['layer'],add_shape:['layer'],edit_component:['layerId','patch'],remove_component:['layerId'],move_component:['layerId','direction'],set_keyframe:['layerId','time','pose'],remove_keyframe:['layerId','time'],set_motion:['layerId','enter','exit']};
+const keys={split:['clipId','time'],trim:['clipId','in','out'],delete:['clipId'],move:['clipId','index'],update:['clipId','volume','crop','speed','background','backgroundColor','adjustments','fadeIn','fadeOut','zoom'],set_aspect:['aspect'],remove_ranges:['clipId','ranges'],keep_ranges:['clipId','ranges'],freeze_frame:['clipId','time','duration'],adjust_ranges:['clipId','ranges','patch'],set_transition:['leftId','rightId','effect','duration'],set_transition_at:['index','effect','duration'],edit_audio:['audioId','patch'],add_text:['layer'],add_image:['layer'],add_video:['layer'],add_shape:['layer'],edit_component:['layerId','patch'],remove_component:['layerId'],move_component:['layerId','direction'],set_keyframe:['layerId','time','pose'],remove_keyframe:['layerId','time'],set_motion:['layerId','enter','exit']};
 const visualPlanFields=['start','end','x','y','width','rotation','opacity'];
 const textPlanFields=['text','start','end','style'];
 const stylePlanFields=['font','size','color','position','preset','positionX','positionY','width','accent','strokeColor','strokeWidth','shadow','shadowColor','spacing','boxColor','boxOpacity','bold','italic','uppercase','hollow','accentLast','glowColor','glow','enter','exit'];
@@ -193,6 +205,7 @@ export function applyPlan(p,plan) {
   const root=new Map(q.clips.map(c=>[c.id,c.id])),family=clipId=>q.clips.filter(c=>root.get(c.id)===clipId);
   for(const op of plan.operations) {
     if(op.type==='update'&&root.get(op.clipId)===op.clipId&&family(op.clipId).length>1){for(const piece of family(op.clipId))q=applyPlanOperation(q,{...op,clipId:piece.id});continue;}
+    if(op.type==='freeze_frame'){const target=(root.get(op.clipId)===op.clipId?family(op.clipId):q.clips.filter(c=>c.id===op.clipId)).find(c=>!c.freeze&&op.time>=c.in-1e-6&&op.time<=c.out+1e-6);if(!target)fail('Instante para congelar fora do trecho no plano.');const before=new Set(q.clips.map(c=>c.id));q=applyPlanOperation(q,{type:'freeze',clipId:target.id,time:op.time,duration:op.duration});for(const c of q.clips)if(!before.has(c.id))root.set(c.id,root.get(target.id));continue;}
     if(!['keep_ranges','remove_ranges','adjust_ranges'].includes(op.type)) { const before=new Set(q.clips.map(c=>c.id));q=applyPlanOperation(q,op);for(const c of q.clips)if(!before.has(c.id))root.set(c.id,root.get(op.clipId)??c.id);continue; }
     const members=root.get(op.clipId)===op.clipId?family(op.clipId):q.clips.filter(c=>c.id===op.clipId);if(!members.length) fail('Trecho não encontrado no plano.');
     for(const c of members){
@@ -311,7 +324,7 @@ export function moveLayer(p,layerId,direction){
 export const TRANSITION_TYPES=['dissolve','fade','slide'];
 export function transitionLimit(p,leftId,rightId){
  const i=p.clips.findIndex(c=>c.id===leftId),left=p.clips[i],right=p.clips[i+1];
- if(!left||right?.id!==rightId)return 0;
+ if(!left||right?.id!==rightId||left.freeze||right.freeze)return 0;
  const a=p.assets.find(a=>a.id===left.assetId),b=p.assets.find(a=>a.id===right.assetId);
  const max=Math.min(3,clipDuration(left),clipDuration(right),2*(a.kind==='image'?Infinity:(a.duration-left.out)/clipSpeed(left)),2*(b.kind==='image'?Infinity:right.in/clipSpeed(right)));
  return Math.max(0,Math.floor((max+1e-8)*10)/10);

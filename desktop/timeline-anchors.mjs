@@ -2,7 +2,7 @@
 // An anchor names words of a clip's transcript or a stretch of its source; it is placed where that material plays.
 import {applyPlan} from '../src/project.mjs';
 import {clipDuration} from '../src/clip-time.mjs';
-const ANCHORED=['place_overlay','place_text'],RESHAPING=['trim','split','delete','move','remove_ranges','keep_ranges','adjust_ranges'];
+const ANCHORED=['place_overlay','place_text'],RESHAPING=['trim','split','delete','move','remove_ranges','keep_ranges','adjust_ranges','freeze_frame'];
 const fail=message=>{throw Error(message);};
 function sourceSpan(project,anchor,transcripts){
  const clip=project.clips.find(c=>c.id===anchor?.clipId);if(!clip)fail(`Trecho ${anchor?.clipId} não encontrado para ancorar o componente.`);
@@ -17,7 +17,7 @@ function sourceSpan(project,anchor,transcripts){
 // Pieces of the anchored clip keep its asset; pieces of other original clips are excluded even when they share the source.
 function timelineSpan(original,state,span){
  const others=new Set(original.clips.filter(c=>c.id!==span.clip.id).map(c=>c.id)),pieces=[];let t=0;
- for(const c of state.clips){if(c.assetId===span.clip.assetId&&!others.has(c.id)&&c.in<span.end&&c.out>span.start)pieces.push({c,t});t+=clipDuration(c);}
+ for(const c of state.clips){if(!c.freeze&&c.assetId===span.clip.assetId&&!others.has(c.id)&&c.in<span.end&&c.out>span.start)pieces.push({c,t});t+=clipDuration(c);}
  if(!pieces.length)fail('O trecho ancorado foi removido pelos cortes do plano.');
  const at=({c,t},s)=>t+(s-c.in)/(c.speed??1),first=pieces[0],last=pieces.at(-1);
  return {start:at(first,Math.max(span.start,first.c.in)),end:at(last,Math.min(span.end,last.c.out))};
