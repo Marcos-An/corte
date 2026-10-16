@@ -11,8 +11,10 @@ try{
  env.allowRemoteModels=false;env.allowLocalModels=true;env.localModelPath=models;env.useBrowserCache=false;env.useFSCache=false;
  const manifest=JSON.parse(await readFile(path.join(models,'manifest.json'),'utf8'));for(const entry of manifest.files){const actual=createHash('sha256').update(await readFile(path.join(models,entry.path))).digest('hex');if(actual!==entry.sha256)throw new Error('Modelo local corrompido. Reinstale o app.');}
  const processor=await AutoProcessor.from_pretrained(MODEL_ID,{local_files_only:true});let backend=process.platform==='darwin'?'coreml':process.platform==='win32'?'dml':'cpu',fallback=false,model;
+ parentPort.postMessage({progress:{stage:'worker-diagnostic',event:'worker-start',worker:'vision',processType:'vision',backend}});
  const load=device=>CLIPVisionModelWithProjection.from_pretrained(MODEL_ID,{dtype:'q8',device,local_files_only:true});
  try{model=await load(backend);}catch{backend='cpu';fallback=true;model=await load('cpu');}
+ parentPort.postMessage({progress:{stage:'worker-diagnostic',event:'worker-start',worker:'vision',processType:'vision',backend}});
  const evidence=[],reports=[],fps=step===.5?4:step===5?1:2,start=performance.now();
  try{for(const asset of assets){
   if(!asset.file)throw new Error('Mídia ausente.');abort.signal.throwIfAborted();const folder=frameDirectory(directory,asset.id);await mkdir(folder,{recursive:true});

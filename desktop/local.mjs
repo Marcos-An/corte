@@ -34,10 +34,11 @@ export function scanLocally({project,registry,directory,step=2,signal,onProgress
  if(signal?.aborted)return Promise.reject(new Error('Análise cancelada.'));
  const assets=[...new Set(project.clips.map(c=>c.assetId))].map(id=>({id,...project.assets.find(a=>a.id===id),file:registry.get(id)?.path}));
  return new Promise((resolve,reject)=>{
-  const worker=new Worker(new URL('./local-worker.mjs',import.meta.url),{workerData:{assets,directory,models:modelPath(),step}});let settled=false;
+  const worker=new Worker(new URL('./local-worker.mjs',import.meta.url),{workerData:{assets,directory,models:modelPath(),step}});let settled=false,outcome='error';
+  onProgress({stage:'worker-diagnostic',event:'worker-start',worker:'vision',processType:'vision'});
   const cancel=()=>worker.postMessage({cancel:true});signal?.addEventListener('abort',cancel,{once:true});
-  const finish=(error,value)=>{if(settled)return;settled=true;signal?.removeEventListener('abort',cancel);worker.terminate();error?reject(error):resolve(value);};
-  worker.on('message',m=>{if(m.progress)onProgress(m.progress);else if(m.error)finish(new Error(m.error));else if(m.result)finish(signal?.aborted?new Error('Análise cancelada.'):null,m.result);});
-  worker.on('error',()=>finish(new Error('A análise local não iniciou. Reinstale o aplicativo completo.')));worker.on('exit',code=>{if(!settled)finish(new Error(`Análise local interrompida (${code}).`));});
+  const finish=(error,value)=>{if(settled)return;outcome=signal?.aborted?'canceled':error?'error':'ok';settled=true;signal?.removeEventListener('abort',cancel);worker.terminate();error?reject(error):resolve(value);};
+  worker.on('message',m=>{if(m.progress)onProgress(m.progress);else if(m.error){onProgress({stage:'worker-diagnostic',event:'worker-error',worker:'vision',processType:'vision'});finish(new Error(m.error));}else if(m.result)finish(signal?.aborted?new Error('Análise cancelada.'):null,m.result);});
+  worker.on('error',error=>{onProgress({stage:'worker-diagnostic',event:'worker-error',worker:'vision',processType:'vision',errorCode:error.code,errorName:error.name});finish(new Error('A análise local não iniciou. Reinstale o aplicativo completo.'));});worker.on('exit',code=>{onProgress({stage:'worker-diagnostic',event:'worker-exit',worker:'vision',processType:'vision',exitCode:code,outcome});if(!settled)finish(new Error(`Análise local interrompida (${code}).`));});
  });
 }

@@ -930,6 +930,18 @@ function applyMediaState(state){
 }
 bridge?.onMediaState?.(applyMediaState);
 $('cancel-media-validation').onclick=guard(async()=>{if(mediaHydrationState)await bridge.cancelMediaValidation(mediaHydrationState.id);});
+async function refreshDiagnosticStatus(){
+ const status=await bridge?.diagnosticStatus?.();if(!status)return;
+ $('diagnostic-status').textContent=status.available?'Registro local ativo. Os arquivos têm tamanho limitado.':'Não foi possível gravar o diagnóstico local. Verifique espaço e permissão de escrita.';
+ $('diagnostic-notice').hidden=!status.previousInterruption;
+}
+async function exportDiagnostic(button){button.disabled=true;try{if(await bridge.exportDiagnostics())toast('Diagnóstico exportado. Você pode anexar o arquivo ao suporte.');}finally{button.disabled=false;}}
+$('export-diagnostics').onclick=guard(()=>exportDiagnostic($('export-diagnostics')));
+$('export-crash-diagnostics').onclick=guard(()=>exportDiagnostic($('export-crash-diagnostics')));
+$('dismiss-diagnostic-notice').onclick=()=>{$('diagnostic-notice').hidden=true;};
+function reportRendererError(error){bridge?.reportDiagnosticError?.({name:typeof error?.name==='string'?error.name:undefined,code:typeof error?.code==='string'?error.code:undefined}).catch(()=>{});}
+window.addEventListener('error',event=>reportRendererError(event.error));
+window.addEventListener('unhandledrejection',event=>reportRendererError(event.reason));
 $('copy-performance-diagnostics').onclick=guard(async()=>{await bridge.copyPerformanceDiagnostics();toast('Diagnóstico local copiado. Sem nomes ou caminhos das mídias.');});
 async function openSavedProject(token){
  if(busy){if(token)toast('Conclua a operação atual e abra o projeto pelo menu Arquivo.',true);return;}document.activeElement?.blur?.();if(dirty && !confirm('Abrir outro projeto e descartar alterações não salvas?'))return;stop();openingProject=true;setBusy(true,'Abrindo projeto…');
@@ -1073,5 +1085,5 @@ timelineResizer.addEventListener('pointermove',e=>{if(timelineResizeDrag)setTime
 for(const event of ['pointerup','pointercancel','lostpointercapture'])timelineResizer.addEventListener(event,()=>{timelineResizeDrag=null;document.body.classList.remove('resizing-timeline');});
 timelineResizer.addEventListener('keydown',e=>{if(!['ArrowUp','ArrowDown','Home','End'].includes(e.key))return;e.preventDefault();e.stopPropagation();const {min,max}=timelineHeightLimits();setTimelineHeight(e.key==='Home'?min:e.key==='End'?max:timelineElement.getBoundingClientRect().height+(e.key==='ArrowUp'?20:-20));});
 window.addEventListener('resize',()=>{if(timelineElement.classList.contains('resized')&&!document.body.classList.contains('preview-focus'))setTimelineHeight(timelineElement.getBoundingClientRect().height);});
-render();refreshConnection().catch(()=>{});requestAnimationFrame(animate);
+render();refreshConnection().catch(()=>{});refreshDiagnosticStatus().catch(()=>{});requestAnimationFrame(animate);
 bridge?.ready?.().catch(e=>toast(e.message,true));

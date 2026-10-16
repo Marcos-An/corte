@@ -15,6 +15,12 @@ app.on('second-instance',(_event,argv)=>requestProject(projectArgument(argv)));
 app.on('open-file',(event,file)=>{event.preventDefault();requestProject(file);});
 requestProject(projectArgument(process.argv));
 if(primary)app.whenReady().then(async()=>{
+ const {createSessionDiagnostics,diagnosticError}=await import('./session-diagnostics.mjs');
+ const sessionLog=createSessionDiagnostics({directory:path.join(app.getPath('userData'),'diagnostics'),version:app.getVersion()});
+ process.on('uncaughtExceptionMonitor',error=>sessionLog.record({event:'uncaught-exception',stage:'main',...diagnosticError(error)}));
+ app.on('child-process-gone',(_event,details)=>sessionLog.record({event:'process-gone',stage:'main',processType:details.type,reason:details.reason,exitCode:details.exitCode}));
+ app.on('will-quit',()=>sessionLog.close());
+
  const {saveRecording,microphoneAllowed}=await import('./recording.mjs');let microphoneArmedUntil=0;
  const core=await import('../src/project.mjs'),media=await import('./media.mjs'),ai=await import('./ai.mjs'),storage=await import('./storage.mjs'),stream=await import('./stream.mjs');
  const cache=path.join(app.getPath('userData'),'cache'),home=path.join(app.getPath('userData'),'chatgpt');await fs.mkdir(cache,{recursive:true});
@@ -23,7 +29,7 @@ if(primary)app.whenReady().then(async()=>{
  const {createDiagnostics}=await import('./diagnostics.mjs'),{beginMediaHydration}=await import('./open-media.mjs');
  const diagnostics=createDiagnostics(path.join(app.getPath('userData'),'diagnostics','performance.jsonl'));let hydration=null,ensureModels=async()=>{};
  async function timed(stage,fn){const started=performance.now();try{const value=await fn();diagnostics.record({stage,elapsedMs:performance.now()-started,outcome:'ok'});return value;}catch(error){diagnostics.record({stage,elapsedMs:performance.now()-started,outcome:'error'});throw error;}}
- function notify(p){if(window && !window.isDestroyed())window.webContents.send('editor:progress',p);}
+ function notify(p){if(p.stage==='worker-diagnostic')return;if(window && !window.isDestroyed())window.webContents.send('editor:progress',p);}
  function expose(a,entry=registry.get(a.id)){return {...a,url:entry?`corte-media://local/${entry.token}/video`:null,thumbnail:entry?.thumbnail?`corte-media://local/${entry.token}/thumb`:null,missing:!entry};}
  function authorized(p){core.validateProject(p);for(const a of p.assets){const r=registry.get(a.id);if(!r){if(hydration?.state.assets.some(s=>s.id===a.id&&s.pending))throw Error(`Ainda validando ${a.name}. Aguarde a validação da mídia.`);throw new Error(`Mídia ausente: ${a.name}. Relocalize o arquivo.`);}for(const key of ['duration','width','height','hasAudio','kind'])if((key==='kind'?(a[key]||'video'):a[key])!==(key==='kind'?(r.asset[key]||'video'):r.asset[key]))throw new Error('Os dados da mídia não correspondem ao arquivo importado.');}return p;}
  function handler(name,fn){ipcMain.handle(`editor:${name}`,async(event,...args)=>{
@@ -106,6 +112,9 @@ if(primary)app.whenReady().then(async()=>{
  handler('media-state',id=>hydration?.state.id===id?hydration.state:null);
  handler('cancel-media',id=>{if(hydration?.state.id!==id)throw Error('Validação de outro projeto.');hydration.cancel();return true;});
  handler('preview-timing',elapsedMs=>{if(Number.isFinite(elapsedMs)&&elapsedMs>=0&&elapsedMs<=180000)diagnostics.record({stage:'preview-load',elapsedMs,outcome:'ok'});return true;});
+ handler('diagnostic-status',()=>sessionLog.status());
+ handler('diagnostic-error',error=>{sessionLog.record({event:'renderer-error',stage:'renderer',...diagnosticError(error)});return true;});
+ handler('diagnostic-export',async()=>{const picked=await dialog.showSaveDialog(window,{title:'Exportar diagnóstico local',defaultPath:`Corte-diagnostico-${new Date().toISOString().slice(0,10)}.json`,filters:[{name:'Diagnóstico JSON',extensions:['json']}]});if(picked.canceled)return false;const file=/\.json$/i.test(picked.filePath)?picked.filePath:picked.filePath+'.json';await fs.writeFile(file,sessionLog.export(),{mode:0o600});return true;});
  handler('performance-diagnostics',async()=>{const text=await diagnostics.read();clipboard.writeText(`Corte ${app.getVersion()} · ${process.platform}\n${text||'Sem medições disponíveis.'}`);return true;});
  handler('export',async(p,height)=>{
    authorized(p);if(abort)throw new Error('Já há uma operação em andamento.');
@@ -117,9 +126,10 @@ if(primary)app.whenReady().then(async()=>{
  handler('login',async()=>{if(loginRunning)throw new Error('O login já está aberto no navegador.');loginRunning=true;try{await ai.startLogin(home);return ai.loginStatus(home);}finally{loginRunning=false;}});
  handler('analyze',async(p,prompt,step,clipId=null,engine='chatgpt',shareEvidence=false)=>{
   authorized(p);if(!['hybrid','chatgpt'].includes(engine))throw Error('Motor de IA inválido.');if(engine==='hybrid'&&shareEvidence!==true)throw Error('Autorize o envio das evidências para esta análise.');if(abort)throw Error('Já há uma operação em andamento.');abort=new AbortController();
-  try{await ensureModels();const {scopeProject,validateScopedPlan}=await import('../src/editor-experience.mjs');const options={home,cache,project:scopeProject(p,clipId),scopeClipId:clipId,prompt,registry,signal:abort.signal,onProgress:notify,shareEvidence};
+  const diagnosticOperation=sessionLog.begin();const diagnosticTimer=setInterval(()=>sessionLog.heartbeat(),5000);diagnosticTimer.unref();let outcome='ok';
+  try{await ensureModels();const {scopeProject,validateScopedPlan}=await import('../src/editor-experience.mjs');const options={home,cache,project:scopeProject(p,clipId),scopeClipId:clipId,prompt,registry,signal:abort.signal,onProgress:p=>{sessionLog.progress(p,diagnosticOperation);notify(p);},shareEvidence};
    const result=engine==='hybrid'?await (await import('./hybrid.mjs')).requestHybridEdit(options):await (await import('./intent.mjs')).requestPromptPlan(options);validateScopedPlan(p,result.plan,clipId);return result;
-  }finally{abort=null;}
+  }catch(error){outcome=abort?.signal.aborted?'canceled':'error';sessionLog.failure(error);throw error;}finally{clearInterval(diagnosticTimer);sessionLog.end(outcome);abort=null;}
  });
  handler('api-status',async()=>({configured:!!await keys.read()}));
  handler('api-save',async key=>{if(abort)throw new Error('Aguarde a operação atual.');await keys.save(key);return {configured:true};});
@@ -138,6 +148,7 @@ if(primary)app.whenReady().then(async()=>{
  handler('update-install',()=>{if(!updates)throw Error('Atualização automática indisponível.');return updates.install();});
  const workArea=screen.getPrimaryDisplay().workArea;
  window=new BrowserWindow({width:Math.min(1400,workArea.width),height:Math.min(960,workArea.height),minWidth:Math.min(960,workArea.width),minHeight:Math.min(680,workArea.height),backgroundColor:'#101113',title:'Corte — Editor de vídeo',show:false,autoHideMenuBar:true,webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
+ window.webContents.on('render-process-gone',(_event,details)=>sessionLog.record({event:'process-gone',stage:'renderer',processType:'renderer',reason:details.reason,exitCode:details.exitCode}));
  const menu=Menu.getApplicationMenu(),fileMenu=menu?.items.find(item=>item.role==='filemenu');
  if(fileMenu){fileMenu.submenu.insert(0,new MenuItem({id:'open-project',label:'Abrir projeto…',accelerator:'CmdOrCtrl+O',click:()=>window.webContents.send('editor:open-project')}));for(const [index,label,mode] of [[1,'Salvar','save'],[2,'Salvar como…','as'],[3,'Salvar cópia portátil…','portable']])fileMenu.submenu.insert(index,new MenuItem({label,click:()=>window.webContents.send('editor:save-project',mode)}));fileMenu.submenu.insert(4,new MenuItem({type:'separator'}));Menu.setApplicationMenu(menu);}
  window.webContents.on('before-input-event',(event,input)=>{if(input.type==='keyDown'&&(input.control||input.meta)&&input.key.toLowerCase()==='o'){event.preventDefault();window.webContents.send('editor:open-project');}});
