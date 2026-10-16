@@ -129,7 +129,7 @@ export class History {
     const h=new History(data.entries[0].state);h.entries=clone(data.entries);h.cursor=data.cursor;return h;
   }
 }
-const keys={split:['clipId','time'],trim:['clipId','in','out'],delete:['clipId'],move:['clipId','index'],update:['clipId','volume','crop','speed','background','backgroundColor','adjustments','fadeIn','fadeOut'],set_aspect:['aspect'],remove_ranges:['clipId','ranges'],keep_ranges:['clipId','ranges'],set_transition:['leftId','rightId','effect','duration'],set_transition_at:['index','effect','duration'],edit_audio:['audioId','patch'],add_text:['layer'],add_image:['layer'],add_video:['layer'],add_shape:['layer'],edit_component:['layerId','patch'],remove_component:['layerId'],move_component:['layerId','direction'],set_keyframe:['layerId','time','pose'],remove_keyframe:['layerId','time'],set_motion:['layerId','enter','exit']};
+const keys={split:['clipId','time'],trim:['clipId','in','out'],delete:['clipId'],move:['clipId','index'],update:['clipId','volume','crop','speed','background','backgroundColor','adjustments','fadeIn','fadeOut'],set_aspect:['aspect'],remove_ranges:['clipId','ranges'],keep_ranges:['clipId','ranges'],adjust_ranges:['clipId','ranges','patch'],set_transition:['leftId','rightId','effect','duration'],set_transition_at:['index','effect','duration'],edit_audio:['audioId','patch'],add_text:['layer'],add_image:['layer'],add_video:['layer'],add_shape:['layer'],edit_component:['layerId','patch'],remove_component:['layerId'],move_component:['layerId','direction'],set_keyframe:['layerId','time','pose'],remove_keyframe:['layerId','time'],set_motion:['layerId','enter','exit']};
 const visualPlanFields=['start','end','x','y','width','rotation','opacity'];
 const textPlanFields=['text','start','end','style'];
 const stylePlanFields=['font','size','color','position','preset','positionX','positionY','width','accent','strokeColor','strokeWidth','shadow','shadowColor','spacing','boxColor','boxOpacity','bold','italic','uppercase','hollow','accentLast','glowColor','glow','enter','exit'];
@@ -174,28 +174,36 @@ export function validatePlan(p,plan) {
     const allowed=keys[op?.type];if(!allowed || (op.type==='update'? !('clipId' in op):allowed.some(k=>!(k in op))) || Object.keys(op).some(k=>k!=='type' && !allowed.includes(k))) fail('Operação da IA inválida.');
     if(op.type==='update'&&op.crop)planFields(op.crop,['x','y','w','h']);
     if(op.type==='update' && !keys.update.slice(1).some(k=>k in op)) fail('Ajuste vazio.');
-    if(op.type==='remove_ranges' || op.type==='keep_ranges') {
+    if(op.type==='adjust_ranges'){planFields(op.patch,['speed','crop','adjustments','volume']);if(op.patch.crop)planFields(op.patch.crop,['x','y','w','h']);}
+    if(['remove_ranges','keep_ranges','adjust_ranges'].includes(op.type)) {
       const c=p.clips.find(c=>c.id===op.clipId),a=p.assets.find(a=>a.id===c?.assetId);
       if(!a || !Array.isArray(op.ranges) || op.ranges.length>100 || op.ranges.some(r=>!Array.isArray(r) || r.length!==2 || !r.every(finite) || r[0]<0 || r[1]<=r[0] || r[1]>a.duration+.000001)) fail('Intervalos da IA inválidos.');
     }
   }
   return plan;
 }
+// Range operations split a clip into pieces with new ids the plan cannot know. Each piece keeps its original clip as
+// lineage, so later range operations and updates naming that clip reach every piece.
 export function applyPlan(p,plan) {
   validatePlan(p,plan);let q=clone(p);
+  const root=new Map(q.clips.map(c=>[c.id,c.id])),family=clipId=>q.clips.filter(c=>root.get(c.id)===clipId);
   for(const op of plan.operations) {
-    if(!['keep_ranges','remove_ranges'].includes(op.type)) { q=applyPlanOperation(q,op);continue; }
-    const index=q.clips.findIndex(c=>c.id===op.clipId);if(index<0) fail('Trecho não encontrado no plano.');const c=q.clips[index];
-    const merged=[];
-    for(const r of [...op.ranges].sort((a,b)=>a[0]-b[0])) {
-      const start=Math.max(c.in,r[0]),end=Math.min(c.out,r[1]);if(end<=start)continue;
-      if(merged.length && start<=merged.at(-1)[1]) merged.at(-1)[1]=Math.max(merged.at(-1)[1],end);else merged.push([start,end]);
+    if(op.type==='update'&&root.get(op.clipId)===op.clipId&&family(op.clipId).length>1){for(const piece of family(op.clipId))q=applyPlanOperation(q,{...op,clipId:piece.id});continue;}
+    if(!['keep_ranges','remove_ranges','adjust_ranges'].includes(op.type)) { const before=new Set(q.clips.map(c=>c.id));q=applyPlanOperation(q,op);for(const c of q.clips)if(!before.has(c.id))root.set(c.id,root.get(op.clipId)??c.id);continue; }
+    const members=root.get(op.clipId)===op.clipId?family(op.clipId):q.clips.filter(c=>c.id===op.clipId);if(!members.length) fail('Trecho não encontrado no plano.');
+    for(const c of members){
+      const index=q.clips.findIndex(x=>x.id===c.id),merged=[];
+      for(const r of [...op.ranges].sort((a,b)=>a[0]-b[0])) {
+        const start=Math.max(c.in,r[0]),end=Math.min(c.out,r[1]);if(end<=start)continue;
+        if(merged.length && start<=merged.at(-1)[1]) merged.at(-1)[1]=Math.max(merged.at(-1)[1],end);else merged.push([start,end]);
+      }
+      let segments=merged.map(([a,b])=>({in:a,out:b,patched:true}));
+      if(op.type!=='keep_ranges'){segments=[];let cursor=c.in;for(const [start,end] of merged){if(start>cursor)segments.push({in:cursor,out:start});if(op.type==='adjust_ranges')segments.push({in:start,out:end,patched:true});cursor=end;}if(cursor<c.out)segments.push({in:cursor,out:c.out});}
+      const pieces=segments.filter(s=>s.out-s.in>=.02).map((s,i)=>({...clone(c),id:i===0?c.id:id(),in:s.in,out:s.out}));
+      for(const [i,piece] of pieces.entries()){root.set(piece.id,root.get(c.id));if(i>0&&piece.fadeIn!==undefined)piece.fadeIn=0;if(i<pieces.length-1&&piece.fadeOut!==undefined)piece.fadeOut=0;}
+      q.clips.splice(index,1,...pieces);reconcileTransitions(q);validateProject(q);
+      if(op.type==='adjust_ranges')for(const [i,s] of segments.filter(s=>s.out-s.in>=.02).entries())if(s.patched)q=applyPlanOperation(q,{type:'update',clipId:pieces[i].id,...op.patch});
     }
-    let ranges=merged;
-    if(op.type==='remove_ranges') { ranges=[];let cursor=c.in;for(const [start,end] of merged){if(start>cursor)ranges.push([cursor,start]);cursor=end;}if(cursor<c.out)ranges.push([cursor,c.out]); }
-    const pieces=ranges.filter(([a,b])=>b-a>=.02).map(([a,b],i)=>({...clone(c),id:i===0?c.id:id(),in:a,out:b}));
-    for(const [i,piece] of pieces.entries()){if(i>0&&piece.fadeIn!==undefined)piece.fadeIn=0;if(i<pieces.length-1&&piece.fadeOut!==undefined)piece.fadeOut=0;}
-    q.clips.splice(index,1,...pieces);reconcileTransitions(q);validateProject(q);
   }
   return validateProject(q);
 }

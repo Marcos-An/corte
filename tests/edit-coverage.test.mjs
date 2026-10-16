@@ -52,3 +52,12 @@ test('speech operations are resolved to source ranges before validation, only in
  assert.ok(kinds(reviewPlanSchema.properties.plan).includes('remove_words')&&kinds(reviewPlanSchema.properties.plan).includes('tighten_pauses'));assert.ok(!kinds(planSchema).includes('remove_words'));
  assert.match(buildPrompt(p,'Corte',[],{review:true}),/remove_words/);
 });
+test('an overlay anchored to speech resolves after the speech cuts into an ordinary component',()=>{
+ const two=addClip(addClip(addAsset(createProject(),{id:'a',name:'Video',duration:10,width:320,height:240,hasAudio:true}),'a','c'),'a','b-roll');
+ const words=[{text:'oi',start:1,end:1.4},{text:'manga',start:5,end:5.6},{text:'bom',start:7,end:7.3}],transcripts=[{assetId:'a',words,pauses:[]}];
+ const ops=[{type:'remove_words',clipId:'c',ranges:[[0,0]]},{type:'place_overlay',anchor:{clipId:'c',from:1,to:1},layer:{id:'cartaz',assetId:'a',in:8,x:50,y:50,width:100,rotation:0,opacity:100}}];
+ const out=parseReviewPayload(two,JSON.stringify({plan:{...plan,operations:ops},pendingRequests:[],coverage:[item('cut','planned',[0]),item('composition','planned',[1])]}),{transcripts});
+ const [cut,overlay]=out.plan.operations,removed=cut.ranges[0][1]-cut.ranges[0][0];
+ assert.equal(overlay.type,'add_video');assert.ok(Math.abs(overlay.layer.start-(5-removed))<1e-6&&Math.abs(overlay.layer.end-(5.6-removed))<1e-6,JSON.stringify({removed,layer:overlay.layer}));
+ assert.match(buildPrompt(two,'x',[],{review:true}),/place_overlay/);
+});

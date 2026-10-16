@@ -80,3 +80,8 @@ test('provider sees indexed words, the measured pauses inside the clip and hesit
  assert.equal(out.mode,'hybrid');
  await assert.rejects(requestHybridEdit({project:scoped,prompt:'x',shareEvidence:true,registry,connected:async()=>true,transcribe:async()=>[{assetId:'a',words,gaps:[],pauses:[{start:5,end:4}]}],planRequest:async()=>{throw Error('unreachable');}}),/pausa/i);
 });
+test('the speech safety check follows every piece of a clip across several cuts',async()=>{
+ const out=await requestHybridEdit({project:p,prompt:'Cortes',shareEvidence:true,registry,connected:async()=>true,transcribe:async()=>[{assetId:'a',words:[],gaps:[{start:70,end:72,reason:'unreliable-word-times'}]}],
+  planRequest:async()=>({plan:{...base,operations:[{type:'remove_ranges',clipId:'c',ranges:[[10,20]]},{type:'remove_ranges',clipId:'c',ranges:[[70.5,71]]}]},pendingRequests:[],frames:1})});
+ assert.deepEqual(out.plan.operations,[],'the second cut hits uncertain speech in a later piece of the same clip');
+});

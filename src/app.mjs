@@ -55,6 +55,7 @@ function describeOperation(p,op){
  if(op.type==='trim')return `Aparar · ${name} · ${seconds(op.in)}–${seconds(op.out)}`;
  if(op.type==='split')return `Dividir · ${name} · ${seconds(op.time)}`;
  if(op.type==='move')return `Mover · ${name} · posição ${op.index+1}`;
+ if(op.type==='adjust_ranges')return `${({speed:'Velocidade',crop:'Zoom/enquadramento',adjustments:'Ajustes de imagem',volume:'Volume'})[Object.keys(op.patch)[0]]} em trechos · ${name} · ${op.ranges.map(([start,end])=>`${seconds(start)}–${seconds(end)}`).join(', ')} · ${JSON.stringify(Object.values(op.patch)[0])}`.slice(0,4000);
  if(op.ranges)return `${op.type==='keep_ranges'?'Manter':'Remover'} intervalos · ${name} · ${op.ranges.map(([start,end])=>`${seconds(start)}–${seconds(end)}`).join(', ')}`.slice(0,4000);
  return `Remover · ${name}`;
 }
