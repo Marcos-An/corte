@@ -110,7 +110,8 @@ try{
   wrongIngredientHandled:kept(9,/^chocolat/)===false||out.pendingRequests.some(s=>/ingredient/i.test(s)),
   placeTexts:/kokoro/i.test(texts)&&/uchida/i.test(texts)&&/endere/i.test(texts),
   placeholdersPending:out.pendingRequests.some(s=>s.includes('[INSERIR')),
-  narrationPending:out.pendingRequests.some(s=>/narra/i.test(s)),
+  // Narration is out of scope for AI editing (it has its own feature): ignored, never reserved, muted or pending.
+  narrationIgnored:!out.pendingRequests.some(s=>/narra/i.test(s))&&(out.coverage||[]).filter(c=>/narra/i.test(c.request)).every(c=>c.status==='not_needed'),
   blurryCut:!order.includes('a11'),
   ramenNearEnd:order.lastIndexOf('a10')>=order.length-4||ops.some(o=>o.type==='add_video'&&o.layer.assetId==='a10'),
   lightGrade:ops.some(o=>o.type==='update'&&o.adjustments||o.type==='adjust_ranges'&&o.patch.adjustments),
