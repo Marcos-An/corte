@@ -4,10 +4,10 @@ Editor desktop de vídeo com Electron, edição não destrutiva e assistência p
 
 ## Download
 
-Windows **0.6.1**: [downloads e notas da versão](https://github.com/Marcos-An/corte/releases/tag/v0.6.1). As versões anteriores para macOS continuam nas releases anteriores.
+Windows **0.6.2**: [downloads e notas da versão](https://github.com/Marcos-An/corte/releases/tag/v0.6.2). As versões anteriores para macOS continuam nas releases anteriores.
 
 - **macOS Apple Silicon (arm64):** arquivo `.dmg` ou `.zip`. Não há pacote Intel nesta versão.
-- **Windows x64:** instalador `Corte.Setup.0.6.1.exe`.
+- **Windows x64:** instalador `Corte.Setup.0.6.2.exe`.
 - Pacotes **sem assinatura digital/notarização**; macOS/Windows podem mostrar avisos de segurança. Não desative a proteção do sistema inteiro.
 
 O aplicativo empacotado foi validado no Mac com mídia sintética, salvar/reabrir e exportação real. A interface Windows foi validada nesta máquina com edição complexa, salvar/reabrir, desfazer, exportação MP4 e atualização; o instalador e o feed passaram por auditoria de integridade. Esta versão é beta, não uma certificação de estabilidade.
