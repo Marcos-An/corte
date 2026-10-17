@@ -43,3 +43,11 @@ test('plans without anchored operations pass through untouched',()=>{
  const {p,transcripts}=fixture(),plain=result([{type:'set_aspect',aspect:'9:16'}]);
  assert.equal(resolveAnchoredOperations(p,plain,transcripts),plain);
 });
+test('a source still covers a longer anchored speech without stretching moving overlays',()=>{
+ const {p,transcripts}=fixture();const layer={id:'poster',assetId:'b',in:19,...visual};
+ const op={type:'place_still',anchor:{clipId:'c',sourceStart:1,sourceEnd:12},layer};
+ const resolved=resolveAnchoredOperations(p,result([op]),transcripts);const q=applyPlan(p,resolved.plan);
+ assert.equal(q.videoLayers[0].freeze,true);assert.equal(q.videoLayers[0].end-q.videoLayers[0].start,11);
+ assert.throws(()=>resolveAnchoredOperations(p,result([{...op,type:'place_overlay'}]),transcripts));
+ assert.throws(()=>resolveAnchoredOperations(p,result([{...op,layer:{...layer,in:20}}]),transcripts));
+});

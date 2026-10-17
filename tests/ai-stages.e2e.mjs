@@ -14,7 +14,7 @@ try{
  await page.waitForFunction(()=>/repetir a etapa 2/.test(document.querySelector('#ai-feedback').textContent));await page.locator('#analyze').click();
  await page.locator('#apply-hybrid-plan').waitFor();assert.match(await page.locator('#proposal').textContent(),/Etapa 2 de 3/);await page.locator('#discard-hybrid-plan').click();
  await page.locator('#continue-stage').waitFor();assert.match(await page.locator('#continue-stage').textContent(),/etapa 3 · Textos e acabamento/,'a discarded stage can be skipped');await page.locator('#continue-stage').click();
- await page.locator('#apply-hybrid-plan').waitFor();await page.locator('#apply-hybrid-plan').click();await page.waitForFunction(()=>/Todas as etapas foram concluídas/.test(document.querySelector('#proposal').textContent));
+ await page.locator('#apply-hybrid-plan').waitFor();await page.locator('#apply-hybrid-plan').click();await page.waitForFunction(()=>/2 aplicada\(s\), 1 pulada\(s\)/.test(document.querySelector('#proposal').textContent));
  const calls=await app.evaluate(()=>global.stages);assert.deepEqual(calls.map(c=>c.stage),[1,2,2,3],'a failed stage is repeated, never restarted from stage 1');assert.ok(calls.every(c=>c.prompt==='Pedido longo do Kokoro'),'every stage keeps the same request');
  await page.locator('#ai-mode').selectOption('all');await page.locator('#analyze').click();await page.locator('#apply-hybrid-plan').waitFor().catch(()=>{});assert.equal((await app.evaluate(()=>global.stages.at(-1))).stage,null,'single proposal mode sends no stage');
  console.log('PASS staged AI editing: three named stages, apply or skip, same request, single-proposal mode unaffected');

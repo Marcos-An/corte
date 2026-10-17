@@ -8,7 +8,7 @@ import {keyframeExpression,pointsOf,animated} from '../src/keyframes.mjs';
 import {projectCaptions,toAss} from '../src/captions.mjs';
 import {existsSync} from 'node:fs';
 import { spawn } from 'node:child_process';
-import { mkdtemp, mkdir, rm, writeFile, rename, stat } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, readFile, writeFile, rename, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -21,14 +21,14 @@ export function binaries() {
 }
 export function run(file,args,{signal,onData,env=process.env,timeout=180000,maxOutput=2e6}={}) {
   return new Promise((resolve,reject)=>{
-    let stdout='',stderr='',settled=false;
+    let stdout='',stderr='',settled=false,processError=null;
     const child=spawn(file,args,{windowsHide:true,shell:false,env,signal});
-    const timer=setTimeout(()=>{child.kill();finish(new Error('Tempo limite atingido. Tente um vídeo menor.'));},timeout);
+    const timer=setTimeout(()=>{processError=new Error('Tempo limite atingido. Tente um vídeo menor.');child.kill('SIGKILL');},timeout);
     function finish(error){if(settled)return;settled=true;clearTimeout(timer);error?reject(error):resolve({stdout,stderr});}
-    child.stdout.on('data',data=>{stdout+=data;if(stdout.length>maxOutput){child.kill();finish(new Error('Resposta excedeu o limite.'));}onData?.(String(data));});
+    child.stdout.on('data',data=>{stdout+=data;if(stdout.length>maxOutput){processError=new Error('Resposta excedeu o limite.');child.kill('SIGKILL');}onData?.(String(data));});
     child.stderr.on('data',data=>{stderr=(stderr+data).slice(-12000);});
-    child.on('error',error=>finish(error.name==='AbortError'?new Error('Operação cancelada.'):error));
-    child.on('close',code=>finish(code===0?null:new Error(signal?.aborted?'Operação cancelada.':`Processamento falhou (${code}). ${stderr.slice(-1800)}`)));
+    child.on('error',error=>{if(error.name==='AbortError')processError=new Error('Operação cancelada.');else finish(error);});
+    child.on('close',code=>finish(processError||(code===0?null:new Error(signal?.aborted?'Operação cancelada.':`Processamento falhou (${code}). ${stderr.slice(-1800)}`))));
   });
 }
 export function parseProbe(result) {
@@ -49,13 +49,19 @@ export function sampleTimes(duration,step=2,max=60) {
   const actualStep=Math.max(step,duration/max);const result=[];for(let i=0;i<max && i*actualStep<duration;i++)result.push(Number((i*actualStep).toFixed(3)));return result;
 }
 // Previews sent to the provider are bounded by their long side: a vertical 720-wide frame costs ~2.6x the image tokens.
-export const PREVIEW_SCALE='scale=720:720:force_original_aspect_ratio=decrease:force_divisible_by=2',PREVIEW_JPEG=['-pix_fmt','yuvj420p','-q:v','5'];
+export const PREVIEW_SCALE='scale=720:720:force_original_aspect_ratio=decrease:force_divisible_by=2',PREVIEW_PNG=['-c:v','png','-pix_fmt','rgb24','-compression_level','1'];
 export async function frame(file,time,out,signal,options={}) {
   const {width=480,...runOptions}=options;if(!Number.isInteger(width)||width<64||width>1920)throw new Error('Resolução da amostra inválida.');
+  const still=/\.(png|jpe?g|webp)$/i.test(file);
   await rm(out,{force:true});
-  await run(binaries().ffmpeg,['-hide_banner','-loglevel','error','-y','-ss',String(time),'-i',file,'-frames:v','1','-vf',width===720?`${PREVIEW_SCALE},format=rgb24`:`scale=${width}:-2`,...(width===720&&/\.jpe?g$/i.test(out)?PREVIEW_JPEG:[]),out],{...runOptions,signal});
-  const image=await stat(out).catch(error=>{if(error.code==='ENOENT')return null;throw error;});
-  if(!image?.size)throw new Error('Nenhum frame disponível nesse instante. A análise não pode reutilizar uma imagem anterior.');
+  // The shipped Windows MJPEG encoder corrupts RGB previews. Decode losslessly, then encode with libvips.
+  const jpeg=/\.jpe?g$/i.test(out),decoded=jpeg?out+'.'+crypto.randomUUID()+'.png':out;
+  try{
+   await run(binaries().ffmpeg,['-hide_banner','-loglevel','error','-y',...(!still?['-hwaccel','auto']:[]),'-ss',String(still?0:time),'-i',file,'-frames:v','1','-vf',width===720?`${PREVIEW_SCALE},format=rgb24`:`scale=${width}:-2`,...(jpeg?PREVIEW_PNG:[]),decoded],{...runOptions,signal});
+   const image=await stat(decoded).catch(error=>{if(error.code==='ENOENT')return null;throw error;});
+   if(!image?.size)throw new Error('Nenhum frame disponível nesse instante. A análise não pode reutilizar uma imagem anterior.');
+   signal?.throwIfAborted();if(jpeg){const {default:sharp}=await import('sharp');const bytes=await sharp(await readFile(decoded)).jpeg({quality:80}).toBuffer();signal?.throwIfAborted();await writeFile(out,bytes);signal?.throwIfAborted();}
+  }catch(error){await rm(out,{force:true});throw error;}finally{if(jpeg)await rm(decoded,{force:true});}
 }
 export function dimensions(aspect,height=720) {
   if(!ASPECTS.includes(aspect) || ![720,1080].includes(height))throw new Error('Formato ou resolução inválidos.');
@@ -138,16 +144,17 @@ export async function renderProject(project,registry,destination,{height=720,sig
       }else{
         const t=[...(project.imageLayers||[]),...(project.videoLayers||[])].find(t=>t.id===id),a=project.assets.find(a=>a.id===t.assetId);
         const w=Math.max(2,Math.round(size.width*t.width/100/2)*2),h=Math.max(2,Math.round(w*a.height/a.width/2)*2),next=`layer${filters.length}`;
-        args.push(...(a.kind==='image'?['-loop','1',...(animated(t)?['-framerate','30']:[])]:['-ss',String(t.in),'-t',String(t.end-t.start)]),'-i',registry.get(t.assetId).path);input++;
+        args.push(...(a.kind==='image'?['-loop','1',...(animated(t)?['-framerate','30']:[])]:['-ss',String(t.in),'-t',String(t.freeze?.1:t.end-t.start)]),'-i',registry.get(t.assetId).path);input++;
+        const hold=t.freeze?'trim=end_frame=1,loop=loop=-1:size=1:start=0,setpts=N/30/TB,':'';
         if(animated(t)){
           const maxSize=Math.max(...pointsOf(t).map(p=>p.size)),sizeExpr=keyframeExpression(t,'size','T'),opacity=keyframeExpression(t,'opacity','T'),x=keyframeExpression(t,'x'),y=keyframeExpression(t,'y');
           const maxW=Math.max(2,Math.round(size.width*maxSize/100/2)*2),maxH=Math.max(2,Math.round(maxW*a.height/a.width/2)*2),diagonal=Math.ceil(Math.hypot(maxW,maxH))+4;
           // Keep one fixed frame size: rotate/geq cache input geometry, so a variable scale upstream can freeze the rendered size.
           const sx=`(X-${diagonal}/2)*${maxSize}/(${sizeExpr})+${diagonal}/2`,sy=`(Y-${diagonal}/2)*${maxSize}/(${sizeExpr})+${diagonal}/2`;
-          filters.push(`[${input}:v]fps=30,${a.kind==='image'?'':`setpts=PTS-STARTPTS+${t.start}/TB,`}scale=${maxW}:${maxH},format=rgba,pad=${diagonal}:${diagonal}:(ow-iw)/2:(oh-ih)/2:color=0x00000000,geq=r='r(${sx},${sy})':g='g(${sx},${sy})':b='b(${sx},${sy})':a='alpha(${sx},${sy})*(${opacity})/100',rotate=${t.rotation}*PI/180:ow=${diagonal}:oh=${diagonal}:c=none[img${input}]`);
+          filters.push(`[${input}:v]${hold}fps=30,${a.kind==='image'?'':`setpts=PTS-STARTPTS+${t.start}/TB,`}scale=${maxW}:${maxH},format=rgba,pad=${diagonal}:${diagonal}:(ow-iw)/2:(oh-ih)/2:color=0x00000000,geq=r='r(${sx},${sy})':g='g(${sx},${sy})':b='b(${sx},${sy})':a='alpha(${sx},${sy})*(${opacity})/100',rotate=${t.rotation}*PI/180:ow=${diagonal}:oh=${diagonal}:c=none[img${input}]`);
           filters.push(`[${previous}][img${input}]overlay=x='${size.width}*(${x})/100-w/2':y='${size.height}*(${y})/100-h/2':enable='gte(t,${t.start})*lt(t,${t.end})':eof_action=pass[${next}]`);
         }else{
-          filters.push(`[${input}:v]${a.kind==='image'?'':`setpts=PTS-STARTPTS+${t.start}/TB,`}scale=${w}:${h},format=rgba,colorchannelmixer=aa=${t.opacity/100},rotate=${t.rotation}*PI/180:ow=rotw(${t.rotation}*PI/180):oh=roth(${t.rotation}*PI/180):c=none[img${input}]`);
+          filters.push(`[${input}:v]${hold}${a.kind==='image'?'':`setpts=PTS-STARTPTS+${t.start}/TB,`}scale=${w}:${h},format=rgba,colorchannelmixer=aa=${t.opacity/100},rotate=${t.rotation}*PI/180:ow=rotw(${t.rotation}*PI/180):oh=roth(${t.rotation}*PI/180):c=none[img${input}]`);
           filters.push(`[${previous}][img${input}]overlay=x=${size.width*t.x/100}-w/2:y=${size.height*t.y/100}-h/2:enable='gte(t,${t.start})*lt(t,${t.end})':eof_action=pass[${next}]`);
         }previous=next;
       }

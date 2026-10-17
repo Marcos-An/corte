@@ -1,10 +1,11 @@
 import {fork} from 'node:child_process';import {fileURLToPath} from 'node:url';
+const failedAccelerators=new Set();
 export function runVisualProcess(options){return runIsolated({entry:new URL('./visual-child.mjs',import.meta.url),...options});}
 // A native ONNX/driver crash ends only the child; an accelerated attempt that dies is retried once on CPU.
 export async function runIsolated({data,backend,signal,onProgress=()=>{},entry,cancelGraceMs=1500,worker='vision',startError='Não foi possível iniciar o processo de análise visual.',crashError='A análise visual foi interrompida. O editor continua aberto; tente novamente ou exporte o diagnóstico.'}){
  const canceled=()=>new Error('Análise cancelada.');if(signal?.aborted)throw canceled();
  for(let attempt=0;attempt<2;attempt++){
-  const device=attempt?'cpu':backend;onProgress({stage:'vision-start'});
+  const device=attempt||failedAccelerators.has(`${entry}:${worker}:${backend}`)?'cpu':backend;onProgress({stage:'vision-start'});
   const result=await new Promise((resolve,reject)=>{
    let child,reply=null,settled=false,cancelTimer,actualBackend=device;
    const diagnostic=(event,extra={})=>onProgress({stage:'worker-diagnostic',event,worker,processType:worker,backend:actualBackend,...extra});
@@ -18,6 +19,7 @@ export async function runIsolated({data,backend,signal,onProgress=()=>{},entry,c
     if(signal?.aborted){finish(canceled());return;}
     if(reply?.error){diagnostic('worker-error');finish(new Error(reply.error));return;}
     if(code===0&&reply?.result){finish(null,{result:reply.result});return;}
+    if(actualBackend!=='cpu')failedAccelerators.add(`${entry}:${worker}:${actualBackend}`);
     finish(null,{crashed:true,retry:actualBackend!=='cpu'});
    });
    signal?.addEventListener('abort',cancel,{once:true});

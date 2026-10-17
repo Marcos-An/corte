@@ -2,7 +2,7 @@
 export function createUpdates({updater,prepare,blocked,installedVersion,notify=()=>{},busy=()=>false}){
  let state={phase:'idle',installedVersion},checking=false,installing=false,availableVersion=null;
  const publish=(phase,extra={})=>{state={phase,installedVersion,...extra};notify({...state});};
- updater.autoDownload=false;updater.autoInstallOnAppQuit=true;updater.allowPrerelease=true;updater.allowDowngrade=false;
+ updater.autoDownload=false;updater.autoInstallOnAppQuit=false;updater.allowPrerelease=true;updater.allowDowngrade=false;
  updater.on('checking-for-update',()=>publish('checking'));
  updater.on('update-not-available',()=>publish('current'));
  updater.on('update-available',info=>{availableVersion=info.version;publish('preparing',{version:info.version});});

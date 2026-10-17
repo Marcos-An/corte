@@ -34,7 +34,7 @@ test('one decode pass writes the screening thumbnails and the preview pool on th
  const {samplingArgs}=await import('../desktop/local.mjs');const args=samplingArgs('in.mov',4,'dir');
  assert.equal(args.filter(a=>a==='-i').length,1,'the source is decoded once');assert.equal(args[args.indexOf('-hwaccel')+1],'auto','GPU decoding when the build has it, software otherwise');
  const graph=args[args.indexOf('-filter_complex')+1];assert.match(graph,/^\[0:v\]fps=4:start_time=0,split=2/);assert.match(graph,/scale=96:-2/);assert.match(graph,/scale=720:720:force_original_aspect_ratio=decrease/);
- assert.ok(args.includes(path.join('dir','%06d.png'))&&args.includes(path.join('dir','pool-%06d.jpg')));assert.equal(args[args.indexOf('-q:v')+1],'5');
+ assert.ok(args.includes(path.join('dir','%06d.png'))&&args.includes(path.join('dir','pool-%06d.png')));assert.equal(args[args.indexOf('-compression_level')+1],'1','lossless decode avoids the shipped Windows MJPEG corruption');
  for(const fps of [0,NaN,-1])assert.throws(()=>samplingArgs('in.mov',fps,'dir'));
 });
 test('semantic change compares each candidate with its temporal neighbour, never with a distant candidate',async()=>{

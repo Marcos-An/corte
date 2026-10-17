@@ -38,3 +38,12 @@ test('transitionRoom trims each side of a cut with no spare frames so the transi
  const b=base();assert.equal(m.transitionRoom(b,'l','r',1),b);
  assert.throws(()=>m.transitionRoom(p,'r','l',1));
 });
+
+test('AI can explicitly prepare transition handles with the same operation as the editor',()=>{
+ let p=m.addClip(m.addAsset(m.createProject(),asset),'a','l');p=m.addClip(p,'a','r');const before=structuredClone(p);
+ const plan={summary:'Dissolver com margem',questions:[],unsupported:[],operations:[{type:'set_transition_at',index:0,effect:'dissolve',duration:.4,makeRoom:true}]};
+ const q=m.applyPlan(p,plan);assert.deepEqual(p,before);assert.equal(q.transitions[0].duration,.4);
+ assert.equal(q.clips[0].out,9.8);assert.equal(q.clips[1].in,.2);assert.equal(m.duration(q),19.6);
+ const h=new m.History(p);h.commit(q);assert.deepEqual(h.undo(),p);
+ for(const patch of [{duration:20},{makeRoom:'yes'},{index:5}])assert.throws(()=>m.applyPlan(p,{...plan,operations:[{...plan.operations[0],...patch}]}));
+});

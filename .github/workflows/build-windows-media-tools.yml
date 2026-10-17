@@ -24,6 +24,7 @@ jobs:
             perl
             python
             mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-nasm
       - name: Compile isolated, pinned sources
         shell: msys2 {0}
         env:

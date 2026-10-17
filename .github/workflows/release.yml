@@ -1,5 +1,8 @@
-name: Draft release
+name: Release
 on:
+  push:
+    tags:
+      - "v*"
   workflow_dispatch:
     inputs:
       version:
@@ -21,10 +24,13 @@ concurrency:
   cancel-in-progress: false
 jobs:
   validate:
+    outputs:
+      version: ${{ steps.request.outputs.version }}
+      sha: ${{ steps.request.outputs.sha }}
     runs-on: ubuntu-latest
     env:
-      VERSION: ${{ inputs.version }}
-      EXPECTED_SHA: ${{ inputs.expected_sha }}
+      VERSION: ${{ inputs.version || github.ref_name }}
+      EXPECTED_SHA: ${{ inputs.expected_sha || github.sha }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -34,9 +40,18 @@ jobs:
         with:
           node-version: '22'
       - name: Validate request without building or publishing
+        id: request
         run: |
-          test "$GITHUB_REF" = refs/heads/main
+          export VERSION="${VERSION#v}"
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            test "$GITHUB_REF" = "refs/tags/v$VERSION"
+            test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$EXPECTED_SHA"
+          else
+            test "$GITHUB_REF" = refs/heads/main
+          fi
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "sha=$EXPECTED_SHA" >> "$GITHUB_OUTPUT"
           node --input-type=module - <<'JS'
           import {validateVersion} from './scripts/release.mjs';
           import {readFileSync} from 'node:fs';
@@ -45,7 +60,7 @@ jobs:
           const tags=execFileSync('gh',['api','--paginate','repos/Marcos-An/corte/releases','--jq','.[].tag_name'],{encoding:'utf8'}).trim().split('\n');
           for(const tag of tags)if(/^v\d+\.\d+\.\d+$/.test(tag))validateVersion(v,tag.slice(1));
           const refs=execFileSync('gh',['api','repos/Marcos-An/corte/git/matching-refs/tags/v'+v],{encoding:'utf8'});
-          if(JSON.parse(refs).some(r=>r.ref==='refs/tags/v'+v))throw Error('Tag already exists');
+          if(JSON.parse(refs).some(r=>r.ref==='refs/tags/v'+v)&&(process.env.GITHUB_EVENT_NAME!=='push'||process.env.GITHUB_REF!=='refs/tags/v'+v))throw Error('Tag already exists');
           JS
   build:
     needs: validate
@@ -58,12 +73,12 @@ jobs:
           - os: windows-2025
             platform: win
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    timeout-minutes: 90
     defaults:
       run:
         shell: bash
     env:
-      VERSION: ${{ inputs.version }}
+      VERSION: ${{ needs.validate.outputs.version }}
       CORTE_DISTRIBUTION_PLATFORM: ${{ matrix.platform }}
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -99,8 +114,29 @@ jobs:
             vendor/windows/codex.exe
             vendor/windows/codex-code-mode-host.exe
             vendor/distribution/*-sources.tar.gz
-      - name: Restore verified tools and models without recompiling FFmpeg
-        run: node scripts/prepare-release.mjs
+      - name: Restore hash-pinned bootstrap tools and models
+        run: node scripts/prepare-release.mjs --bootstrap-media
+      - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e
+        if: matrix.platform == 'win'
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            make curl tar xz diffutils perl python
+            mingw-w64-x86_64-gcc mingw-w64-x86_64-nasm
+      - name: Compile controlled Windows tools with SIMD and hardware decoding
+        if: matrix.platform == 'win'
+        shell: msys2 {0}
+        env:
+          CORTE_BUILD_JOBS: 4
+        run: bash vendor/distribution/build-windows.sh
+      - name: Record the dependency artifacts actually packaged
+        run: |
+          if [ "$CORTE_DISTRIBUTION_PLATFORM" = win ]; then
+            node scripts/record-windows-media.mjs
+          else
+            node scripts/record-windows-media.mjs --bootstrap-source-only
+          fi
       - run: npm ci
       - name: Stamp build version (source ref remains immutable)
         run: npm version "$VERSION" --no-git-tag-version --ignore-scripts
@@ -119,6 +155,7 @@ jobs:
           fi
           node -e "if(!require('node:fs').existsSync(process.env.CORTE_TEST_APP))throw Error('Packaged executable not found')"
           DEBUG=pw:browser node tests/ai-complex.e2e.mjs
+          node tests/video-still.e2e.mjs
       - name: Verify and collect final assets
         run: |
           mkdir -p release/assets
@@ -166,13 +203,13 @@ jobs:
           retention-days: 7
           path: release/assets/*
   draft:
-    needs: build
+    needs: [validate, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     env:
-      VERSION: ${{ inputs.version }}
-      EXPECTED_SHA: ${{ inputs.expected_sha }}
+      VERSION: ${{ needs.validate.outputs.version }}
+      EXPECTED_SHA: ${{ inputs.expected_sha || github.sha }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -199,8 +236,10 @@ jobs:
           retention-days: 7
           path: release/assets/*
       - name: Create draft only after all gates pass
-        if: ${{ !inputs.dry_run }}
+        if: ${{ github.event_name == 'push' || !inputs.dry_run }}
         run: |
           printf 'Beta sem assinatura/notarização. Mac arm64 e Windows x64. Fontes GPL e SHA256SUMS incluídos. Testes e smoke do app empacotado passaram nos runners; não substitui QA físico.\n\nSource commit: %s. Build version: %s (stamped in CI).\n' "$EXPECTED_SHA" "$VERSION" > release/notes.md
           gh release create "v$VERSION" --repo Marcos-An/corte --target "$EXPECTED_SHA" --draft --prerelease --title "Corte $VERSION — beta" --notes-file release/notes.md release/assets/*
-          # No release edit --draft=false: publication is a separate human action.
+      - name: Publish explicitly requested version tag after all validations
+        if: github.event_name == 'push'
+        run: gh release edit "v$VERSION" --repo Marcos-An/corte --draft=false --prerelease=false --latest

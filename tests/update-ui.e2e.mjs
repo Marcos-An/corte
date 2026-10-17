@@ -8,7 +8,7 @@ try{
  await app.evaluate(({BrowserWindow},installedVersion)=>BrowserWindow.getAllWindows()[0].webContents.send('editor:update',{phase:'ready',version:'9.9.9',installedVersion}),installedVersion);
  await page.waitForFunction(()=>document.querySelector('#update-status').textContent.includes('9.9.9'));
  assert.equal(await page.locator('#installed-version').textContent(),`Versão instalada: ${installedVersion}`);
- assert.match(await page.locator('#update-status').textContent(),/instalada automaticamente ao fechar/i);
+ assert.match(await page.locator('#update-status').textContent(),/Reiniciar e atualizar/i);
  await page.locator('#settings-close').click();assert.equal(await page.locator('#install-update').isVisible(),true,'manual restart remains available');
- console.log('PASS installed version differs from ready update; install-on-close copy and optional restart');
+ console.log('PASS installed version differs from ready update; explicit safe restart copy');
 }finally{await app?.close();await rm(dir,{recursive:true,force:true});}

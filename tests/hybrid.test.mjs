@@ -4,6 +4,32 @@ const registry=new Map([['a',{path:'/private/source.mp4'}]]);
 import {createProject,addAsset,addClip} from '../src/project.mjs';
 const p=addClip(addAsset(createProject(),{id:'a',name:'a.mp4',duration:100,width:640,height:360,hasAudio:true}),'a','c');
 const base={summary:'Ajuste',questions:[],unsupported:[],operations:[{type:'remove_ranges',clipId:'c',ranges:[[35,37]]}]};
+
+test('a complex request keeps evidence for every visual query rather than truncating the last tasks',async()=>{
+ const {balancedSearchEvidence}=await import('../desktop/hybrid.mjs');const matches=Array.from({length:12},(_,q)=>Array.from({length:3},(_,i)=>({match:'query-'+q,assetId:'a',time:q*3+i}))).flat();
+ const selected=balancedSearchEvidence(matches,30);assert.equal(selected.length,30);assert.equal(new Set(selected.map(f=>f.match)).size,12);
+});
+
+test('nearby cached previews keep their real source time and never cross a trimmed boundary',async()=>{
+ const {reuseEvidence}=await import('../desktop/hybrid.mjs');const scoped=structuredClone(p);scoped.clips[0].in=30;scoped.clips[0].out=40;
+ const frames=reuseEvidence(scoped,[{assetId:'a',time:30.05},{assetId:'a',time:35.4},{assetId:'a',time:29.99}],
+ [{assetId:'a',time:29.99,path:'/outside.jpg'},{assetId:'a',time:30.1,path:'/inside.jpg'},{assetId:'a',time:35,path:'/far.jpg'}]);
+ assert.equal(frames.length,2);assert.equal(frames[0].time,30.1);assert.equal(frames[0].path,'/inside.jpg');assert.equal(frames[1].path,undefined);
+});
+
+test('a reviewed edit preserves its validated first proposal when additional verification times out',async()=>{
+ let calls=0;const request=async()=>{if(calls++)throw Object.assign(Error('timeout'),{code:'AI_TIMEOUT'});return {plan:structuredClone(base),pendingRequests:[],usage:{input_tokens:10}};};
+ const out=await refineVisualPlan({project:p,prompt:'Editar',frames:[],request,allowPreliminary:true});assert.equal(out.verification,'preliminary');assert.deepEqual(out.plan,base);assert.match(out.pendingRequests[0],/preliminar/);
+ await assert.rejects(refineVisualPlan({project:p,prompt:'Editar',frames:[],request:async()=>{if(calls++===2)return {plan:base};throw Object.assign(Error('blocked tool'),{code:'AI_TOOL_FORBIDDEN'});},allowPreliminary:true}),/blocked tool/);
+});
+
+test('automatic transition handles cannot trim uncertain speech',async()=>{
+ const project=addClip(p,'a','second');
+ const out=await requestHybridEdit({project,prompt:'Dissolver',shareEvidence:true,registry,connected:async()=>true,
+  transcribe:async()=>[{assetId:'a',words:[],gaps:[{start:99,end:100,reason:'unreliable-word-times'}]}],
+  planRequest:async()=>({plan:{...base,operations:[{type:'set_transition_at',index:0,effect:'dissolve',duration:.4,makeRoom:true}]},pendingRequests:[],frames:1})});
+ assert.deepEqual(out.plan.operations,[]);
+});
 test('temporal plan gets a second evidence round before returning, not partial application',async()=>{
  const calls=[];const out=await refineVisualPlan({project:p,prompt:'Edite',frames:[{assetId:'a',time:80}],request:async(frames,context)=>{calls.push({frames,context});return {plan:structuredClone(base),usage:{input_tokens:10,output_tokens:2}};}});
  assert.equal(calls.length,2);assert.ok(calls[1].frames.some(f=>f.time===35.25));assert.equal(out.rounds,2);assert.equal(out.usage.input_tokens,20);assert.deepEqual(p.clips.map(c=>[c.in,c.out]),[[0,100]]);

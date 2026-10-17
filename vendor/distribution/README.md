@@ -22,6 +22,6 @@ The release uses FFmpeg/FFprobe 6.1.1 compiled by `build-windows.sh` in a native
 
 Do not reuse the old macOS binaries compiled with `--enable-nonfree`. Packaging success alone is not a redistributability, signing or runtime test. Unsigned prerelease packages require platform-specific installation QA.
 
-## Next Windows rebuild (not yet applied)
+## Windows acceleration rebuild
 
-The shipped Windows binary was built with the recipe above, and the installer bundles that exact recipe, so it must not change until the binary is rebuilt. For the next rebuild in MSYS2: install NASM (`pacman -S mingw-w64-x86_64-nasm`), remove `--disable-asm` from the x264 configure line, and replace `--disable-x86asm` with `--enable-x86asm --enable-d3d11va --enable-dxva2` in the FFmpeg configure line. Then rebuild, regenerate `ffmpeg-windows-sources.tar.gz` with the updated recipe, and update the hashes in `manifest.json`. The editor already asks for `-hwaccel auto` when sampling video for AI analysis, so D3D11VA decoding takes effect as soon as the rebuilt binary ships.
+The Windows tools now include x86 assembly, D3D11VA and DXVA2. Build with NASM using build-windows.sh; regenerate the corresponding source archive and record hashes with scripts/record-windows-media.mjs. The release workflow performs these steps before packaging. Runtime sampling requests hardware decoding automatically, with FFmpeg software fallback.

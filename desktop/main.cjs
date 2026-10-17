@@ -125,6 +125,14 @@ if(primary)app.whenReady().then(async()=>{
  handler('status',async()=>({...await ai.loginStatus(home),platform:process.platform}));
  // Accurate speech recognition is an optional ~1.1 GB download; recognition verifies every checksum before using it.
  const speechManifest=JSON.parse(await fs.readFile(path.join(__dirname,'../vendor/models/speech-accurate-manifest.json'),'utf8'));
+ const searchManifest=JSON.parse(await fs.readFile(path.join(__dirname,'../vendor/models/search-manifest.json'),'utf8'));
+ {const {modelStorePath}=await import('./models-store.mjs'),stored=modelStorePath(app.getPath('userData'),searchManifest);if(require('node:fs').existsSync(path.join(stored,'manifest.json')))process.env.CORTE_SEARCH_MODEL_PATH=stored;}
+ let searchInstall=null;
+ handler('search-model',async()=>({installed:!!await (await import('./local.mjs')).searchModels(),installing:!!searchInstall}));
+ handler('search-model-install',async()=>{
+  searchInstall??=(async()=>{const {installOptionalModel}=await import('./models-store.mjs');process.env.CORTE_SEARCH_MODEL_PATH=await installOptionalModel({manifest:searchManifest,userData:app.getPath('userData'),onProgress:p=>{if(!window.isDestroyed())window.webContents.send('editor:search-model',p);}});return {installed:true};})().finally(()=>{searchInstall=null;});
+  return searchInstall;
+ });
  {const {modelStorePath}=await import('./models-store.mjs'),stored=modelStorePath(app.getPath('userData'),speechManifest);if(require('node:fs').existsSync(path.join(stored,'manifest.json')))process.env.CORTE_SPEECH_MODEL_PATH=stored;}
  let speechInstall=null;
  handler('speech-model',async()=>({installed:!!await (await import('./transcribe.mjs')).readyAccurateSpeechModel(),installing:!!speechInstall,sizeMB:Math.round(1085)}));
@@ -137,7 +145,7 @@ if(primary)app.whenReady().then(async()=>{
   if(stage!==null&&(engine!=='hybrid'||![1,2,3].includes(stage)))throw Error('Etapa de edição inválida.');
   core.validateProject(p);const {scopeProject,validateScopedPlan}=await import('../src/editor-experience.mjs');const scoped=scopeProject(p,clipId);authorized(scoped);if(!['hybrid','chatgpt'].includes(engine))throw Error('Motor de IA inválido.');if(engine==='hybrid'&&shareEvidence!==true)throw Error('Autorize o envio das evidências para esta análise.');if(abort)throw Error('Já há uma operação em andamento.');abort=new AbortController();
   const diagnosticOperation=sessionLog.begin();const diagnosticTimer=setInterval(()=>sessionLog.heartbeat(),5000);diagnosticTimer.unref();let outcome='ok';
-  try{await ensureModels();const options={home,cache,project:scoped,scopeClipId:clipId,prompt,registry,signal:abort.signal,onProgress:p=>{sessionLog.progress(p,diagnosticOperation);notify(p);},shareEvidence,stage};
+  try{await ensureModels();const options={home,cache,project:scoped,scopeClipId:clipId,prompt,step,registry,signal:abort.signal,onProgress:p=>{sessionLog.progress(p,diagnosticOperation);notify(p);},shareEvidence,stage};
    const result=engine==='hybrid'?await (await import('./hybrid.mjs')).requestHybridEdit(options):await (await import('./intent.mjs')).requestPromptPlan(options);validateScopedPlan(p,result.plan,clipId);return result;
   }catch(error){outcome=abort?.signal.aborted?'canceled':'error';sessionLog.failure(error);throw error;}finally{clearInterval(diagnosticTimer);sessionLog.end(outcome);abort=null;}
  });

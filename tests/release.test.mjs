@@ -103,3 +103,9 @@ test('model files missing from the bootstrap release are fetched from the pinned
  assert.ok(search.files.some(f=>f.path.endsWith('text_model_quantized.onnx'))&&!manifest.files.some(f=>f.path.endsWith('text_model_quantized.onnx')),'the search encoder is pinned in its own optional manifest, so code-only updates keep working');
  assert.equal(modelDownloadUrl(search,search.files[1].path),`https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/${search.revision}/onnx/text_model_quantized.onnx`);
 });
+test('tag publication requires validated main source and both audited builds; manual dispatch stays draft-only',async()=>{
+ const {readFile}=await import('node:fs/promises'),{createRequire}=await import('node:module');const yaml=createRequire(import.meta.url)('js-yaml');const w=yaml.load(await readFile(new URL('../.github/workflows/release.yml',import.meta.url),'utf8'));
+ assert.deepEqual(w.on.push,{tags:['v*']});assert.equal(w.permissions.contents,'read');assert.equal(w.jobs.draft.permissions.contents,'write');assert.deepEqual(w.jobs.draft.needs,['validate','build']);
+ const validation=w.jobs.validate.steps.find(s=>s.id==='request').run;assert.ok(validation.includes('git ls-remote origin refs/heads/main'));assert.ok(validation.includes('test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"'));
+ const steps=w.jobs.draft.steps,publish=steps.findIndex(s=>s.name?.startsWith('Publish explicitly'));assert.ok(publish>steps.findIndex(s=>s.run?.includes('release-assets.mjs')));assert.equal(steps[publish].if,"github.event_name == 'push'");assert.match(steps[publish].run,/--draft=false --prerelease=false --latest/);assert.ok(steps.slice(0,publish).some(s=>s.run?.includes('--draft --prerelease')));
+});

@@ -1,6 +1,8 @@
 import {Worker} from 'node:worker_threads';
 import {validateProject} from '../src/project.mjs';
 import {modelPath,accurateSpeechModel} from './local.mjs';import {runIsolated} from './visual-process.mjs';import {verify} from './models-store.mjs';
+import {cachedEvidence} from './analysis-cache.mjs';
+import {readFile} from 'node:fs/promises';import path from 'node:path';
 // The accurate model (~1.1 GB) is hashed once per session; a corrupted copy is skipped in favour of the bundled model.
 const checked=new Map();
 export async function readyAccurateSpeechModel(){
@@ -8,12 +10,16 @@ export async function readyAccurateSpeechModel(){
  if(!checked.has(found.path))checked.set(found.path,verify(found.path,found.manifest).then(()=>true,()=>false));
  return await checked.get(found.path)?found:null;
 }
-export async function transcribeLocally({project,registry,signal,onProgress=()=>{},purpose='captions'}){
+export async function transcribeLocally({project,registry,cache,signal,onProgress=()=>{},purpose='captions'}){
  if(!['captions','edit'].includes(purpose))throw Error('Finalidade da transcrição inválida.');if(signal?.aborted)throw new Error('Transcrição cancelada.');validateProject(project);
  const used=new Set(project.clips.map(c=>c.assetId));const assets=project.assets.filter(a=>used.has(a.id)&&a.hasAudio);
  if(!assets.length)throw new Error('Não há áudio na timeline para legendar.');
  for(const a of assets)if(!registry.get(a.id)?.path)throw new Error('Mídia ausente.');
  const accurate=await readyAccurateSpeechModel();
+ const sources=assets.map(a=>({...a,file:registry.get(a.id).path}));
+ const configuration={version:1,purpose,model:accurate?.manifest||(cache?await readFile(path.join(modelPath(),'manifest.json'),'utf8'):null)};
+ return cachedEvidence({root:cache&&path.join(cache,'local-evidence'),kind:'speech',assets:sources,configuration,signal,
+  onHit:()=>onProgress({stage:'captions',completed:assets.length,total:assets.length,cached:true}),compute:async()=>{
  if(accurate)return (await runIsolated({entry:new URL('./speech-child.mjs',import.meta.url),worker:'speech',backend:process.platform==='win32'?'dml':'cpu',signal,onProgress,
   startError:'Não foi possível iniciar a transcrição local.',crashError:'A transcrição local foi interrompida. O editor continua aberto; tente novamente.',
   data:{models:accurate.path,manifest:null,speechModel:accurate.manifest.model,purpose,assets:assets.map(a=>({...a,file:registry.get(a.id).path}))}})).transcripts;
@@ -25,4 +31,5 @@ export async function transcribeLocally({project,registry,signal,onProgress=()=>
   worker.on('message',m=>{if(m.progress)onProgress(m.progress);else if(m.error){onProgress({stage:'worker-diagnostic',event:'worker-error',worker:'speech',processType:'speech'});finish(new Error(m.error));}else if(m.result)finish(null,m.result);});
   worker.on('error',error=>{onProgress({stage:'worker-diagnostic',event:'worker-error',worker:'speech',processType:'speech',errorCode:error.code,errorName:error.name});finish(new Error('Não foi possível iniciar a transcrição local.'));});worker.on('exit',code=>{onProgress({stage:'worker-diagnostic',event:'worker-exit',worker:'speech',processType:'speech',exitCode:code,outcome});if(!settled)finish(new Error('Transcrição interrompida.'));});
  });
+ }});
 }

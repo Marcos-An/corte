@@ -9,7 +9,7 @@ function setup({blocked=false,busy=()=>false,prepare=async()=>{},available=false
  return {updater,updates,states,get checks(){return checks;},get installs(){return installs;}};
 }
 test('startup checks do not read models; preserve them only before an available update is downloaded',async()=>{
- let prepared=0;const s=setup({prepare:async()=>{prepared++;}});await s.updates.check();assert.equal(prepared,0);assert.equal(s.checks,1);assert.equal(s.updater.autoDownload,false);assert.equal(s.updater.autoInstallOnAppQuit,true);assert.equal(s.updater.allowPrerelease,true);assert.equal(s.updater.allowDowngrade,false);
+ let prepared=0;const s=setup({prepare:async()=>{prepared++;}});await s.updates.check();assert.equal(prepared,0);assert.equal(s.checks,1);assert.equal(s.updater.autoDownload,false);assert.equal(s.updater.autoInstallOnAppQuit,false);assert.equal(s.updater.allowPrerelease,true);assert.equal(s.updater.allowDowngrade,false);
  const next=setup({available:true,prepare:async()=>{prepared++;}});let downloads=0;next.updater.downloadUpdate=async()=>{assert.equal(prepared,1);downloads++;next.updater.emit('update-downloaded',{version:'0.5.9'});};await next.updates.check();assert.equal(downloads,1);assert.equal(next.updates.status().phase,'ready');assert.equal(next.updates.install(),true);
 });
 test('busy import/open defers background update work until explicitly retried idle',async()=>{

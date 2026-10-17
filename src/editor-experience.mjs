@@ -18,7 +18,7 @@ export function scopeProject(project,clipId){
 }
 export function validateScopedPlan(project,plan,clipId){
  if(!clipId)return plan;scopeProject(project,clipId);
- if(!Array.isArray(plan?.operations)||plan.operations.some(op=>op.clipId!==clipId||['move','set_aspect'].includes(op.type)))throw Error('A IA tentou editar fora do trecho escolhido. Nenhuma alteração foi aplicada.');
+ if(!Array.isArray(plan?.operations)||plan.operations.some(op=>op.clipId!==clipId||['move','move_range','insert_clip','add_audio','set_aspect'].includes(op.type)))throw Error('A IA tentou editar fora do trecho escolhido. Nenhuma alteração foi aplicada.');
  return plan;
 }
 export function dragCrop(crop,dx,dy,width,height){
@@ -71,6 +71,12 @@ export function aiProgress(previous,event={}){
  const steps=['Preparando sua edição…','Ouvindo o vídeo…','Analisando as cenas…','Preparando a edição…','Conferindo a proposta…'];
  const candidate=event.phase==='refinement'?4:({captions:1,transcribe:1,local:2,'vision-start':2,quality:2,frames:2,analysis:3,intent:3})[event.stage]??0;
  const step=Math.max(previous?.step??0,candidate);return {step,label:steps[step]};
+}
+// Long projects get a reusable overview; dense boundary evidence is requested only where the plan needs it.
+export function analysisSamplingStep(project,clipId=null){
+ const used=new Set(project.clips.filter(c=>!clipId||c.id===clipId).map(c=>c.assetId));
+ const seconds=project.assets.filter(a=>used.has(a.id)).reduce((n,a)=>n+a.duration,0);
+ return seconds<=45?.5:2;
 }
 // A long request runs as three reviewed proposals; each sees the montage with the previous ones applied.
 export const EDIT_STAGES=[

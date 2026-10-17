@@ -66,7 +66,7 @@ test('placeholder text on screen is never reported as finished work',()=>{
  const ops=[{type:'add_text',layer:{id:'endereco',text:'Endereço: [INSERIR ENDEREÇO]',start:1,end:3,style}},{type:'add_text',layer:{id:'nome',text:'Kokoro — novo restaurante em Dourados',start:0,end:1,style}}];
  const out=parseReviewPayload(p,JSON.stringify({plan:{...plan,operations:ops},pendingRequests:[],coverage:[item('text','planned',[0,1])]}));
  assert.ok(out.pendingRequests.some(s=>s.includes('[INSERIR ENDEREÇO]')&&s.includes('endereco')),JSON.stringify(out.pendingRequests));assert.equal(out.pendingRequests.length,1);
- const input=buildPrompt(p,'Narração em off será adicionada depois',[],{review:true});assert.match(input,/narração[^.]*FORA do escopo/i);assert.doesNotMatch(input,/Importar narração/);assert.match(input,/temperature/);
+ const input=buildPrompt(p,'Narração em off será adicionada depois',[],{review:true});assert.match(input,/narração em coverage como pending/i);assert.match(input,/add_audio/);assert.match(input,/temperature/);
 });
 test('the overview may ask for visual searches and the final round sees which frame answers which query',()=>{
  const ok=parseReviewPayload(p,JSON.stringify({plan,pendingRequests:[],coverage:[item('cut','planned',[0])],visualQueries:[{query:'umbrellas hanging from the ceiling',purpose:'ambiente'}]}));assert.equal(ok.visualQueries.length,1);
@@ -82,7 +82,15 @@ test('a coverage rejection names the item, the operation and the categories that
  assert.throws(()=>parseReviewPayload(two,payload([item('cut','planned',[0,5])])),/operação 5.*não existe/);
  assert.doesNotThrow(()=>parseReviewPayload(two,JSON.stringify({plan:{...plan,operations:[{type:'update',clipId:'c',zoom:{from:1,to:1.1}}]},pendingRequests:[],coverage:[item('motion','planned',[0])]})),'a smooth zoom is also camera motion');
 });
-test('user-written texts are used as given and the local blur map is enough evidence to cut',()=>{
+test('user-written texts are used as given and blur heuristics cannot delete food close-ups without visual evidence',()=>{
  const input=buildPrompt(p,'Inserir “Do Grupo Uchida”',[],{review:true});
- assert.match(input,/escreveu no pedido[^.]*use-os exatamente, sem pedir confirmação/);assert.match(input,/report\.blurry[^.]*CADA segundo/);
+ assert.match(input,/escreveu no pedido[^.]*use-os exatamente, sem pedir confirmação/);assert.match(input,/report\.blurry[^.]*amostras por segundo/);assert.match(input,/foco seletivo em comida/);
+});
+
+test('reviewed finishing uses real transition preparation and exposes natural sharpness/temperature',()=>{
+ const two=addClip(p,'a','next'),operation={type:'set_transition_at',index:0,effect:'dissolve',duration:.4,makeRoom:true};
+ const parsed=parseReviewPayload(two,JSON.stringify({plan:{...plan,operations:[operation]},pendingRequests:[],coverage:[item('transition','planned',[0])]}),{stage:3});
+ assert.equal(parsed.plan.operations[0].makeRoom,true);
+ assert.match(buildPrompt(two,'Acabamento natural',[],{review:true}),/sharpness e temperature/);
+ assert.match(buildPrompt(two,'Acabamento natural',[],{review:true}),/makeRoom:true/);
 });

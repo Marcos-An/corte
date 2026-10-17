@@ -19,3 +19,11 @@ test('AI refinement supports compact 8-bit RGB evidence at 720px without changin
  const preview=path.join(dir,'tall.jpg');await frame(tall,.25,preview,undefined,{width:720});const t=await RawImage.read(preview);assert.equal(t.height,720,'vertical previews are bounded by their long side');assert.ok(t.width<=406);
  }finally{await rm(dir,{recursive:true,force:true});}
 });
+
+test('JPEG previews remain writable under long Windows cache paths',async()=>{
+ const dir=await mkdtemp(path.join(tmpdir(),'corte-long-preview-'));try{
+ const {mkdir}=await import('node:fs/promises'),nested=path.join(dir,...Array(6).fill('long-cache-directory-0123456789'));await mkdir(nested,{recursive:true});
+ const source=path.join(dir,'source.mp4');await run(binaries().ffmpeg,['-v','error','-y','-f','lavfi','-i','color=red:s=64x64:r=1','-t','1','-c:v','libx264',source]);
+ const out=path.join(nested,'preview.jpg');await frame(source,0,out,undefined,{width:720});assert.ok((await readFile(out)).length>0);
+ }finally{await rm(dir,{recursive:true,force:true});}
+});

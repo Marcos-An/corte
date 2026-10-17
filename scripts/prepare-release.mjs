@@ -15,7 +15,7 @@ export async function verifyFile(file,expected){
 }
 async function verify(platform){
  const seed=JSON.parse(await readFile(root+'scripts/release-bootstrap.json'));
- const manifest=JSON.parse(await readFile(root+'vendor/distribution/manifest.json'));
+ const manifest=JSON.parse(await readFile(root+(process.argv.includes('--bootstrap-media')?'scripts/bootstrap-media.json':'vendor/distribution/manifest.json')));
  for(const p of ['mac','win'])await verifyFile(root+`vendor/distribution/ffmpeg-${p==='mac'?'macos':'windows'}-sources.tar.gz`,manifest[p].sources.sha256);
  for(const tool of ['ffmpeg','ffprobe'])await verifyFile(root+`vendor/${platform==='mac'?'darwin-arm64':'windows'}/${tool}${platform==='win'?'.exe':''}`,manifest[platform][tool].sha256);
  for(const [name,hash] of Object.entries(seed.extraTools[platform]))await verifyFile(root+`vendor/${platform==='mac'?'darwin-arm64':'windows'}/${name}`,hash);

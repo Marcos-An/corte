@@ -25,7 +25,7 @@ export function createMediaRegistration({cache,probe,frame,onProgress=()=>{},onW
   }catch(error){throw Error(signal?.aborted?'Importação/abertura cancelada.':`Não foi possível validar ${name}: ${error.message}`);}
   finally{clearInterval(interval);clearTimeout(timer);signal?.removeEventListener('abort',abort);}
   if(expected&&['duration','width','height','hasAudio','kind'].some(k=>(k==='kind'?(expected[k]||'video'):expected[k])!==(k==='kind'?(info[k]||'video'):info[k])))throw Error(`Arquivo diferente do original: ${name}. Importe-o como nova mídia.`);
-  const token=randomUUID(),asset=expected||{id:assetId||randomUUID(),name,...info},thumbnail=info.kind==='audio'?null:path.join(cache,createHash('sha256').update(JSON.stringify(['thumbnail-v2-atomic',real,signature.size,signature.mtimeMs,signature.ctimeMs])).digest('hex')+'.jpg');
+  const token=randomUUID(),asset=expected||{id:assetId||randomUUID(),name,...info},thumbnail=info.kind==='audio'?null:path.join(cache,createHash('sha256').update(JSON.stringify(['thumbnail-v3-lossless-rgb',real,signature.size,signature.mtimeMs,signature.ctimeMs])).digest('hex')+'.jpg');
   const entry={path:real,asset,thumbnail,token},thumbnailSignal=signal?AbortSignal.any([signal,background.signal]):background.signal;
   entry.thumbnailReady=thumbnail?thumbnails=thumbnails.then(async()=>{
    if(thumbnailSignal.aborted)return false;

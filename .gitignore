@@ -112,3 +112,8 @@ credentials/
 !/.github/workflows/release.yml
 
 !/scripts/update-build.cjs
+!/scripts/bench-project.mjs
+!/scripts/start-windows.cjs
+
+!/scripts/record-windows-media.mjs
+!/scripts/bootstrap-media.json

@@ -9,8 +9,9 @@ import {createTextScene} from './text-scene.mjs';
 import {FONTS,FONT_CATEGORIES} from './fonts.mjs';
 import {TEXT_PRESETS,ENTER_ANIMATIONS,EXIT_ANIMATIONS,presetOf,fullLook,textAppearance} from './text-style.mjs';
 import {editCaption,addCaptionAt,alignCaptions} from './caption-editing.mjs';
-import {aiProgress,assignLanes,timelineEdgeSpeed,timelinePointerTime,playbackStart,editorPanel,validateScopedPlan,dragCrop,nextClipTime,previewSize,EDIT_STAGES} from './editor-experience.mjs';
+import {analysisSamplingStep,aiProgress,assignLanes,timelineEdgeSpeed,timelinePointerTime,playbackStart,editorPanel,validateScopedPlan,dragCrop,nextClipTime,previewSize,EDIT_STAGES} from './editor-experience.mjs';
 import {removeTimelineRange,initialRange,moveRange} from './range-selection.mjs';
+import {newEditSession,recordEditStage,editSessionSummary} from './edit-session.mjs';
 import {captionEntries,captionStyle} from './captions.mjs';
 import {transitionRoom,setMotion,createProject,addAsset,addClip,addMusic,editMusic,addTextLayer,editTextLayer,remapWordStyles,addImageLayer,editImageLayer,addVideoLayer,editVideoLayer,addShapeLayer,editShapeLayer,editProject,History,layerOrder,moveLayer,setKeyframe,transitionLimit,setTransition,transitionAt,duration,clipAt,applyPlan} from './project.mjs';
 const $=id=>document.getElementById(id),bridge=window.editor;
@@ -39,6 +40,9 @@ function describeChange(before,after){
 function describeOperation(p,op){
  const c=p.clips.find(c=>c.id===op.clipId),name=p.assets.find(a=>a.id===c?.assetId)?.name||'Projeto';
  const seconds=v=>`${Number(v).toFixed(2)}s`;
+ if(op.type==='move_range')return `Mover intervalo · ${name} · ${seconds(op.sourceStart)}–${seconds(op.sourceEnd)} · posição ${op.index+1}`;
+ if(op.type==='insert_clip')return `Inserir trecho · ${p.assets.find(a=>a.id===op.clip.assetId)?.name||'Mídia importada'} · ${seconds(op.clip.in)}–${seconds(op.clip.out)} · posição ${op.index+1}`;
+ if(op.type==='add_audio')return `${op.track.role==='narration'?'Narração':'Música'} · ${op.track.id} · início ${seconds(op.track.start)}`;
  if(op.type==='update'&&Object.keys(op).some(k=>['speed','background','backgroundColor','adjustments','fadeIn','fadeOut','zoom'].includes(k))){
   const labels={zoom:'Zoom suave',speed:'Velocidade',background:'Fundo',backgroundColor:'Cor do fundo',adjustments:'Ajustes de imagem',fadeIn:'Fade de entrada',fadeOut:'Fade de saída',volume:'Volume',crop:'Enquadramento'};
   return Object.keys(labels).filter(k=>k in op).map(k=>`${labels[k]} · ${name} · ${JSON.stringify(op[k])}`).join(' / ').slice(0,4000);
@@ -406,7 +410,7 @@ const imageScene=createImageScene($('preview-stage'),canvas,{
 });
 function renderImageScene(){
  const p=componentProject();imageScene.update(visualLayers(p).filter(componentVisible).map(t=>applyKeyframes(!playing&&t.id===selectedImage&&!t.keyframes?.length?{...t,motion:undefined}:t,position)).map(t=>{
- const a=p.assets.find(a=>a.id===t.assetId);if(t.type){const layer=t;return {...layer,name:SHAPES[t.type],kind:'shape',url:'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(shapeSvg(layer,canvas.width,canvas.height)),assetWidth:canvas.width*layer.width/100,assetHeight:canvas.height*layer.height/100,z:layerOrder(p).indexOf(t.id)+1,selected:t.id===selectedImage};}return {...t,name:a.name,kind:t.in!==undefined?'video':'image',sourceTime:(t.in||0)+position-t.start,playing,url:media.get(a.id)?.url,assetWidth:a.width,assetHeight:a.height,z:layerOrder(p).indexOf(t.id)+1,selected:t.id===selectedImage};
+ const a=p.assets.find(a=>a.id===t.assetId);if(t.type){const layer=t;return {...layer,name:SHAPES[t.type],kind:'shape',url:'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(shapeSvg(layer,canvas.width,canvas.height)),assetWidth:canvas.width*layer.width/100,assetHeight:canvas.height*layer.height/100,z:layerOrder(p).indexOf(t.id)+1,selected:t.id===selectedImage};}return {...t,name:a.name,kind:t.in!==undefined?'video':'image',sourceTime:t.freeze?t.in:(t.in||0)+position-t.start,playing:playing&&!t.freeze,url:media.get(a.id)?.url,assetWidth:a.width,assetHeight:a.height,z:layerOrder(p).indexOf(t.id)+1,selected:t.id===selectedImage};
  }),busy);
 }
 // Sliders with a data-unit output show their value next to the label, in pt-BR.
@@ -415,10 +419,11 @@ document.addEventListener('input',e=>{if(e.target.matches?.('input[type=range]')
 function renderImageProperties(){
  for(const b of document.querySelectorAll('#image-track .image-block')){b.classList.toggle('selected',b.dataset.imageId===selectedImage);b.setAttribute('aria-pressed',String(b.dataset.imageId===selectedImage));}
  const source=visualLayers(componentProject()).find(t=>t.id===selectedImage),layer=source&&(source.keyframes?.length?applyKeyframes(source,position):source);$('image-properties').hidden=!layer;
- if(!layer)return;$('shape-properties').hidden=!layer.type;if(layer.type){const open=['line','arrow'].includes(layer.type);for(const k of ['height','strokeWidth']){$('shape-'+k).value=layer[k];$('shape-'+k).disabled=busy||!!layer.keyframes?.length;}for(const k of ['fill','stroke']){$('shape-'+k+'-enabled').checked=!!layer[k];$('shape-'+k+'-enabled').disabled=busy||(k==='fill'&&open);$('shape-'+k).value=layer[k]||'#ffffff';$('shape-'+k).disabled=busy||!layer[k]||(k==='fill'&&open);}}$('video-source-field').hidden=layer.in===undefined;$('image-in').value=layer.in||0;$('remove-image').textContent=layer.type?'Remover forma':layer.in===undefined?'Remover imagem':'Remover vídeo';$('image-name').textContent=project().assets.find(a=>a.id===layer.assetId)?.name||SHAPES[layer.type]||'Imagem';
+ if(!layer)return;$('shape-properties').hidden=!layer.type;if(layer.type){const open=['line','arrow'].includes(layer.type);for(const k of ['height','strokeWidth']){$('shape-'+k).value=layer[k];$('shape-'+k).disabled=busy||!!layer.keyframes?.length;}for(const k of ['fill','stroke']){$('shape-'+k+'-enabled').checked=!!layer[k];$('shape-'+k+'-enabled').disabled=busy||(k==='fill'&&open);$('shape-'+k).value=layer[k]||'#ffffff';$('shape-'+k).disabled=busy||!layer[k]||(k==='fill'&&open);}}$('video-source-field').hidden=layer.in===undefined;$('video-freeze-field').hidden=layer.in===undefined;$('image-freeze').checked=!!layer.freeze;$('image-freeze').disabled=busy;$('image-in').value=layer.in||0;$('remove-image').textContent=layer.type?'Remover forma':layer.in===undefined?'Remover imagem':'Remover vídeo';$('image-name').textContent=project().assets.find(a=>a.id===layer.assetId)?.name||SHAPES[layer.type]||'Imagem';
  for(const k of ['start','end','x','y','width','rotation','opacity'])$('image-'+k).value=layer[k];for(const input of $('image-properties').querySelectorAll('input[type=range]'))sliderReadout(input);
  for(const k of ['x','y','width','opacity'])$('image-'+k).disabled=busy||!!layer.keyframes?.length&&(position<layer.start||position>layer.end);
 }
+$('image-freeze').onchange=guard(()=>{if(busy||!selectedImage)return;try{commit(editVisual(project(),selectedImage,{freeze:$('image-freeze').checked}),{label:'Manter quadro parado'});}finally{renderImageProperties();renderTextScene();}});
 for(const k of ['in','start','end','x','y','width','rotation','opacity'])$('image-'+k).onchange=guard(()=>{
  if(busy||!selectedImage)return;const patch={[k]:Number($('image-'+k).value)};try{commit(editVisual(project(),selectedImage,patch),{label:'Ajustar imagem'});}finally{imagePreview=null;renderImageProperties();renderTextScene();}
 });
@@ -880,7 +885,7 @@ $('menu-position').addEventListener('change',()=>{
 function renderUpdate(){
  const {phase,version,installedVersion,percent=0}=updateState;
  $('installed-version').textContent=installedVersion?`Versão instalada: ${installedVersion}`:'Versão instalada: verificando…';
- const labels={waiting:'Atualização aguardando a operação atual terminar.',idle:'Atualizações automáticas ativadas.',preparing:'Preparando a IA local para futuras atualizações…',checking:'Verificando atualizações…',current:'Corte atualizado.',downloading:`Baixando atualização ${version||''} · ${percent}%`,ready:`Atualização ${version||''} baixada. Será instalada automaticamente ao fechar o Corte.${dirty?' Salve seu projeto antes de fechar.':''}`,error:'Não foi possível atualizar. Confira sua conexão e o espaço livre e tente novamente.',unavailable:'Atualização automática disponível no aplicativo instalado para Windows. Mac: atualização manual por enquanto.'};
+ const labels={waiting:'Atualização aguardando a operação atual terminar.',idle:'Atualizações automáticas ativadas.',preparing:'Preparando a IA local para futuras atualizações…',checking:'Verificando atualizações…',current:'Corte atualizado.',downloading:`Baixando atualização ${version||''} · ${percent}%`,ready:`Atualização ${version||''} baixada. Use Reiniciar e atualizar para instalar quando terminar.${dirty?' Salve seu projeto antes de fechar.':''}`,error:'Não foi possível atualizar. Confira sua conexão e o espaço livre e tente novamente.',unavailable:'Atualização automática disponível no aplicativo instalado para Windows. Mac: atualização manual por enquanto.'};
  $('update-status').textContent=labels[phase]||labels.idle;
  $('check-update').disabled=['unavailable','preparing','checking','downloading','ready'].includes(phase);
  $('update-notice').hidden=!['preparing','downloading','ready','error'].includes(phase);
@@ -896,11 +901,15 @@ $('install-update').onclick=guard(async()=>{
  await bridge.installUpdate();
 });
 async function refreshSpeechModel(){const r=await bridge.speechModel();$('speech-model-status').textContent=r.installed?'Reconhecimento preciso instalado.':r.installing?'Baixando reconhecimento preciso…':'Usando o reconhecimento básico incluído.';$('speech-model-install').hidden=r.installed;$('speech-model-install').disabled=r.installing;$('ai-speech-hint').hidden=r.installed||$('ai-engine').value!=='hybrid';$('ai-speech-install').disabled=r.installing;}
+let searchModelReady=false;
+async function refreshSearchModel(){if(!bridge?.searchModel)return;const r=await bridge.searchModel();searchModelReady=r.installed;$('search-model-status').textContent=r.installed?'Busca visual instalada.':r.installing?'Baixando busca visual…':'Busca por conteúdo visual não instalada.';$('search-model-install').hidden=r.installed;$('search-model-install').disabled=r.installing;}
+bridge.onSearchModel?.(p=>{if(!searchModelReady)$('search-model-status').textContent=`Baixando busca visual… ${p.completed}/${p.total} arquivos`;});
+$('search-model-install').addEventListener('click',async()=>{$('search-model-install').disabled=true;try{await bridge.installSearchModel();toast('Busca visual instalada.');}catch(error){toast(error.message,true);}finally{await refreshSearchModel().catch(()=>{});}});
 bridge.onSpeechModel?.(p=>{$('speech-model-status').textContent=`Baixando reconhecimento preciso… ${p.completed}/${p.total} arquivos`;});
 async function installSpeech(){for(const id of ['speech-model-install','ai-speech-install'])$(id).disabled=true;$('speech-model-status').textContent='Baixando reconhecimento preciso…';try{await bridge.installSpeechModel();toast('Reconhecimento preciso instalado.');}catch(error){toast(error.message,true);}finally{$('ai-speech-install').disabled=false;await refreshSpeechModel().catch(()=>{});}}
 $('speech-model-install').addEventListener('click',installSpeech);$('ai-speech-install').addEventListener('click',installSpeech);
 $('ai-facts').addEventListener('change',guard(()=>{if(busy)return;const value=$('ai-facts').value;if((project().brief?.facts||'')===value.trim())return;edit({type:'set_brief',facts:value});}));
-async function showSettings(section){$('api-key').value='';$('settings-dialog').showModal();void refreshSpeechModel().catch(()=>{$('speech-model-status').textContent='Não foi possível verificar o reconhecimento de fala.';});if(section==='api')$('api-key').focus();const r=await bridge.apiStatus();$('api-status').textContent=r.configured?'Chave cadastrada e protegida.':'Nenhuma chave cadastrada.';await refreshConnection();}
+async function showSettings(section){$('api-key').value='';$('settings-dialog').showModal();void refreshSearchModel().catch(()=>{$('search-model-status').textContent='Não foi possível verificar a busca visual.';});void refreshSpeechModel().catch(()=>{$('speech-model-status').textContent='Não foi possível verificar o reconhecimento de fala.';});if(section==='api')$('api-key').focus();const r=await bridge.apiStatus();$('api-status').textContent=r.configured?'Chave cadastrada e protegida.':'Nenhuma chave cadastrada.';await refreshConnection();}
 $('settings').addEventListener('click',guard(showSettings));$('caption-settings').addEventListener('click',guard(showSettings));
 $('settings-close').addEventListener('click',()=>$('settings-dialog').close());$('settings-dialog').addEventListener('close',()=>$('api-key').value='');
 $('api-save').addEventListener('click',guard(async()=>{const value=$('api-key').value;$('api-key').value='';await bridge.apiSave(value);$('api-status').textContent='Chave cadastrada e protegida.';}));
@@ -1029,7 +1038,7 @@ $('clip-crop').onclick=()=>{selectedMusic=null;showInspector('video');};$('clip-
 
 function tab(name){$('tab-video').classList.toggle('active',name==='video');$('tab-audio').classList.toggle('active',name==='audio');$('video-properties').hidden=name==='audio';}
 $('tab-video').addEventListener('click',()=>tab('video'));$('tab-audio').addEventListener('click',()=>tab('audio'));
-$('nav-media').addEventListener('click',()=>importVideos());$('nav-audio').addEventListener('click',()=>showModule(editorPanel(activePanel,'audio')));$('nav-ai').addEventListener('click',()=>{showModule(editorPanel(activePanel,'ai'));if(activePanel)$('prompt').focus();void refreshSpeechModel().catch(()=>{});});
+$('nav-media').addEventListener('click',()=>importVideos());$('nav-audio').addEventListener('click',()=>showModule(editorPanel(activePanel,'audio')));$('nav-ai').addEventListener('click',()=>{showModule(editorPanel(activePanel,'ai'));if(activePanel)$('prompt').focus();void refreshSearchModel().catch(()=>{$('search-model-status').textContent='Não foi possível verificar a busca visual.';});void refreshSpeechModel().catch(()=>{});});
 $('export').addEventListener('click',()=>{if(busy || !project().clips.length)return;stop();$('export-details').textContent=`${project().clips.length} trecho${project().clips.length===1?'':'s'} · ${format(duration(project()))} · Formato ${project().aspect}`;$('export-dialog').showModal();});
 $('export-close').addEventListener('click',()=>$('export-dialog').close());
 $('export-confirm').addEventListener('click',guard(async()=>{$('export-dialog').close();setBusy(true,'Exportando vídeo…');try{const result=await bridge.exportProject(project(),Number($('export-height').value));if(result)toast(`Vídeo exportado: ${result.path.split(/[\\/]/).pop()}`);}finally{setBusy(false);}}));
@@ -1037,15 +1046,15 @@ let connectionRequest=0;
 async function refreshConnection(){if(!bridge)return;const request=++connectionRequest,r=await bridge.status();if(request!==connectionRequest)return;connected=r.connected;$('connect').classList.toggle('connected',connected);$('connection-label').textContent=connected?'ChatGPT conectado':'Não conectado';$('connect').disabled=busy||connected;}
 $('connect').addEventListener('click',guard(async()=>{if(connected){toast('Conectado com ChatGPT. Configure limites e créditos na sua conta; esta versão não possui desconexão integrada.');return;}if(!bridge)throw new Error('O login está disponível no app desktop.');$('connect').disabled=true;$('connection-label').textContent='Conclua no navegador…';try{await bridge.login();await refreshConnection();toast(connected?'ChatGPT conectado. Pronto para analisar.':'Login não concluído.',!connected);}finally{$('connect').disabled=busy||connected;if(!connected)$('connection-label').textContent='Não conectado';}}));
 $('prompt').addEventListener('input',()=>{pending=null;$('proposal').hidden=true;updateButtons();});
-$('ai-mode').addEventListener('change',()=>{pending=null;requestedStage=null;$('proposal').hidden=true;});
-$('ai-engine').addEventListener('change',()=>{pending=null;$('proposal').hidden=true;void refreshSpeechModel().catch(()=>{});});
+$('ai-mode').addEventListener('change',()=>{pending=null;requestedStage=null;editSession=null;$('proposal').hidden=true;});
+$('ai-engine').addEventListener('change',()=>{pending=null;$('proposal').hidden=true;void refreshSearchModel().catch(()=>{$('search-model-status').textContent='Não foi possível verificar a busca visual.';});void refreshSpeechModel().catch(()=>{});});
 $('ai-scope').addEventListener('change',()=>{pending=null;$('proposal').hidden=true;$('ai-feedback').hidden=true;updateButtons();});
 let cancelRequested=false;
 // A staged run keeps the same request; after each stage is applied or skipped, the next one can be prepared.
-let requestedStage=null;
+let requestedStage=null,editSession=null;
 function offerNextStage(stage){
  const box=$('proposal');box.replaceChildren();box.hidden=false;const p=document.createElement('p');box.append(p);
- if(stage>=EDIT_STAGES.length){p.textContent='Todas as etapas foram concluídas.';return;}
+ if(stage>=EDIT_STAGES.length){const summary=editSessionSummary(editSession);p.textContent=summary.text;for(const note of summary.pending){const item=document.createElement('p');item.textContent=note;box.append(item);}return;}
  p.textContent=`Etapa ${stage} de ${EDIT_STAGES.length} concluída.`;const next=document.createElement('button');next.id='continue-stage';next.className='primary';next.textContent=`Continuar: etapa ${stage+1} · ${EDIT_STAGES[stage].name}`;
  next.onclick=()=>{requestedStage=stage+1;$('analyze').click();};const stop=document.createElement('button');stop.textContent='Encerrar etapas';stop.onclick=()=>{box.hidden=true;};box.append(next,stop);
 }
@@ -1053,7 +1062,7 @@ $('analyze').addEventListener('click',guard(async()=>{
  if(busy)return;$('ai-feedback').hidden=true;const engine=$('ai-engine').value,stage=engine==='hybrid'&&$('ai-mode').value==='stages'?requestedStage||1:null;requestedStage=null;if(!connected){$('ai-feedback').textContent='Abra Configurações → ChatGPT para conectar sua conta.';$('ai-feedback').hidden=false;return;}
  stop();const snapshot=project(),prompt=$('prompt').value;cancelRequested=false;aiRunning=true;$('ai-cancel').disabled=false;aiProgressState=aiProgress(null);$('ai-progress-label').textContent=aiProgressState.label;setBusy(true);pending=null;$('proposal').hidden=true;
  try{
-  const scope=$('ai-scope').value==='selected'?selected:null;if($('ai-scope').value==='selected'&&!snapshot.clips.some(c=>c.id===scope))throw Error('Selecione um trecho válido.');const result=await bridge.analyze(snapshot,prompt,.5,scope,engine,engine==='hybrid',stage);validateScopedPlan(snapshot,result.plan,scope);if(cancelRequested)throw Error('Edição cancelada.');
+  const scope=$('ai-scope').value==='selected'?selected:null;if($('ai-scope').value==='selected'&&!snapshot.clips.some(c=>c.id===scope))throw Error('Selecione um trecho válido.');if(stage===1)editSession=newEditSession(prompt,scope);if(stage>1&&(!editSession||editSession.prompt!==prompt||editSession.scope!==scope))throw Error('O pedido ou o escopo mudou. Inicie novamente pela etapa 1.');const result=await bridge.analyze(snapshot,prompt,analysisSamplingStep(snapshot,scope),scope,engine,engine==='hybrid',stage);validateScopedPlan(snapshot,result.plan,scope);if(cancelRequested)throw Error('Edição cancelada.');
   if(JSON.stringify(snapshot)!==JSON.stringify(project()))throw new Error('O projeto mudou durante a análise. Resultado descartado.');
   if(engine==='hybrid'){
    if(result.mode!=='hybrid'||result.reviewRequired!==true)throw Error('Resposta do fluxo híbrido inválida.');
@@ -1061,7 +1070,7 @@ $('analyze').addEventListener('click',guard(async()=>{
    const add=text=>{const p=document.createElement('p');p.textContent=text;box.append(p);};
    add(stage?`Etapa ${stage} de ${EDIT_STAGES.length} · ${EDIT_STAGES[stage-1].name} — revise antes de aplicar.`:'Proposta híbrida — revise antes de aplicar.');add(result.plan.summary);
    // One line per part of the request, in the user's own order, before the technical operations.
-   const coverage=result.coverage||[],statusLabels={planned:'Feito',partial:'Parcial',pending:'Pendente',not_needed:'Não se aplica'};
+   const coverage=result.coverage||[],statusLabels={planned:'Proposto',partial:'Parcial',pending:'Pendente',not_needed:'Não se aplica'};
    if(coverage.length){const list=document.createElement('ul');list.className='proposal-coverage';list.setAttribute('aria-label','Partes do pedido');for(const item of coverage){const li=document.createElement('li');li.className='coverage-'+item.status;const badge=document.createElement('span');badge.className='coverage-status';badge.textContent=statusLabels[item.status]||item.status;const text=document.createElement('span');text.textContent=item.status==='planned'?item.request:`${item.request} — ${item.reason}`;li.append(badge,text);list.append(li);}box.append(list);}
    const operations=document.createElement('details');operations.className='proposal-operations';const summary=document.createElement('summary');summary.textContent=`Operações (${result.plan.operations.length})`;operations.append(summary);for(const op of result.plan.operations){const p=document.createElement('p');p.textContent=describeOperation(snapshot,op);operations.append(p);}box.append(operations);
    const fromCoverage=new Set(coverage.map(c=>`${c.request}: ${c.reason}`));
@@ -1069,9 +1078,9 @@ $('analyze').addEventListener('click',guard(async()=>{
    for(const warning of result.analysisWarnings||[])add('Revisão da fala: '+warning);
    add(`Evidências compartilhadas: ${result.shared?.transcriptWords||0} palavras transcritas e ${result.shared?.frames||0} frames, incluindo a revisão de bordas. As imagens são amostras; confira os cortes na timeline.`);
    pending={snapshot:JSON.stringify(snapshot),plan:result.plan,scope,notes:[...(result.pendingRequests||[]),...(result.analysisWarnings||[])]};
-   const discard=document.createElement('button');discard.id='discard-hybrid-plan';discard.textContent='Descartar proposta';discard.onclick=()=>{pending=null;box.hidden=true;if(stage)offerNextStage(stage);};box.append(discard);
+   const discard=document.createElement('button');discard.id='discard-hybrid-plan';discard.textContent='Descartar proposta';discard.onclick=()=>{pending=null;box.hidden=true;if(stage){recordEditStage(editSession,stage,'skipped',result);offerNextStage(stage);}};box.append(discard);
    if(result.plan.operations.length){const apply=document.createElement('button');apply.id='apply-hybrid-plan';apply.className='primary';apply.textContent='Aplicar somente estas alterações';apply.onclick=guard(()=>{
-    if(busy||!pending)return;const draft=pending;if(draft.snapshot!==JSON.stringify(project()))throw Error('O projeto mudou. Prepare uma nova proposta.');validateScopedPlan(project(),draft.plan,draft.scope);const before=project(),next=applyPlan(before,draft.plan);commit(next,{...describeChange(before,next),label:`IA híbrida: ${draft.plan.summary}`.slice(0,4000),details:[...draft.plan.operations.map(op=>describeOperation(before,op)),...draft.notes.map(n=>'Pendente: '+n)]});toast('Alterações revisadas aplicadas. Pendências não foram executadas.');if(stage)offerNextStage(stage);
+    if(busy||!pending)return;const draft=pending;if(draft.snapshot!==JSON.stringify(project()))throw Error('O projeto mudou. Prepare uma nova proposta.');validateScopedPlan(project(),draft.plan,draft.scope);const before=project(),next=applyPlan(before,draft.plan);commit(next,{...describeChange(before,next),label:`IA híbrida: ${draft.plan.summary}`.slice(0,4000),details:[...draft.plan.operations.map(op=>describeOperation(before,op)),...draft.notes.map(n=>'Pendente: '+n)]});toast('Alterações revisadas aplicadas. Pendências não foram executadas.');if(stage){recordEditStage(editSession,stage,'applied',result);offerNextStage(stage);}
    });box.append(apply);}return;
   }
   const {plan}=result,issues=[...(plan.questions||[]),...(plan.unsupported||[])];

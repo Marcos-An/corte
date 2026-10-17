@@ -4,13 +4,13 @@ Editor desktop de vídeo com Electron, edição não destrutiva e assistência p
 
 ## Download
 
-Pré-release **0.5.4**: [downloads e notas da versão](https://github.com/Marcos-An/corte/releases/tag/v0.5.4).
+Windows **0.6.1**: [downloads e notas da versão](https://github.com/Marcos-An/corte/releases/tag/v0.6.1). As versões anteriores para macOS continuam nas releases anteriores.
 
 - **macOS Apple Silicon (arm64):** arquivo `.dmg` ou `.zip`. Não há pacote Intel nesta versão.
-- **Windows x64:** instalador `Corte.Setup.0.5.4.exe`.
+- **Windows x64:** instalador `Corte.Setup.0.6.1.exe`.
 - Pacotes **sem assinatura digital/notarização**; macOS/Windows podem mostrar avisos de segurança. Não desative a proteção do sistema inteiro.
 
-O aplicativo empacotado foi validado no Mac com mídia sintética, salvar/reabrir e exportação real. As ferramentas Windows passaram por testes nativos de H.264/AAC, probe e legendas; instalação e interface completas no Windows físico ainda não foram validadas. Esta versão é beta, não uma certificação de estabilidade.
+O aplicativo empacotado foi validado no Mac com mídia sintética, salvar/reabrir e exportação real. A interface Windows foi validada nesta máquina com edição complexa, salvar/reabrir, desfazer, exportação MP4 e atualização; o instalador e o feed passaram por auditoria de integridade. Esta versão é beta, não uma certificação de estabilidade.
 
 A Release inclui fontes correspondentes das ferramentas GPL e `SHA256SUMS`. O ZIP automático do código-fonte não é um aplicativo instalável.
 
@@ -92,7 +92,7 @@ npm run release -- 0.5.5
 
 Escolha uma versão numérica maior que as anteriores; versões/tags existentes nunca são sobrescritas. Acompanhe [Draft release no GitHub Actions](https://github.com/Marcos-An/corte/actions/workflows/release.yml). A execução só aceita `main` e o SHA exato solicitado. A versão é carimbada em `package.json`/lockfile **no build do CI**, sem modificar o commit de origem; o rascunho registra ambos.
 
-Mac arm64 e Windows x64 são empacotados nativamente em paralelo. Os modelos e ferramentas vêm dos pacotes **0.5.4 com hashes fixados** em `scripts/release-bootstrap.json`; o cache é verificado a cada execução. Não há recompilação de FFmpeg para uma mudança comum no editor. A primeira execução baixa os pacotes-base; as seguintes podem usar o cache. Se mudar ferramentas/modelos/fontes correspondentes, atualize explicitamente seus manifests e a base verificada — divergência bloqueia o build.
+Mac arm64 e Windows x64 são empacotados nativamente em paralelo. O Windows recompila as ferramentas de mídia antes de empacotar e registra os hashes dos artefatos produzidos. Os modelos e ferramentas vêm dos pacotes **0.5.4 com hashes fixados** em `scripts/release-bootstrap.json`; o cache é verificado a cada execução. Esta preparação recompila as ferramentas Windows com a receita controlada (NASM/SIMD e D3D11VA/DXVA2); os modelos e ferramentas auxiliares continuam vindo do bootstrap verificado. A primeira execução baixa os pacotes-base; as seguintes podem usar o cache. Se mudar ferramentas/modelos/fontes correspondentes, atualize explicitamente seus manifests e a base verificada — divergência bloqueia o build.
 
 Os gates incluem testes, sintaxe, varredura sanitizada de padrões de segredos, auditoria dos arquivos empacotados/fontes/licenças/hashes e smoke com exportação MP4 real nos dois runners. Só depois de ambos passarem os instaladores e fontes recebem `SHA256SUMS`. Artefatos de dry-run ficam disponíveis por 7 dias. Runners não substituem QA físico, assinatura ou revisão jurídica.
 
@@ -133,3 +133,41 @@ A próxima versão instalada para Windows consulta as releases públicas deste r
 Verificações: `node --test tests/updates.test.mjs tests/models-store.test.mjs tests/release.test.mjs`, `node tests/updates.e2e.mjs` (Chromium Playwright), `node tests/updater-download.integration.mjs` (Electron e download real, sem executar o instalador de teste). Essas verificações não substituem testar instalação/reinício entre duas versões em um Windows real, incluindo modelos e projetos preservados.
 
 Para medir o delta real sem instalar nada: `CORTE_TEST_OLD_UPDATE=/caminho/Corte.Update.0.5.4.exe CORTE_TEST_NEW_UPDATE=/caminho/Corte.Update.0.5.5.exe node tests/updater-differential.integration.mjs` (ambos precisam dos `.blockmap` adjacentes). Um smoke local que alterou somente versão/metadados transferiu 1.309 MB de um pacote de 481.197 MB. Isso valida o mecanismo de ranges/reuso/SHA-512, não promete esse tamanho para mudanças reais de código e não executa a instalação Windows.
+
+## Desenvolvimento e diagnóstico no Windows
+
+Depois de `npm ci`, use `npm run start:win`. Esse comando usa os modelos completos já presentes em `%APPDATA%/Corte/models`, quando disponíveis, sem copiar autenticação. Feche o Corte instalado antes de abrir a versão de desenvolvimento. O código do clone e o aplicativo instalado são versões separadas; editar este repositório não atualiza o instalador existente.
+
+As prévias são decodificadas em PNG/RGB e convertidas para JPEG pelo Sharp. Isso evita a corrupção verde/magenta reproduzida no encoder MJPEG do FFmpeg Windows distribuído. Os caminhos de cache são curtos e a gravação passa pelo Node para tolerar caminhos extensos no Windows.
+
+A busca visual pode ser instalada em **Configurações → Busca visual**. O download usa a revisão e os hashes de `vendor/models/search-manifest.json`; o encoder de texto é independente do encoder de imagens. A busca encontra candidatos por similaridade e não comprova que uma ação aconteceu nem identifica corretamente todos os pratos.
+
+O CLIP q8 usa CPU no Windows: o grafo quantizado caiu nativamente em DirectML na RTX 3060 testada. A transcrição mantém um perfil separado e pode usar DirectML; suas sessões desativam memory patterns e execução paralela, conforme a [documentação do ONNX Runtime](https://onnxruntime.ai/docs/execution-providers/DirectML-ExecutionProvider.html). CPU usa até seis threads internas. Isso não significa que toda GPU ou modelo tenha o mesmo desempenho.
+
+Análises visuais e transcrições completas são reutilizadas localmente em `cache/local-evidence`, com invalidação por origem/tamanho/datas do arquivo, modelo, finalidade e amostragem. Reordenar a montagem não invalida os dados das fontes. O cache contém evidências de mídia e texto local, não é enviado ao Git e pode ser removido com o aplicativo fechado para liberar espaço. Excluir completamente uma fonte da montagem ou trocar a amostragem pode exigir nova análise.
+
+Para medir um projeto autorizado sem chamar o ChatGPT:
+
+```powershell
+node scripts/bench-project.mjs "--project=C:\caminho\projeto.corte" "--cache=C:\caminho\cache-de-teste" --speech
+```
+
+Configure `CORTE_MODEL_PATH` e, opcionalmente, `CORTE_SPEECH_MODEL_PATH` para as pastas de modelos verificadas. O benchmark mostra a primeira execução e a reutilização, sem imprimir transcrições ou nomes de mídia. `tests/windows-preview.integration.mjs` compara uma prévia JPEG corrigida com uma referência PNG usando `CORTE_TEST_RESOURCES`, `CORTE_TEST_VIDEO` e, opcionalmente, `CORTE_TEST_TIME`.
+
+Em propostas revisáveis, `set_transition_at` aceita `makeRoom:true`: prepara as margens com a mesma função da interface antes de aplicar a transição, encurtando os dois lados quando necessário. É explícito e desfazível; a proteção de fala incerta também valida esses aparos. Sem essa opção, permanece a exigência anterior de margens já disponíveis. Sharpness e temperature já existem no editor e agora são descritos corretamente ao planejador. Endereço, datas oficiais, imagens externas ausentes e novas gravações continuam exigindo os dados correspondentes.
+
+## Pedidos complexos e proposta parcial
+
+A IA pode mover um intervalo de um take (`move_range`), inserir um trecho de uma mídia importada (`insert_clip`) e posicionar música/narração importada (`add_audio`). Nenhuma dessas operações baixa arquivos externos ou gera locução ausente. As operações continuam não destrutivas e são aplicadas em um único histórico após revisão.
+
+Quando um corte encontra fala sem tempos confiáveis, o fluxo revisável tenta preservar alterações independentes. Cortes por palavras/intervalos são filtrados, âncoras de fala são recalculadas e componentes com tempos absolutos dependentes ficam pendentes. A recuperação é validada novamente; se não for segura, o plano permanece bloqueado. Isso não autoriza remover fala incerta.
+
+As três etapas mostram quantas foram aplicadas, puladas e quais pendências continuam abertas. “Proposto” não significa “Feito”. Narração futura, imagens ausentes, ingredientes, endereço e informações oficiais não fornecidos permanecem identificados como pendências. Use **Informações do local** para fornecer os fatos conhecidos.
+
+O refinamento reutiliza imagens próximas com seus tempos reais, conserva evidências de todas as consultas visuais e prepara os demais quadros com até dois decodificadores simultâneos. Quadros exatos também entram no cache. Uma falha transitória na conferência adicional pode deixar uma proposta preliminar explicitamente marcada, somente para revisão; não é aplicação automática.
+
+Sobreposições de vídeo também podem manter um quadro parado: marque **Manter este quadro parado** nas propriedades. A IA usa `place_still` com uma âncora de fala/fonte; o cartaz fica visível durante a âncora inteira, preservando o áudio principal. `place_overlay` continua reproduzindo o trecho e respeitando sua duração original. A exportação e a prévia compartilham esse comportamento.
+
+Quando uma revisão contém cortes que atingem fala com tempos incertos, o sistema tenta preservar operações independentes e resolve novamente as âncoras de origem. Tempos absolutos dependentes de cortes descartados ficam pendentes. O resultado é identificado como parcial e exige revisão, sem afirmar que todos os itens foram concluídos.
+
+Publicação autorizada por tag: após validar e publicar o commit em `main`, enviar uma tag numérica nova `vX.Y.Z` inicia o workflow de release. Ele confere que a tag aponta para `main`, recompila os pacotes, executa os testes e auditorias nas duas plataformas, valida o feed/checksums e só então publica. O disparo manual mantém o comportamento de rascunho; nenhuma credencial de publicação é distribuída no aplicativo.

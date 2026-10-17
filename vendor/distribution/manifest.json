@@ -15,13 +15,13 @@
   },
   "win": {
     "ffmpeg": {
-      "sha256": "1ac15922c13255dcd4a7f22563f2e965755d59aeba528ee96f7869295830d01c"
+      "sha256": "4e30e7e6a40fad60335640ee5a9b3c4e59ca3a6cbddfe5742e5c5402ed66f08e"
     },
     "ffprobe": {
-      "sha256": "87b372fe0ccc9ec2b355005cff85f091850d4acd973d93abcd541f4e150b9d2b"
+      "sha256": "a0f1687c8cd57bca9b5273a9ec94b1f5ddab16cfd3400239d37010cb051542ef"
     },
     "sources": {
-      "sha256": "cfe64943df574930b423bff9cce1219c6c1c9111d51d3e0c09375b064c85b79f"
+      "sha256": "70c3689916a7fff985d268275d8bb3de39fb8ad44e0a7e33d04243145e7dce9a"
     }
   }
 }

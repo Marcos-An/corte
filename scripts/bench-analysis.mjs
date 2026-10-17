@@ -4,10 +4,11 @@
 import {mkdtemp,rm} from 'node:fs/promises';import {tmpdir,cpus,totalmem} from 'node:os';import path from 'node:path';
 import {run,binaries,probe} from '../desktop/media.mjs';import {runVisualProcess} from '../desktop/visual-process.mjs';import {modelPath} from '../desktop/local.mjs';import {transcribeLocally} from '../desktop/transcribe.mjs';
 import {createProject,addAsset,addClip} from '../src/project.mjs';
+import {visualBackend} from '../desktop/inference-profile.mjs';
 const arg=(k,d)=>process.argv.find(a=>a.startsWith(`--${k}=`))?.split('=')[1]??d;
 const res=arg('res','4k'),codec=arg('codec','hevc'),clips=Number(arg('clips','12')),seconds=Number(arg('seconds','35'));
 const size=res==='4k'?'2160x3840':'1080x1920',encoder=codec==='hevc'?['-c:v','libx265','-preset','ultrafast','-tag:v','hvc1']:['-c:v','libx264','-preset','ultrafast'];
-const backend=process.platform==='darwin'?'coreml':process.platform==='win32'?'dml':'cpu',dir=await mkdtemp(path.join(tmpdir(),'corte-bench-')),time=async f=>{const t=performance.now();const r=await f();return [r,Math.round(performance.now()-t)];};
+const backend=visualBackend(),dir=await mkdtemp(path.join(tmpdir(),'corte-bench-')),time=async f=>{const t=performance.now();const r=await f();return [r,Math.round(performance.now()-t)];};
 try{
  // One vertical phone-like clip with real speech, reused for every asset: decode cost is per asset, generation cost is paid once.
  const clip=path.join(dir,'clip.mp4'),speech=path.resolve(import.meta.dirname,'../tests/fixtures/speech-pt.m4a');

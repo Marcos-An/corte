@@ -27,6 +27,7 @@ function clean(input){
  if(['Error','TypeError','RangeError','SyntaxError','AbortError'].includes(input.errorName))out.errorName=input.errorName;
  if(['CPU','GPU','Utility','Browser','renderer','speech','vision'].includes(input.processType))out.processType=input.processType;
  if(['cpu','dml','coreml'].includes(input.backend))out.backend=input.backend;
+ if(typeof input.cached==='boolean')out.cached=input.cached;
  if(input.memory&&typeof input.memory==='object'){out.memory={};for(const key of ['rssMB','heapUsedMB','externalMB','freeSystemMB','totalSystemMB'])if(number(input.memory[key]))out.memory[key]=Math.round(input.memory[key]);}
  return out;
 }

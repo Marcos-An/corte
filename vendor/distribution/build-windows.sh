@@ -31,7 +31,8 @@ for name in pkgconf-2.1.1.tar.xz x264-31e19f9.tar.gz freetype-2.13.2.tar.xz frib
 done
 cd "$WORK/src/pkgconf-2.1.1"
 CPPFLAGS=-DPKGCONFIG_IS_STATIC ./configure --host=x86_64-w64-mingw32 --prefix="$PREFIX" --disable-shared --enable-static
-make -j"$JOBS"
+# Keep quoted -D string paths intact: MSYS conversion can turn /c/Users into invalid C escapes (\U).
+MSYS2_ARG_CONV_EXCL='-D' make -j"$JOBS"
 make install
 ln -sf pkgconf.exe "$PREFIX/bin/pkg-config.exe"
 cd "$WORK/src/zlib-1.3.1"
@@ -46,7 +47,7 @@ Libs: -L$PREFIX/lib -lz
 Cflags: -I$PREFIX/include
 PC
 cd "$WORK/src/x264-31e19f92f00c7003fa115047ce50978bc98c3a0d"
-./configure --host=x86_64-w64-mingw32 --prefix="$PREFIX" --enable-static --disable-shared --disable-cli --enable-pic --disable-asm
+./configure --host=x86_64-w64-mingw32 --prefix="$PREFIX" --enable-static --disable-shared --disable-cli --enable-pic
 make -j"$JOBS"
 make install
 cd "$WORK/src/freetype-2.13.2"
@@ -66,7 +67,7 @@ cd "$WORK/src/libass-0.17.1"
 make -j"$JOBS"
 make install
 cd "$WORK/src/ffmpeg-6.1.1"
-./configure --prefix="$PREFIX" --pkg-config-flags=--static --extra-cflags="-I$PREFIX/include" --extra-ldflags="-L$PREFIX/lib" --target-os=mingw32 --arch=x86_64 --cc=$CC --cxx=$CXX --extra-libs='-lstdc++ -static -static-libgcc -static-libstdc++' --disable-shared --enable-static --enable-gpl --enable-version3 --disable-nonfree --disable-autodetect --enable-libx264 --enable-libass --enable-zlib --disable-x86asm --enable-schannel --disable-ffplay --disable-doc
+./configure --prefix="$PREFIX" --pkg-config-flags=--static --extra-cflags="-I$PREFIX/include" --extra-ldflags="-L$PREFIX/lib" --target-os=mingw32 --arch=x86_64 --cc=$CC --cxx=$CXX --extra-libs='-lstdc++ -static -static-libgcc -static-libstdc++' --disable-shared --enable-static --enable-gpl --enable-version3 --disable-nonfree --disable-autodetect --enable-libx264 --enable-libass --enable-zlib --enable-x86asm --enable-d3d11va --enable-dxva2 --enable-schannel --disable-ffplay --disable-doc
 make -j"$JOBS"
 ./ffmpeg.exe -L 2>&1 | grep -q 'GNU General Public License'
 if ./ffmpeg.exe -L 2>&1 | grep -qi 'not legally redistributable'; then echo 'Unsafe FFmpeg license' >&2; exit 1; fi

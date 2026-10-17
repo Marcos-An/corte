@@ -3,15 +3,18 @@
 import {mkdtemp,readFile,rm} from 'node:fs/promises';import path from 'node:path';import {tmpdir} from 'node:os';import {createHash} from 'node:crypto';
 import {env,pipeline} from '@huggingface/transformers';import {run,binaries} from './media.mjs';import {normalizeRecognition} from '../src/captions.mjs';
 import {normalizeEditRecognition,speechWindows,mergeSpeechWindow} from './edit-transcript.mjs';import {detectPauses} from './speech-edit.mjs';
+import {inferenceOptions} from './inference-profile.mjs';
 export const DEFAULT_SPEECH_MODEL='onnx-community/whisper-small_timestamped';
 export async function recognizeSpeech({models,assets,purpose='captions',speechModel=DEFAULT_SPEECH_MODEL,manifest=null,backend='cpu'},{signal,onProgress=()=>{}}){
  env.allowRemoteModels=false;env.localModelPath=models;env.useFSCache=false;env.useBrowserCache=false;
  for(const entry of manifest?.files||[]){const h=createHash('sha256');h.update(await readFile(path.join(models,entry.path)));if(h.digest('hex')!==entry.sha256)throw Error('Modelo de fala corrompido. Baixe novamente nas configurações.');}
  onProgress({stage:'captions',completed:0,total:assets.length});
- let device=backend,fallback=false,pipe,temp;const load=d=>pipeline('automatic-speech-recognition',speechModel,{dtype:'q8',device:d,local_files_only:true});
- const toCpu=async()=>{await pipe?.dispose();device='cpu';fallback=true;pipe=await load('cpu');};
+ let device=backend,fallback=false,pipe,temp;const load=d=>pipeline('automatic-speech-recognition',speechModel,inferenceOptions(d));
+ const reportBackend=()=>onProgress({stage:'worker-diagnostic',event:'worker-start',worker:'speech',processType:'speech',backend:device});
+ const toCpu=async()=>{await pipe?.dispose();device='cpu';fallback=true;reportBackend();pipe=await load('cpu');};
  try{
   try{pipe=await load(device);}catch(error){if(device==='cpu')throw error;await toCpu();}
+  reportBackend();
   temp=await mkdtemp(path.join(tmpdir(),'corte-captions-'));const transcripts=[];
   for(const asset of assets){signal?.throwIfAborted();const merged={words:[],gaps:[],context:[],pauses:[]};
    for(const window of speechWindows(asset.duration)){signal?.throwIfAborted();const {offset,length}=window,file=path.join(temp,'audio.pcm');

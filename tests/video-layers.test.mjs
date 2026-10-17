@@ -8,3 +8,8 @@ test('video overlays preserve their source interval, are muted, editable and und
  for(const patch of [{in:-1},{in:5},{assetId:'missing'},{opacity:NaN},{width:0},{start:3}])assert.throws(()=>m.validateProject({...q,videoLayers:[{...layer,...patch}]}));
  assert.deepEqual(m.editVideoLayer(q,'l',null).videoLayers,[]);
 });
+test('frozen video overlays hold a valid source frame for an arbitrary layer duration',()=>{
+ const q=m.addVideoLayer(p,{...layer,end:14,freeze:true});assert.equal(q.videoLayers[0].end,14);
+ assert.throws(()=>m.editVideoLayer(q,'l',{freeze:false}));
+ for(const patch of [{freeze:1},{in:6}])assert.throws(()=>m.validateProject({...q,videoLayers:[{...q.videoLayers[0],...patch}]}));
+});

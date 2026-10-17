@@ -26,3 +26,9 @@ test('the isolated runner also carries non-visual work, marking a CPU fallback o
  assert.equal(r.report.fallback,true);assert.ok(progress.filter(p=>p.event==='worker-start').every(p=>p.worker==='speech'));
  await assert.rejects(module.runIsolated({data:{trace,mode:'always-crash'},backend:'dml',entry,worker:'speech',crashError:'A transcrição foi interrompida.'}),/transcrição foi interrompida/);
 }));
+
+test('a crashed accelerator is skipped for later analyses in the same session',()=>fixture(async({entry,trace})=>{
+ await module.runVisualProcess({data:{trace},backend:'dml',entry});
+ await module.runVisualProcess({data:{trace},backend:'dml',entry});
+ assert.deepEqual((await readFile(trace,'utf8')).trim().split('\n'),['dml','cpu','cpu']);
+}));

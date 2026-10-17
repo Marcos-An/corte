@@ -3,8 +3,10 @@ import {createHash} from 'node:crypto';
 import {runVisualProcess} from './visual-process.mjs';
 import {existsSync} from 'node:fs';
 import {readFile} from 'node:fs/promises';
-import {PREVIEW_SCALE,PREVIEW_JPEG} from './media.mjs';
-export function frameDirectory(root,assetId){return path.join(root,createHash('sha256').update(assetId).digest('hex'));}
+import {PREVIEW_SCALE,PREVIEW_PNG} from './media.mjs';
+import {cachedEvidence} from './analysis-cache.mjs';
+import {visualBackend} from './inference-profile.mjs';
+export function frameDirectory(root,assetId){return path.join(root,createHash('sha256').update(assetId).digest('hex').slice(0,32));}
 export const MODEL_ID='Xenova/clip-vit-base-patch32';
 export function modelPath(){const saved=process.env.CORTE_MODEL_PATH;if(saved&&existsSync(saved))return saved;const packed=process.resourcesPath&&path.join(process.resourcesPath,'models');return packed&&existsSync(packed)?packed:path.resolve(import.meta.dirname,'../vendor/models');}
 export function cosineDistance(a,b){let dot=0,aa=0,bb=0;for(let i=0;i<a.length;i++){dot+=a[i]*b[i];aa+=a[i]*a[i];bb+=b[i]*b[i];}return aa&&bb?Math.max(0,1-dot/Math.sqrt(aa*bb)):0;}
@@ -44,17 +46,21 @@ export function refinementTimes(project,plan,overview=[],max=60){
  for(const offset of [0,-.25,.25,-.5,.5,-1,1])for(const f of borders)add({assetId:f.assetId,time:f.time+offset});
  return result.sort((a,b)=>a.assetId.localeCompare(b.assetId)||a.time-b.time);
 }
-export function scanLocally({project,registry,directory,step=2,signal,onProgress=()=>{},index=false}){
+export async function scanLocally({project,registry,directory,cache,step=2,signal,onProgress=()=>{},index=false}){
  if(signal?.aborted)return Promise.reject(new Error('Análise cancelada.'));
  const assets=[...new Set(project.clips.map(c=>c.assetId))].map(id=>({id,...project.assets.find(a=>a.id===id),file:registry.get(id)?.path}));
- return runVisualProcess({data:{assets,directory,models:modelPath(),step,index},backend:process.platform==='darwin'?'coreml':process.platform==='win32'?'dml':'cpu',signal,onProgress});
+ const models=modelPath(),manifest=cache?await readFile(path.join(models,'manifest.json'),'utf8'):null;
+ return cachedEvidence({root:cache&&path.join(cache,'local-evidence'),kind:'vision',assets,configuration:{version:1,manifest,step,index},signal,
+  onHit:()=>onProgress({stage:'local',completed:assets.length,total:assets.length,cached:true}),
+  compute:folder=>runVisualProcess({data:{assets,directory:folder||directory,models,step,index},backend:visualBackend(),signal,onProgress})});
 }
 
 // Screening thumbnails and the preview pool share one decode; the second full decode was the dominant cost on 4K HEVC.
-export function samplingArgs(file,fps,folder){
+export function samplingArgs(file,fps,folder,{kind,duration}={}){
  if(!Number.isFinite(fps)||fps<=0)throw Error('Amostragem visual inválida.');
- return ['-hide_banner','-loglevel','error','-y','-hwaccel','auto','-i',file,'-filter_complex',`[0:v]fps=${fps}:start_time=0,split=2[a][b];[a]scale=96:-2,format=rgb24[s];[b]${PREVIEW_SCALE},format=rgb24[p]`,
-  '-map','[s]','-pix_fmt','rgb24',path.join(folder,'%06d.png'),'-map','[p]',...PREVIEW_JPEG,path.join(folder,'pool-%06d.jpg')];
+ if(kind==='image'&&(!Number.isFinite(duration)||duration<=0||duration>21600))throw Error('Duração da imagem inválida.');
+ return ['-hide_banner','-loglevel','error','-y','-progress','pipe:1','-nostats',...(kind==='image'?['-loop','1','-t',String(duration)]:['-hwaccel','auto']),'-i',file,'-filter_complex',`[0:v]fps=${fps}:start_time=0,split=2[a][b];[a]scale=96:-2,format=rgb24[s];[b]${PREVIEW_SCALE},format=rgb24[p]`,
+  '-map','[s]',...PREVIEW_PNG,path.join(folder,'%06d.png'),'-map','[p]',...PREVIEW_PNG,path.join(folder,'pool-%06d.png')];
 }
 // Distance to the previous candidate grows with the time between them; the frame one step earlier measures the change itself.
 export async function semanticChanges(samples,candidates,embed){
