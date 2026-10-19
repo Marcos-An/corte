@@ -184,6 +184,7 @@ if(primary)app.whenReady().then(async()=>{
  handler('api-clipboard',async()=>{if(abort)throw new Error('Aguarde a operação atual.');await keys.save(clipboard.readText());return {configured:true};});
  handler('api-remove',async()=>{if(abort)throw new Error('Aguarde a operação atual.');await keys.remove();return {configured:false};});
  handler('caption-estimate',p=>{authorized(p);return captionEstimate(p);});
+ handler('speech-review',async p=>{authorized(p);return mediaOperation(async signal=>{await ensureModels();const scoped={...p,clips:p.clips.filter(c=>!c.freeze)};if(!scoped.clips.some(c=>p.assets.find(a=>a.id===c.assetId)?.hasAudio))return [];const transcripts=await (await import('./transcribe.mjs')).transcribeLocally({project:scoped,registry,cache,purpose:'edit',signal,onProgress:notify});(await import('../src/speech-review.mjs')).speechReviewEntries(p,transcripts);return transcripts;});});
  handler('transcribe-local',async p=>{authorized(p);return mediaOperation(async signal=>{
   const operation=sessionLog.begin(),timer=setInterval(()=>sessionLog.heartbeat(),5000);timer.unref();let outcome='ok';
   try{await ensureModels();return await (await import('./local-captions.mjs')).generateLocalCaptions({project:p,registry,cache,signal,onProgress:event=>{sessionLog.progress(event,operation);notify(event);}});}

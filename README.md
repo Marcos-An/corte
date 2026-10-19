@@ -245,3 +245,11 @@ Quando faltarem mídias, **Localizar pasta…** procura na pasta escolhida e nas
 A busca pode ser cancelada e mantém as mídias já vinculadas. Cortes, volumes e histórico não mudam; use **Salvar projeto** para guardar os caminhos novos. Uma busca incompleta pede uma pasta menor e não aplica resultados parciais da varredura. A correspondência usa nomes e metadados, não um hash do conteúdo original ausente. Limites: 20 mil entradas, oito níveis; links para outras pastas não são seguidos.
 
 O progresso da IA distingue interpretação, áudio, cenas, planejamento e conferência. A espera pelo planejador mostra tempo decorrido, sem porcentagem ou previsão inventadas. Narração futura permanece pendente até ser importada: não autoriza silenciar o original, e um corte incerto não deve ser substituído por volume zero. Ajustes manuais explícitos de volume continuam disponíveis.
+
+## Revisar falas sem gerar legendas — em desenvolvimento após 0.6.6
+
+Em **Editar com IA → Falas do vídeo**, **Preparar falas** usa o reconhecimento local e seu cache, sem conexão ChatGPT e sem criar legendas. A busca ignora diferenças de acentos. Clique em uma palavra para marcar o vídeo correspondente; **Shift+clique** amplia o intervalo, inclusive entre falas e páginas. A seleção é contínua e inclui tudo entre os pontos: ouça e ajuste na timeline antes de marcar para remoção e confirmar.
+
+**Tempo incerto** identifica lacunas do reconhecimento e unidades cortadas pela borda de um clipe. Esses blocos não recebem tempos por palavra inventados; o botão de tempo apenas marca a região para revisão manual. Uma unidade do reconhecedor com várias palavras continua indivisível. As falas acompanham cortes, velocidade, repetição de mídias e desfazer; quadros congelados ficam fora da revisão de voz.
+
+O idioma é o mesmo configurado em **Legendas → Idioma do áudio**. Alterá-lo exige atualizar as falas. Cancelar preserva a revisão anterior; abrir outro projeto limpa o painel. A transcrição não entra no arquivo do projeto nem altera histórico ou legendas; o cache local pode ser reutilizado ao preparar novamente. Este painel ainda não permite corrigir o texto ou os tempos da transcrição interna e não conclui cortes automaticamente. Recurso ainda fora do download público 0.6.6.

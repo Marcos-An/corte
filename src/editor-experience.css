@@ -678,3 +678,9 @@ body>.busy-message button{flex-shrink:0}
 .export-job select{min-width:0;width:100%;padding:6px;background:var(--soft);color:var(--text);border:1px solid var(--line);border-radius:5px}
 
 .missing-media{flex-wrap:wrap}#missing-media-message{flex:1;min-width:200px}
+
+.speech-review-panel{border-top:1px solid var(--line);margin:12px 0;padding-top:10px;font-size:12px}.speech-review-panel summary{cursor:pointer}.speech-review-panel input{width:100%;margin:8px 0;padding:8px}.speech-review-panel p{font-size:11px;color:var(--muted)}.speech-review-row{border:1px solid var(--line);border-radius:6px;padding:8px;margin:8px 0}.speech-review-jump{font-size:11px;margin-bottom:6px}.speech-review-word{border:0;background:transparent;color:inherit;font-size:12px;padding:3px 1px;line-height:1.6}.speech-review-word:hover,.speech-review-word[aria-pressed=true]{background:#39404e;border-radius:3px}.speech-review-row.uncertain{border-color:#8a7044}.speech-review-row small{display:block;color:#e5c58c}.speech-review-pages{display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:11px}.speech-review-pages button{font-size:11px}
+
+.speech-review-word{white-space:normal;text-align:left;overflow-wrap:anywhere}.speech-review-row{overflow-wrap:anywhere}
+
+#speech-review-list .speech-review-word{padding:2px 1px;min-height:0;min-width:0;max-width:100%;display:inline;line-height:1.7}

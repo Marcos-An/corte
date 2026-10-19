@@ -208,6 +208,7 @@ jobs:
           node tests/audio-ranges.e2e.mjs
           node tests/blur.e2e.mjs
           node tests/transcript-selection.e2e.mjs
+          node tests/speech-review.e2e.mjs
           node --test tests/blur-render.test.mjs
           node tests/audio-eq.e2e.mjs
           node --test tests/audio-eq-render.test.mjs
