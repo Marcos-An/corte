@@ -93,7 +93,7 @@ export function buildSegmentArgs(c,a,input,out,aspect,height=720) {
     const layers=c.background==='blur'?`${source},split=2[bg][fg];[bg]scale=${size.width}:${size.height}:force_original_aspect_ratio=increase,crop=${size.width}:${size.height},gblur=sigma=${size.width*.015}[blur];${canvas};[base][blur]overlay=format=auto[canvas];[fg]${front}`:`${source},${front};${canvas};[base]null[canvas]`;
     vf=['-filter_complex',`${layers};[canvas][front]overlay=(W-w)/2:(H-h)/2:format=auto,setsar=1,fps=30,format=yuv420p[v]`];
   }
-  args.push('-t',String(clipDuration(c)),'-map',a.kind==='image'||c.background==='blur'?'[v]':'0:v:0','-map',silent?'1:a:0':'0:a:0',...vf,'-af',`${audioTiming}${audioEQFilter(c)}volume=${c.volume}${audioFadeFilter(c,clipDuration(c))},aresample=48000,apad`,'-c:v','libx264','-preset','fast','-crf','20','-c:a','aac','-ar','48000','-ac','2','-movflags','+faststart',out);
+  args.push('-t',String(clipDuration(c)),'-map',a.kind==='image'||c.background==='blur'?'[v]':'0:v:0','-map',silent?'1:a:0':'0:a:0',...vf,'-af',`${audioTiming}aformat=channel_layouts=stereo,${audioEQFilter(c)}volume=${c.volume}${audioFadeFilter(c,clipDuration(c))},aformat=channel_layouts=stereo,aresample=48000,apad`,'-c:v','libx264','-preset','fast','-crf','20','-c:a','aac','-ar','48000','-ac','2','-movflags','+faststart',out);
   return args;
 }
 export async function renderProject(project,registry,destination,{height=720,signal,onProgress=()=>{},range=null}={}) {
