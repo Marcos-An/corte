@@ -1,3 +1,4 @@
+import {validateExportSelection,saveExportSelection} from './export-selection.mjs';
 import {speechLanguage} from './speech-language.mjs';
 import {KEYFRAME_PATCH_FIELDS,updateKeyframePoints,retimeKeyframes,validateKeyframes,validateMotion} from './keyframes.mjs';
 import {clipSpeed,clipDuration,sourceTime,zoomAt} from './clip-time.mjs';
@@ -81,6 +82,7 @@ export function validateProject(p) {
     if(c.adjustments!==undefined){const a=c.adjustments;if(!a||typeof a!=='object'||Object.keys(a).some(k=>!['brightness','contrast','saturation','temperature','sharpness'].includes(k))||![a.brightness,a.contrast,a.saturation].every(finite)||a.brightness< -1||a.brightness>1||a.contrast<0||a.contrast>2||a.saturation<0||a.saturation>2||a.temperature!==undefined&&(!finite(a.temperature)||a.temperature< -1||a.temperature>1)||a.sharpness!==undefined&&(!finite(a.sharpness)||a.sharpness<0||a.sharpness>1))fail('Ajustes de imagem inválidos.');}
     validateAudioFades(c);clips.add(c.id);
   }
+  validateExportSelection(p);
   validateTransitions(p);
   return p;
 }
@@ -151,7 +153,7 @@ export class History {
     const h=new History(data.entries[0].state);h.entries=clone(data.entries);h.cursor=data.cursor;return h;
   }
 }
-const keys={edit_caption_style:['style'],generate_captions:['source','style','transcripts','language'],adjust_audio_range:['audioId','start','end','volume'],adjust_timeline:['clipId','start','end','patch'],insert_clip:['index','clip'],move_range:['clipId','sourceStart','sourceEnd','index'],add_audio:['track'],split:['clipId','time'],trim:['clipId','in','out'],delete:['clipId'],move:['clipId','index'],update:['clipId','volume','crop','speed','background','backgroundColor','adjustments','fadeIn','fadeOut','zoom','freeze'],set_aspect:['aspect'],remove_ranges:['clipId','ranges'],keep_ranges:['clipId','ranges'],freeze_frame:['clipId','time','duration'],adjust_ranges:['clipId','ranges','patch'],set_transition:['leftId','rightId','effect','duration'],set_transition_at:['index','effect','duration','makeRoom'],edit_audio:['audioId','patch'],add_text:['layer'],add_image:['layer'],add_video:['layer'],add_shape:['layer'],edit_component:['layerId','patch'],remove_component:['layerId'],move_component:['layerId','direction'],set_keyframe:['layerId','time','pose'],remove_keyframe:['layerId','time'],set_motion:['layerId','enter','exit']};
+const keys={set_export_ranges:['ranges'],edit_caption_style:['style'],generate_captions:['source','style','transcripts','language'],adjust_audio_range:['audioId','start','end','volume'],adjust_timeline:['clipId','start','end','patch'],insert_clip:['index','clip'],move_range:['clipId','sourceStart','sourceEnd','index'],add_audio:['track'],split:['clipId','time'],trim:['clipId','in','out'],delete:['clipId'],move:['clipId','index'],update:['clipId','volume','crop','speed','background','backgroundColor','adjustments','fadeIn','fadeOut','zoom','freeze'],set_aspect:['aspect'],remove_ranges:['clipId','ranges'],keep_ranges:['clipId','ranges'],freeze_frame:['clipId','time','duration'],adjust_ranges:['clipId','ranges','patch'],set_transition:['leftId','rightId','effect','duration'],set_transition_at:['index','effect','duration','makeRoom'],edit_audio:['audioId','patch'],add_text:['layer'],add_image:['layer'],add_video:['layer'],add_shape:['layer'],edit_component:['layerId','patch'],remove_component:['layerId'],move_component:['layerId','direction'],set_keyframe:['layerId','time','pose'],remove_keyframe:['layerId','time'],set_motion:['layerId','enter','exit']};
 const visualPlanFields=['start','end','x','y','width','rotation','opacity'];
 const textPlanFields=['text','start','end','style'];
 const stylePlanFields=['font','size','color','position','preset','positionX','positionY','width','accent','strokeColor','strokeWidth','shadow','shadowColor','spacing','boxColor','boxOpacity','bold','italic','uppercase','hollow','accentLast','glowColor','glow','enter','exit'];
@@ -162,6 +164,7 @@ function componentEditor(p,layerId){
  }fail('Componente da IA não encontrado.');
 }
 function applyPlanOperation(p,op){
+ if(op.type==='set_export_ranges')return validateProject(saveExportSelection(p,op.ranges));
  if(op.type==='edit_caption_style')return validateProject(applyCaptionAppearance(p,op.style));
  if(op.type==='insert_clip'){
   planFields(op.clip,['id','assetId','in','out','volume','crop']);
@@ -213,6 +216,8 @@ export function validatePlan(p,plan) {
   if(!plan || Object.keys(plan).some(k=>!['summary','operations','questions','unsupported'].includes(k)) || typeof plan.summary!=='string' || plan.summary.length>4000 || !Array.isArray(plan.operations) || plan.operations.length>100 || !Array.isArray(plan.questions) || !Array.isArray(plan.unsupported) || ![...plan.questions,...plan.unsupported].every(s=>typeof s==='string' && s.length<=2000)) fail('Plano da IA inválido.');
   if(plan.questions.length || plan.unsupported.length) fail('O pedido precisa de esclarecimento ou contém recursos ainda não suportados.');
   if(plan.operations.filter(op=>op?.type==='generate_captions').length>1)fail('Escolha uma única voz para gerar legendas nesta proposta.');
+  const exportAt=plan.operations.findIndex(o=>o?.type==='set_export_ranges');
+  if(exportAt>=0&&(plan.operations.filter(o=>o?.type==='set_export_ranges').length>1||plan.operations.slice(exportAt+1).some(o=>['trim','split','delete','move','move_range','insert_clip','keep_ranges','remove_ranges','adjust_ranges','adjust_timeline','freeze_frame'].includes(o?.type)||o?.type==='update'&&'speed' in o||o?.type==='set_transition_at'&&o.makeRoom)))fail('Escolha os recortes depois dos cortes e mudanças de velocidade.');
   for(const op of plan.operations) {
     const allowed=keys[op?.type];if(!allowed || (op.type==='update'? !('clipId' in op):allowed.some(k=>!['makeRoom','transcripts','language'].includes(k)&&!(k in op))) || Object.keys(op).some(k=>k!=='type' && !allowed.includes(k))) fail('Operação da IA inválida.');
     if(op.type==='update'&&op.crop)planFields(op.crop,['x','y','w','h']);

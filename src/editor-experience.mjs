@@ -14,7 +14,7 @@ export function scopeProject(project,clipId){
  const c=project.clips.find(c=>c.id===clipId);if(!c)throw Error('Selecione um trecho válido.');
  const scoped={...structuredClone(project),clips:[structuredClone(c)],assets:structuredClone(project.assets.filter(a=>a.id===c.assetId))};
  for(const field of ['transitions','music','textLayers','imageLayers','videoLayers','shapeLayers'])scoped[field]=[];
- delete scoped.layerOrder;delete scoped.transcripts;delete scoped.clips[0].captionWords;return scoped;
+ delete scoped.exportSelection;delete scoped.layerOrder;delete scoped.transcripts;delete scoped.clips[0].captionWords;return scoped;
 }
 export function validateScopedPlan(project,plan,clipId){
  if(!clipId)return plan;scopeProject(project,clipId);
@@ -82,4 +82,4 @@ export function analysisSamplingStep(project,clipId=null){
 export const EDIT_STAGES=[
  {name:'Cortes e ordem',kinds:['cut','order','speed','framing'],does:'cortes de fala e de cenas, pausas, ordem, velocidade e formato'},
  {name:'Imagens e sobreposições',kinds:['image','composition','framing','motion'],does:'sobreposições de imagem e vídeo, b-roll sobre a fala, zoom e enquadramento'},
- {name:'Textos e acabamento',kinds:['text','captions','color','transition','audio','motion'],does:'textos e legendas, correção de cor e nitidez, transições e áudio'}];
+ {name:'Textos e acabamento',kinds:['text','captions','color','transition','audio','motion','exports'],does:'textos e legendas, correção de cor e nitidez, transições, áudio e seleção de recortes para exportar'}];

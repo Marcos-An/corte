@@ -197,3 +197,11 @@ Sobreposições de vídeo também podem manter um quadro parado: marque **Manter
 Quando uma revisão contém cortes que atingem fala com tempos incertos, o sistema tenta preservar operações independentes e resolve novamente as âncoras de origem. Tempos absolutos dependentes de cortes descartados ficam pendentes. O resultado é identificado como parcial e exige revisão, sem afirmar que todos os itens foram concluídos.
 
 Publicação autorizada por tag: após validar e publicar o commit em `main`, enviar uma tag numérica nova `vX.Y.Z` inicia o workflow de release. Ele confere que a tag aponta para `main`, recompila os pacotes, executa os testes e auditorias nas duas plataformas, valida o feed/checksums e só então publica. O disparo manual mantém o comportamento de rascunho; nenhuma credencial de publicação é distribuída no aplicativo.
+
+## Recortes por prompt — em desenvolvimento após 0.6.6
+
+Pedidos com tempos explícitos podem guardar até 20 recortes nomeados. Na análise híbrida, pedidos por conteúdo podem propor recortes com referências às palavras reconhecidas e aos clipes, resolvidas depois dos cortes e mudanças de velocidade. A proposta mostra intervalos e justificativas antes de aplicar. Isso substitui a seleção guardada e não corta a montagem nem cria arquivos. Use Montagem inteira.
+
+Em **Exportar → Vários trechos**, **Ver** localiza o intervalo na timeline e **Salvar trechos** guarda a seleção no projeto, com desfazer/refazer. Use **Salvar projeto** para gravá-la no computador. A seleção reaparece ao reabrir; caminhos, estado de conclusão e permissão para revelar arquivos não são persistidos. Mudanças nos cortes, ordem ou velocidade exigem revisar e salvar os intervalos antes de exportar. Aparência e volume não invalidam os tempos. **Exportar vídeos** continua pedindo uma pasta e preservando arquivos existentes.
+
+O formato da montagem e a resolução são comuns aos recortes. Não há pontuação de viralização, rastreamento automático nem formatos independentes por vídeo. A qualidade semântica depende das evidências e da transcrição; revise os candidatos. Esses recursos novos ainda não integram a versão pública 0.6.6.

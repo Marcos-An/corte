@@ -1,0 +1,38 @@
+import test from 'node:test';import assert from 'node:assert/strict';import path from 'node:path';import {mkdtemp,rm} from 'node:fs/promises';import {tmpdir} from 'node:os';
+import * as m from '../src/project.mjs';import {saveExportSelection,exportSelectionStale} from '../src/export-selection.mjs';import {saveProjectFile,readProjectFile} from '../desktop/storage.mjs';import {resolveAnchoredOperations} from '../desktop/timeline-anchors.mjs';import {parseReviewPayload,buildPrompt,planSchema,reviewPlanSchema} from '../desktop/ai.mjs';import {scopeProject,validateScopedPlan} from '../src/editor-experience.mjs';
+import {recoverIndependentReview} from '../desktop/partial-review.mjs';
+const fixture=()=>{let p=m.addAsset(m.createProject(),{id:'v',name:'Visita',duration:20,width:320,height:320,hasAudio:true});return m.addClip(m.addClip(p,'v','a'),'v','b');};
+const range=(start=1,end=5)=>({id:'short1',name:'Bebida de melão',start,end,reason:'Comentário completo sobre o sabor.'});
+const plan=operations=>({summary:'Selecionar recortes',questions:[],unsupported:[],operations});
+const reviewed=operations=>({plan:plan(operations),visualQueries:[],pendingRequests:[],coverage:operations.map((o,i)=>({request:'Parte '+i,kind:o.type==='update'?'speed':o.type==='remove_ranges'?'cut':'exports',status:'planned',operationIndexes:[i],reason:'Evidência disponível.'}))});
+const transcripts=[{assetId:'v',words:[{text:'Melão',start:4,end:5},{text:'muito',start:5,end:6},{text:'bom',start:6,end:7},{text:'recomendo',start:12,end:13}]}];
+const suggest=(from={clipId:'a',from:0,to:0},to={clipId:'a',from:2,to:2})=>({type:'select_export_ranges',ranges:[{id:'short1',name:'Bebida',from,to,reason:'Frase com começo e conclusão.'}]});
+test('saved selections preserve montage/audio and survive disk, history, undo and redo',async()=>{
+ const p=fixture(),before=structuredClone(p),q=m.applyPlan(p,plan([{type:'set_export_ranges',ranges:[range()]}]));assert.deepEqual(p,before);assert.deepEqual(q.clips,p.clips);assert.equal(exportSelectionStale(q),false);const h=new m.History(p);h.commit(q);assert.equal(h.undo().exportSelection,undefined);assert.deepEqual(h.redo().exportSelection,q.exportSelection);
+ const dir=await mkdtemp(path.join(tmpdir(),'corte-selection-'));try{const file=path.join(dir,'project.corte');await saveProjectFile(file,q,new Map([['v',{path:path.join(dir,'video.mp4')}]]),h.serialize());const out=await readProjectFile(file);assert.deepEqual(out.project.exportSelection,q.exportSelection);}finally{await rm(dir,{recursive:true,force:true});}
+});
+test('timing edits retain the selection for explicit review; appearance and volume preserve its validity',()=>{
+ let p=saveExportSelection(fixture(),[range(30,35)]);for(const patch of [{volume:.3},{adjustments:{brightness:.1,contrast:1,saturation:1}},{zoom:{from:1,to:1.1}}])assert.equal(exportSelectionStale(m.editProject(p,{type:'update',clipId:'a',...patch})),false);
+ p=m.editProject(p,{type:'delete',clipId:'b'});assert.equal(exportSelectionStale(p),true);assert.equal(p.exportSelection.ranges[0].end,35);assert.doesNotThrow(()=>m.validateProject(p));assert.throws(()=>saveExportSelection(p,p.exportSelection.ranges));p=saveExportSelection(p,[range(1,4)]);assert.equal(exportSelectionStale(p),false);assert.equal(saveExportSelection(p,[]).exportSelection,undefined);
+});
+test('strict selections reject injected paths, sparse arrays, invalid names/IDs/bounds and oversized rationale',()=>{
+ const p=fixture();for(const ranges of [Array(1),Array(21).fill(range()),[range(),range()],[{...range(),path:'x'}],[{...range(),name:'\0'}],[{...range(),reason:'x'.repeat(501)}],[range(0,99)],[range(1,1.01)],[{...range(),id:'../x'}]])assert.throws(()=>saveExportSelection(p,ranges));assert.throws(()=>m.validateProject({...p,exportSelection:{basis:1,ranges:[]}}));assert.doesNotThrow(()=>m.validateProject(p));
+});
+test('semantic candidates resolve measured words after cuts and speed changes, without changing the montage',()=>{
+ const p=fixture(),operations=[{type:'remove_ranges',clipId:'a',ranges:[[0,2]]},{type:'update',clipId:'a',speed:2},suggest()],result=parseReviewPayload(p,JSON.stringify(reviewed(operations)),{transcripts});const candidate=result.plan.operations.at(-1);assert.equal(candidate.type,'set_export_ranges');assert.equal(candidate.ranges[0].start,1);assert.equal(candidate.ranges[0].end,2.5);const q=m.applyPlan(p,result.plan),without=m.applyPlan(p,plan(result.plan.operations.slice(0,-1)));assert.deepEqual(q.clips,without.clips);assert.equal(exportSelectionStale(q),false);
+});
+test('candidates can span clip instances but reversed, removed and interrupted anchors fail',()=>{
+ const p=fixture();const out=resolveAnchoredOperations(p,reviewed([suggest({clipId:'a',from:3,to:3},{clipId:'b',from:2,to:2})]),transcripts);assert.equal(out.plan.operations[0].ranges[0].start,12);assert.equal(out.plan.operations[0].ranges[0].end,27);
+ for(const op of [suggest({clipId:'b',from:3,to:3},{clipId:'a',from:2,to:2}),suggest({clipId:'a',from:99,to:99}),suggest({clipId:'missing',sourceStart:0,sourceEnd:1})])assert.throws(()=>resolveAnchoredOperations(p,reviewed([op]),transcripts));assert.throws(()=>resolveAnchoredOperations(p,reviewed([{type:'remove_ranges',clipId:'a',ranges:[[3,8]]},suggest()]),transcripts));
+});
+test('saved absolute times must follow all timing edits and never escape a scoped clip proposal',()=>{
+ const p=fixture(),op={type:'set_export_ranges',ranges:[range()]};for(const later of [{type:'trim',clipId:'a',in:1,out:10},{type:'update',clipId:'a',speed:2},op])assert.throws(()=>m.applyPlan(p,plan([op,later])));assert.throws(()=>validateScopedPlan(p,plan([op]),'a'));assert.equal(scopeProject(saveExportSelection(p,[range()]),'a').exportSelection,undefined);
+});
+test('export operations have a dedicated coverage category and saved selections stay out of the AI contract',()=>{
+ const p=saveExportSelection(fixture(),[range()]),op={type:'set_export_ranges',ranges:[range()]};assert.doesNotThrow(()=>parseReviewPayload(p,JSON.stringify(reviewed([op]))));const bad=reviewed([op]);bad.coverage[0].kind='cut';assert.throws(()=>parseReviewPayload(p,JSON.stringify(bad)));const prompt=buildPrompt(p,'Sugira vídeos curtos',[],{review:true});assert.ok(prompt.includes('select_export_ranges'));assert.ok(!prompt.includes(p.exportSelection.basis));assert.ok(planSchema.properties.operations.items.anyOf.some(s=>s.properties.type.const==='set_export_ranges'));assert.ok(reviewPlanSchema.properties.plan.properties.operations.items.anyOf.some(s=>s.properties.type.const==='select_export_ranges'));
+});
+test('recovery recalculates semantic recuts and discards absolute times when uncertain cuts are pruned',()=>{
+ const p=fixture(),cut={type:'remove_ranges',clipId:'a',ranges:[[0,2]]},isSafe=plan=>{const run=m.planningLineage(p,plan);return run.project.clips.some(c=>run.origin(c.id)==='a'&&c.in<=1&&c.out>=1.5);};
+ const raw=reviewed([cut,suggest()]),result=parseReviewPayload(p,JSON.stringify(raw),{transcripts}),recovered=recoverIndependentReview({project:p,result,transcripts,gaps:[],isSafe});assert.ok(recovered);const parsed=parseReviewPayload(p,JSON.stringify(recovered),{transcripts});assert.equal(parsed.plan.operations.length,1);assert.equal(parsed.plan.operations[0].ranges[0].start,4);assert.equal(parsed.plan.operations[0].ranges[0].end,7);assert.ok(parsed.pendingRequests.length);
+ const absolute=reviewed([cut,{type:'set_export_ranges',ranges:[range(2,5)]}]),other=parseReviewPayload(p,JSON.stringify(absolute),{transcripts});assert.equal(recoverIndependentReview({project:p,result:other,transcripts,gaps:[],isSafe}),null);
+});

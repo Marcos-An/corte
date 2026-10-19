@@ -2,7 +2,7 @@
 // An anchor names words of a clip's transcript or a stretch of its source; it is placed where that material plays.
 import {planningLineage} from '../src/project.mjs';
 import {clipDuration} from '../src/clip-time.mjs';
-const ANCHORED=['place_overlay','place_still','place_text'],RESHAPING=['insert_clip','move_range','trim','split','delete','move','remove_ranges','keep_ranges','adjust_ranges','adjust_timeline','freeze_frame'];
+const ANCHORED=['place_overlay','place_still','place_text','select_export_ranges'],RESHAPING=['insert_clip','move_range','trim','split','delete','move','remove_ranges','keep_ranges','adjust_ranges','adjust_timeline','freeze_frame'];
 const fail=message=>{throw Error(message);};
 function sourceSpan(project,anchor,transcripts){
  const clip=project.clips.find(c=>c.id===anchor?.clipId);if(!clip)fail(`Trecho ${anchor?.clipId} não encontrado para ancorar o componente.`);
@@ -26,10 +26,19 @@ function timelineSpan(run,span){
 export function resolveAnchoredOperations(project,result,transcripts=[]){
  const ops=result?.plan?.operations;if(!Array.isArray(ops))return result;
  const first=ops.findIndex(o=>ANCHORED.includes(o?.type));if(first<0)return result;
- if(ops.slice(first).some(o=>RESHAPING.includes(o?.type)||o?.type==='set_transition_at'&&o.makeRoom||o?.type==='update'&&'speed' in o))fail('place_overlay/place_text devem vir depois de todos os cortes, movimentos e mudanças de velocidade.');
+ if(ops.slice(first).some(o=>RESHAPING.includes(o?.type)||o?.type==='set_transition_at'&&o.makeRoom||o?.type==='update'&&'speed' in o))fail('Componentes ancorados e recortes devem vir depois de todos os cortes, movimentos e mudanças de velocidade.');
  const run=planningLineage(project,{...result.plan,operations:ops.slice(0,first)});
  const operations=ops.map(op=>{
   if(!ANCHORED.includes(op?.type))return op;
+  if(op.type==='select_export_ranges'){
+   if(Object.keys(op).some(k=>!['type','ranges'].includes(k))||!Array.isArray(op.ranges)||!op.ranges.length||op.ranges.length>20)fail('Seleção de recortes inválida.');
+   return {type:'set_export_ranges',ranges:Array.from(op.ranges,r=>{
+    if(!r||typeof r.reason!=='string'||!r.reason.trim()||r.reason.length>500||Object.keys(r).some(k=>!['id','name','from','to','reason'].includes(k)))fail('Candidato de recorte inválido.');
+    const start=timelineSpan(run,sourceSpan(project,r.from,transcripts)).start,end=timelineSpan(run,sourceSpan(project,r.to,transcripts)).end;
+    if(end-start<.1)fail('O fim do recorte precisa vir depois do início na montagem.');
+    return {id:r.id,name:r.name,start,end,reason:r.reason};
+   })};
+  }
   const {start,end}=timelineSpan(run,sourceSpan(project,op.anchor,transcripts)),{id,x,y,width,rotation,opacity}=op.layer||{};
   if(op.type==='place_text')return {type:'add_text',layer:{id:op.layer?.id,text:op.layer?.text,start,end,style:op.layer?.style}};
   const asset=project.assets.find(a=>a.id===op.layer?.assetId);if(!asset||asset.kind==='audio')fail('Mídia do componente não encontrada.');
