@@ -91,6 +91,7 @@ function updateButtons(){
  $('cut-mode').disabled=busy;$('timeline-fit').disabled=busy||timelineDuration()<=0;
  for(const id of ['range-play','range-delete','range-clear'])$(id).disabled=busy||!rangeSelection||rangeSelection.end-rangeSelection.start<.02;
  document.querySelectorAll('#captions-panel input,#captions-panel select,#captions-panel button:not(#caption-cancel),#settings-dialog button').forEach(e=>e.disabled=busy);for(const id of ['export-srt','export-vtt'])$(id).disabled=busy||!captionEntries(project()).length;$('align-captions').disabled=busy||!captionEntries(project()).some(w=>w.place);$('settings').disabled=busy;$('history-toggle').disabled=busy;$('undo').disabled=busy||!history.canUndo;$('redo').disabled=busy||!history.canRedo;
+ renderCaptionModel();
  for(const id of ['split','delete','move-left','move-right'])$(id).disabled=busy||!selected;$('freeze-frame').disabled=busy||!project().clips.length;
  for(const id of ['nav-media','preview-add','open-project','save-project','save-as-project','save-portable-project'])$(id).disabled=busy;
  $('export').disabled=busy||!project().clips.length;
@@ -766,7 +767,7 @@ function showCaptionModule(show){showModule(show?'captions':null);if(show)setCap
 function renderCaptions(){
  renderCaptionSamples();
  for(const id of ['export-srt','export-vtt'])$(id).disabled=busy||!captionEntries(project()).length;
- $('caption-source-field').hidden=!project().music?.some(c=>c.role==='narration');$('caption-source').value=project().captionSource||'original';
+ $('caption-source-field').hidden=!project().music?.some(c=>c.role==='narration')&&project().captionSource!=='narration';$('caption-source').value=project().captionSource||'original';$('caption-source-title').textContent=$('caption-source-field').hidden?'Áudio original':'Voz';
  const list=$('caption-words');list.replaceChildren();const p=project(),style=captionStyle(p.captionStyle);
  const placed=captionEntries(p).filter(w=>w.place).length;$('align-captions').disabled=busy||!placed;$('align-captions').textContent=placed?`Alinhar todas (${placed})`:'Alinhar todas';
  for(const key of ['font','size','color','position','preset','accent','width','positionY'])$(`caption-${key}`).value=style[key]??({accent:'#eac39b',width:84,positionY:style.position==='top'?15:style.position==='center'?50:80})[key];
@@ -877,7 +878,7 @@ $('import-narration').onclick=guard(async()=>{
 });
 
 for(const key of ['size','color','accent','width','positionY'])$('caption-'+key).addEventListener('input',()=>{captionPreviewStyle={...captionStyle(project().captionStyle),[key]:['color','accent'].includes(key)?$('caption-'+key).value:Number($('caption-'+key).value)};renderCaptionSamples();draw();});
-$('nav-captions').addEventListener('click',()=>showModule(editorPanel(activePanel,'captions')));
+$('nav-captions').addEventListener('click',()=>{showModule(editorPanel(activePanel,'captions'));void refreshSpeechModel().catch(()=>{});});
 function captionFeedback(phase,text){
  const loading=phase==='loading',box=$('caption-feedback');
  box.hidden=!text;box.dataset.phase=phase;$('caption-status').textContent=text;
@@ -885,6 +886,7 @@ function captionFeedback(phase,text){
  $('captions-panel').setAttribute('aria-busy',String(loading));
 }
 $('caption-cancel').addEventListener('click',()=>$('cancel').click());
+$('caption-engine').onchange=()=>{const cloud=$('caption-engine').value==='cloud';$('caption-settings').hidden=!cloud;$('caption-cloud-hint').hidden=!cloud;renderCaptionModel();captionFeedback('empty','');};
 $('import-subtitles').onclick=guard(async()=>{
  if(busy)return;stop();setBusy(true,'Importando legendas…');
  try{
@@ -899,14 +901,14 @@ for(const format of ['srt','vtt'])$('export-'+format).onclick=guard(async()=>{
  try{if(await bridge.exportSubtitles(project(),format))toast('Legendas exportadas.');}finally{setBusy(false);}
 });
 $('generate-captions').addEventListener('click',guard(async()=>{
- if(busy)return;const p=project();if(captionEntries(p).length&&!confirm('Substituir as legendas e correções da voz escolhida? Você poderá desfazer.'))return;stop();cancelRequested=false;setBusy(true,'Gerando legendas…');captionFeedback('loading','Preparando áudio…');renderCaptions();
+ if(busy)return;const p=project(),local=$('caption-engine').value==='local';if(captionEntries(p).length&&!confirm('Substituir as legendas e correções da voz escolhida? Você poderá desfazer.'))return;stop();cancelRequested=false;setBusy(true,'Gerando legendas…');captionFeedback('loading',local?'Preparando reconhecimento local…':'Preparando áudio…');renderCaptions();
  try{
-  const estimate=await bridge.captionEstimate(p);
-  if(estimate.assets && !(await bridge.apiStatus()).configured){captionFeedback('error','Cadastre sua chave para gerar legendas.');setBusy(false);await showSettings('api');return;}
+  if(!local){const estimate=await bridge.captionEstimate(p);
+  if(estimate.assets && !(await bridge.apiStatus()).configured){captionFeedback('error','Cadastre sua chave para gerar legendas.');setBusy(false);await showSettings('api');return;}}
   if(cancelRequested)return;
-  const transcripts=await bridge.transcribe(p);if(cancelRequested)return;p.transcripts=transcripts;for(const c of p.captionSource==='narration'?(p.music||[]).filter(c=>c.role==='narration'):p.clips)delete c.captionWords;setBusy(false);
+  const transcripts=await (local?bridge.transcribeLocal(p):bridge.transcribe(p));if(cancelRequested)return;p.transcripts=transcripts;for(const c of p.captionSource==='narration'?(p.music||[]).filter(c=>c.role==='narration'):p.clips)delete c.captionWords;setBusy(false);
   const count=captionEntries(p).length;setCaptionView('review');
-  commit(p,{label:'Gerar legendas GPT',details:[count ? `${count} legendas na timeline` : 'Nenhuma fala encontrada']});
+  commit(p,{label:local?'Gerar legendas locais':'Gerar legendas na nuvem',details:[count ? `${count} legendas na timeline` : 'Nenhuma fala encontrada']});
   captionFeedback(count?'success':'empty',count ? `${count} legenda${count===1?'':'s'} gerada${count===1?'':'s'}.` : 'Nenhuma fala encontrada no vídeo.');
  }catch(e){if(!cancelRequested)captionFeedback('error',e.message||'Não foi possível gerar legendas. Tente novamente.');}
  finally{if(cancelRequested)captionFeedback('empty','Geração cancelada.');setBusy(false);renderCaptions();}
@@ -939,14 +941,17 @@ $('install-update').onclick=guard(async()=>{
  if(dirty||busy||recorder)throw Error('Salve o projeto e conclua a operação atual antes de atualizar.');
  await bridge.installUpdate();
 });
-async function refreshSpeechModel(){const r=await bridge.speechModel();$('speech-model-status').textContent=r.installed?'Reconhecimento preciso instalado.':r.installing?'Baixando reconhecimento preciso…':'Usando o reconhecimento básico incluído.';$('speech-model-install').hidden=r.installed;$('speech-model-install').disabled=r.installing;$('ai-speech-hint').hidden=r.installed||$('ai-engine').value!=='hybrid';$('ai-speech-install').disabled=r.installing;}
+let captionSpeechReady=false,captionSpeechInstalling=false;
+function renderCaptionModel(){const cloud=$('caption-engine').value==='cloud';$('caption-local-hint').hidden=cloud;$('caption-local-hint').textContent=captionSpeechInstalling?'Baixando reconhecimento preciso…':captionSpeechReady?'Modelo preciso · processamento local.':'Modelo básico · revise o reconhecimento.';$('caption-model-install').hidden=cloud||captionSpeechReady;$('caption-model-install').disabled=busy||captionSpeechInstalling;}
+async function refreshSpeechModel(){const r=await bridge.speechModel();captionSpeechReady=r.installed;captionSpeechInstalling=r.installing;renderCaptionModel();$('speech-model-status').textContent=r.installed?'Reconhecimento preciso instalado.':r.installing?'Baixando reconhecimento preciso…':'Usando o reconhecimento básico incluído.';$('speech-model-install').hidden=r.installed;$('speech-model-install').disabled=r.installing;$('ai-speech-hint').hidden=r.installed||$('ai-engine').value!=='hybrid';$('ai-speech-install').disabled=r.installing;}
 let searchModelReady=false;
 async function refreshSearchModel(){if(!bridge?.searchModel)return;const r=await bridge.searchModel();searchModelReady=r.installed;$('search-model-status').textContent=r.installed?'Busca visual instalada.':r.installing?'Baixando busca visual…':'Busca por conteúdo visual não instalada.';$('search-model-install').hidden=r.installed;$('search-model-install').disabled=r.installing;}
 bridge.onSearchModel?.(p=>{if(!searchModelReady)$('search-model-status').textContent=`Baixando busca visual… ${p.completed}/${p.total} arquivos`;});
 $('search-model-install').addEventListener('click',async()=>{$('search-model-install').disabled=true;try{await bridge.installSearchModel();toast('Busca visual instalada.');}catch(error){toast(error.message,true);}finally{await refreshSearchModel().catch(()=>{});}});
 bridge.onSpeechModel?.(p=>{$('speech-model-status').textContent=`Baixando reconhecimento preciso… ${p.completed}/${p.total} arquivos`;});
-async function installSpeech(){for(const id of ['speech-model-install','ai-speech-install'])$(id).disabled=true;$('speech-model-status').textContent='Baixando reconhecimento preciso…';try{await bridge.installSpeechModel();toast('Reconhecimento preciso instalado.');}catch(error){toast(error.message,true);}finally{$('ai-speech-install').disabled=false;await refreshSpeechModel().catch(()=>{});}}
+async function installSpeech(){if(captionSpeechInstalling)return;captionSpeechInstalling=true;renderCaptionModel();for(const id of ['speech-model-install','ai-speech-install'])$(id).disabled=true;$('speech-model-status').textContent='Baixando reconhecimento preciso…';try{await bridge.installSpeechModel();toast('Reconhecimento preciso instalado.');}catch(error){toast(error.message,true);}finally{captionSpeechInstalling=false;$('ai-speech-install').disabled=false;await refreshSpeechModel().catch(()=>renderCaptionModel());}}
 $('speech-model-install').addEventListener('click',installSpeech);$('ai-speech-install').addEventListener('click',installSpeech);
+$('caption-model-install').addEventListener('click',installSpeech);
 $('ai-facts').addEventListener('change',guard(()=>{if(busy)return;const value=$('ai-facts').value;if((project().brief?.facts||'')===value.trim())return;edit({type:'set_brief',facts:value});}));
 async function showSettings(section){$('api-key').value='';$('settings-dialog').showModal();void refreshSearchModel().catch(()=>{$('search-model-status').textContent='Não foi possível verificar a busca visual.';});void refreshSpeechModel().catch(()=>{$('speech-model-status').textContent='Não foi possível verificar o reconhecimento de fala.';});if(section==='api')$('api-key').focus();const r=await bridge.apiStatus();$('api-status').textContent=r.configured?'Chave cadastrada e protegida.':'Nenhuma chave cadastrada.';await refreshConnection();}
 $('settings').addEventListener('click',guard(showSettings));$('caption-settings').addEventListener('click',guard(showSettings));
@@ -1122,7 +1127,7 @@ $('analyze').addEventListener('click',guard(async()=>{
 }));
 const cancelOperation=guard(()=>{cancelRequested=true;if(aiRunning){$('ai-progress-label').textContent='Cancelando a edição…';$('ai-cancel').disabled=true;}return bridge.cancel();});
 $('cancel').addEventListener('click',cancelOperation);$('ai-cancel').addEventListener('click',cancelOperation);
-bridge?.onProgress(p=>{if(aiRunning){if(!cancelRequested){aiProgressState=aiProgress(aiProgressState,p);$('ai-progress-label').textContent=aiProgressState.label;}return;}if(p.stage==='media-warning'){toast(p.message,true);}else if(p.stage==='media'){if(busy)$('busy-label').textContent=p.message;}else if(p.stage==='hybrid')$('busy-label').textContent=p.message;else if(p.stage==='captions')$('busy-label').textContent=`Transcrevendo localmente · ${Math.round(p.completed)}/${Math.round(p.total)}…`;else if(p.stage==='transition')$('busy-label').textContent=`Renderizando transição ${p.completed}/${p.total}…`;else if(p.stage==='transcribe'){$('busy-label').textContent=`GPT transcrevendo áudio · ${p.completed+1}/${p.total}…`;if($('captions-panel').getAttribute('aria-busy')==='true')captionFeedback('loading',`Transcrevendo áudio · ${p.completed+1}/${p.total}…`);}else if(p.stage==='intent')$('busy-label').textContent='Interpretando seu pedido (somente texto)…';else if(p.stage==='quality')$('busy-label').textContent=`Detector local · ${p.seconds.toFixed(0)} s analisados…`;else if(p.stage==='local')$('busy-label').textContent=`Análise no PC · ${p.asset} · ${p.completed}/${p.total} imagens…`;else if(p.stage==='frames')$('busy-label').textContent=`Preparando frames ${p.completed}/${p.total}…`;else if(p.stage==='analysis')$('busy-label').textContent='IA analisando as cenas…';else if(p.stage==='render')$('busy-label').textContent=`Renderizando trecho ${p.completed}/${p.total}…`;});
+bridge?.onProgress(p=>{if(aiRunning){if(!cancelRequested){aiProgressState=aiProgress(aiProgressState,p);$('ai-progress-label').textContent=aiProgressState.label;}return;}if(p.stage==='media-warning'){toast(p.message,true);}else if(p.stage==='media'){if(busy)$('busy-label').textContent=p.message;}else if(p.stage==='hybrid')$('busy-label').textContent=p.message;else if(p.stage==='captions'){const label=p.cached?'Reconhecimento local reutilizado.':`Transcrevendo neste computador · ${Math.round(p.completed)}/${Math.round(p.total)}…`;$('busy-label').textContent=label;if($('captions-panel').getAttribute('aria-busy')==='true')captionFeedback('loading',label);}else if(p.stage==='transition')$('busy-label').textContent=`Renderizando transição ${p.completed}/${p.total}…`;else if(p.stage==='transcribe'){$('busy-label').textContent=`GPT transcrevendo áudio · ${p.completed+1}/${p.total}…`;if($('captions-panel').getAttribute('aria-busy')==='true')captionFeedback('loading',`Transcrevendo áudio · ${p.completed+1}/${p.total}…`);}else if(p.stage==='intent')$('busy-label').textContent='Interpretando seu pedido (somente texto)…';else if(p.stage==='quality')$('busy-label').textContent=`Detector local · ${p.seconds.toFixed(0)} s analisados…`;else if(p.stage==='local')$('busy-label').textContent=`Análise no PC · ${p.asset} · ${p.completed}/${p.total} imagens…`;else if(p.stage==='frames')$('busy-label').textContent=`Preparando frames ${p.completed}/${p.total}…`;else if(p.stage==='analysis')$('busy-label').textContent='IA analisando as cenas…';else if(p.stage==='render')$('busy-label').textContent=`Renderizando trecho ${p.completed}/${p.total}…`;});
 document.addEventListener('keydown',e=>{
  if(e.target.isContentEditable||e.target.closest('input,textarea,select')||document.querySelector('dialog[open]'))return;
  if(!busy&&e.key==='Enter'&&rangeSelection&&rangeMode==='remove'){e.preventDefault();$('range-delete').click();return;}

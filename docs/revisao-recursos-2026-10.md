@@ -17,7 +17,7 @@ Referências oficiais consultadas:
 | Cortes de fala e pausas | Existem transcrição, âncoras e detector de pausas | Uma revisão visual da transcrição, com seleção para cortar, e controles claros de tolerância | Alta |
 | Vários Shorts de um vídeo longo | Há recorte e formato vertical; não há fluxo completo de várias versões | Propor candidatos com início/fim e justificativa, permitir revisar cada um e exportar em lote | Alta |
 | Reenquadramento automático | Crop manual, zoom e ajustes por intervalo existem | Rastrear pessoa/objeto com confiança, prévia da trajetória e correção manual; não confundir CLIP com tracking | Alta |
-| Legendas | Edição, estilos, karaokê e posição por fala existem | Transcrição local na interface de legendas, revisão de palavras incertas, tradução opcional | Alta |
+| Legendas | Edição, estilos, karaokê e posição por fala existem; geração local implementada nesta revisão | Revisão de palavras incertas e tradução opcional | Alta |
 | Legendas SRT/WebVTT | Implementado nesta revisão; ainda fora da release pública | Importação local e exportação dos tempos atuais; confirmar também no pacote antes da próxima release | Alta |
 | Volume em parte da música/narração | Implementado nesta revisão; ainda fora da release pública | Controle manual e operação de IA `adjust_audio_range`; preservar fades, narração e histórico | Alta |
 | Tratamento de voz | Volume/fades existem; sem redução de ruído/EQ/compressor na interface | Controles opt-in com comparação antes/depois, intensidade e coerência entre prévia/MP4 | Alta |
@@ -49,5 +49,10 @@ Referências oficiais consultadas:
 - Volume por intervalo em música/narração: divide a trilha em partes editáveis, preserva os fades e mantém os demais volumes. A IA usa a mesma implementação; intervalos sucessivos acompanham a identidade original no plano.
 - Correção da importação de narração: remove uma referência a variável inexistente que impedia abrir o seletor.
 - Correção de exportação: normaliza explicitamente o áudio das trilhas para estéreo antes da avaliação dos fades e da mixagem, evitando a falha nativa reproduzida com fontes mono divididas no Windows.
+- Geração local de legendas: seletor local/nuvem com processamento local por padrão; áudio original ou narração, frases com os tempos medidos de palavras, cache e preservação das transcrições de outras fontes. Nuvem permanece uma ação explícita com aviso de envio/cobrança. A UI mantém legendas existentes em falha/cancelamento.
+- A transcrição básica passou a usar um processo isolado, assim como o modelo preciso. Cancelamento encerra o processo após um prazo curto se ele não responder; a pasta temporária pertence ao processo pai e é limpa também nessa situação. O cache de análise de fala para edição mantém sua versão anterior, pois seu formato não mudou.
+- A tela identifica o modelo básico/preciso e oferece a instalação opcional do preciso (cerca de 1,1 GB). Não há download automático desse modelo. Erros observados no modelo básico continuam exigindo revisão; não há promessa de transcrição perfeita. Os testes usam também uma nova fala sintética com voz de cultura pt-BR verificada; o modelo preciso precisa reconhecer as palavras de referência, além de produzir tempos e karaokê funcionais.
+
+A geração local está integrada à tela de legendas. Disparar a geração por prompt ainda precisa de um fluxo de preparação assíncrona e proposta revisável; a IA não deve anunciar que gerou legendas por essa nova função antes dessa integração.
 
 Esta lista é um plano de evolução, não uma declaração de paridade com os concorrentes. Tracking, rampas, máscaras, estabilização, lote e tratamento de voz ainda não foram implementados nesta rodada.

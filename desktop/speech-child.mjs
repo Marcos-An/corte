@@ -1,4 +1,4 @@
-// The accurate speech model may run on a GPU driver; a native crash ends only this disposable process.
+// Speech inference runs outside the editor; a native model/driver crash ends only this disposable process.
 const abort=new AbortController();let started=false;
 process.on('message',async message=>{
  if(message?.cancel){abort.abort();return;}

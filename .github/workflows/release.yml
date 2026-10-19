@@ -198,6 +198,8 @@ jobs:
           node tests/interval-controls.e2e.mjs
           node tests/clean-editing.e2e.mjs
           node tests/subtitle-files.e2e.mjs
+          node tests/local-captions.e2e.mjs
+          node tests/caption-feedback.e2e.mjs
           node tests/audio-ranges.e2e.mjs
           node tests/freeze-frame.e2e.mjs
           node tests/session-diagnostics.e2e.mjs

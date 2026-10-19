@@ -168,6 +168,12 @@ if(primary)app.whenReady().then(async()=>{
  handler('api-clipboard',async()=>{if(abort)throw new Error('Aguarde a operação atual.');await keys.save(clipboard.readText());return {configured:true};});
  handler('api-remove',async()=>{if(abort)throw new Error('Aguarde a operação atual.');await keys.remove();return {configured:false};});
  handler('caption-estimate',p=>{authorized(p);return captionEstimate(p);});
+ handler('transcribe-local',async p=>{authorized(p);return mediaOperation(async signal=>{
+  const operation=sessionLog.begin(),timer=setInterval(()=>sessionLog.heartbeat(),5000);timer.unref();let outcome='ok';
+  try{await ensureModels();return await (await import('./local-captions.mjs')).generateLocalCaptions({project:p,registry,cache,signal,onProgress:event=>{sessionLog.progress(event,operation);notify(event);}});}
+  catch(error){outcome=signal.aborted?'canceled':'error';sessionLog.failure(error);throw error;}
+  finally{clearInterval(timer);sessionLog.end(outcome);}
+ });});
  handler('transcribe',async(p)=>{authorized(p);if(abort)throw new Error('Já há uma operação em andamento.');const key=await keys.read();abort=new AbortController();try{return await transcribeCloud({project:p,registry,key,cache,signal:abort.signal,onProgress:notify});}finally{abort=null;}});
  handler('cancel',()=>{abort?.abort();return true;});
  handler('recording-arm',()=>{if(abort)throw Error('Aguarde a operação atual.');microphoneArmedUntil=Date.now()+15000;return true;});

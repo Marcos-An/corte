@@ -18,6 +18,10 @@ A Release inclui fontes correspondentes das ferramentas GPL e `SHA256SUMS`. O ZI
 
 Em desenvolvimento após a 0.6.3: **Arquivos de legenda** importa SRT/VTT e exporta os tempos atuais da montagem, sem serviço externo. Em música/narração, **Volume por intervalo** permite definir início/fim e volume manual; a IA usa `adjust_audio_range` para a mesma edição. Esses recursos ainda não estão no instalador publicado. Veja o [inventário e as próximas prioridades](docs/revisao-recursos-2026-10.md).
 
+Também em desenvolvimento: **Legendas → Transcrição → Neste computador** gera legendas de áudio original ou narração com os modelos locais, sem chave de API nem envio de áudio. Usa o reconhecimento preciso quando instalado, ou o básico incluído, e reutiliza análises compatíveis. A transcrição roda num processo isolado, inclusive no modo básico; cancelar pode encerrar esse processo sem fechar o editor. A opção **OpenAI · nuvem** continua exigindo chave, envio do áudio e cobrança separada. O reconhecimento local pode errar; revise os textos. Karaokê usa os tempos medidos por palavra, sem inventar tempos para trechos incertos.
+
+A tela mostra qual reconhecimento está disponível. **Instalar preciso · 1,1 GB** é opcional; o aplicativo não faz esse download automaticamente ao gerar legendas. `tests/local-captions.e2e.mjs` usa fala sintética pt-BR, testa a transcrição real, o cache, o karaokê no vídeo e o cancelamento. A fixture curta pode ser regenerada no Windows por `scripts/make-caption-fixture.ps1`, que verifica a cultura da voz; não é necessária para executar os testes em outros sistemas.
+
 - Importação de vídeos/fotos diretamente na timeline, sem biblioteca de arquivos usados.
 - Cortes, aparo, reordenação, enquadramento, formatos, volume, histórico e desfazer/refazer.
 - Música e narração em trilhas independentes; áudio original vinculado ao vídeo.

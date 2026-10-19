@@ -1,0 +1,13 @@
+{
+  "voice": "Microsoft Maria Desktop",
+  "culture": "pt-BR",
+  "rate": 1,
+  "text": "Oi, hoje estou aqui num restaurante novo em Dourados.",
+  "duration": 4.689,
+  "expectedWords": [
+    "hoje",
+    "aqui",
+    "restaurante",
+    "dourados"
+  ]
+}

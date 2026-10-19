@@ -33,12 +33,12 @@ try {
  await page.getByRole('button',{name:'Importar vídeos',exact:true}).click();await page.waitForFunction(()=>document.querySelectorAll('.timeline-clip').length===1);
  await page.locator('#nav-captions').click();assert.equal(await page.locator('#media-grid').isVisible(),false);assert.equal(await page.locator('#captions-panel').isVisible(),true);
  assert.equal(await page.locator('#prompt').isVisible(),false,'AI does not occupy captions');
- await page.locator('#generate-captions').click();await page.waitForFunction(()=>document.querySelector('#settings-dialog').open);assert.equal(await page.locator('#api-key').evaluate(e=>e===document.activeElement),true,'missing key focuses API configuration');assert.equal(await page.locator('.caption-block').count(),0);
+ await page.locator('#caption-engine').selectOption('cloud');await page.locator('#generate-captions').click();await page.waitForFunction(()=>document.querySelector('#settings-dialog').open);assert.equal(await page.locator('#api-key').evaluate(e=>e===document.activeElement),true,'missing key focuses API configuration');assert.equal(await page.locator('.caption-block').count(),0);
  await page.locator('#api-key').fill('sk-'+ 'z'.repeat(40));await page.locator('#api-save').click();await page.locator('#settings-close').click();
  assert.equal(await page.locator('#caption-dialog').count(),0,'no caption confirmation dialog');
  // Mock only the external provider boundary; actual project, IPC and rendering remain real.
  await app.evaluate(({ipcMain})=>{ipcMain.removeHandler('editor:transcribe');ipcMain.handle('editor:transcribe',(_,p)=>({ok:true,value:[{assetId:p.assets[0].id,provider:'openai',model:'gpt-4o-transcribe-diarize',words:[{start:.2,end:1.5,text:'Olá mundo'},{start:2,end:3,text:'Segundo trecho'}]}]}));});
- await page.locator('#generate-captions').click();await page.waitForFunction(()=>document.querySelectorAll('.caption-block').length===2);
+ await page.locator('#caption-engine').selectOption('cloud');await page.locator('#generate-captions').click();await page.waitForFunction(()=>document.querySelectorAll('.caption-block').length===2);
  const text=page.getByLabel('Texto da legenda 1',{exact:true});await text.fill('Texto revisado');await text.dispatchEvent('change');assert.equal(await page.locator('.caption-block').first().textContent(),'Texto revisado');
  await page.locator('#caption-font').selectOption('Arial');await page.locator('#caption-position').selectOption('top');
  await page.locator('.caption-block').first().click();assert.equal(await page.locator('#playhead-time').inputValue(),'0.20');
@@ -46,11 +46,11 @@ try {
  assert.ok(Math.abs(await page.locator('.caption-block').first().evaluate(e=>parseFloat(e.style.width))-16*1.05)<.001);
  
  await app.evaluate(({ipcMain})=>{ipcMain.removeHandler('editor:transcribe');ipcMain.handle('editor:transcribe',()=>({ok:false,error:'Falha controlada da API'}));});
- await page.locator('#generate-captions').click();await page.waitForFunction(()=>document.querySelector('#busy-message').hidden);assert.equal(await page.locator('.caption-block').count(),2);assert.equal(await page.locator('.caption-block').first().textContent(),'Texto revisado');
+ await page.locator('#caption-engine').selectOption('cloud');await page.locator('#generate-captions').click();await page.waitForFunction(()=>document.querySelector('#busy-message').hidden);assert.equal(await page.locator('.caption-block').count(),2);assert.equal(await page.locator('.caption-block').first().textContent(),'Texto revisado');
  await page.locator('#nav-media').click();assert.equal(await page.locator('#media-grid').isVisible(),true);assert.equal(await page.locator('#captions-panel').isVisible(),false);
  assert.equal(await page.locator('#prompt').isVisible(),false);await page.locator('#nav-ai').click();assert.equal(await page.locator('#prompt').isVisible(),true);assert.equal(await page.locator('#media-grid').isVisible(),false);assert.equal(await page.locator('#captions-panel').isVisible(),false);
  await page.locator('#nav-captions').click();
  await app.evaluate(({ipcMain})=>{ipcMain.removeHandler('editor:transcribe');ipcMain.handle('editor:transcribe',()=>new Promise(r=>global.testTranscribeRelease=r));ipcMain.removeHandler('editor:cancel');ipcMain.handle('editor:cancel',()=>{global.testTranscribeRelease({ok:true,value:[]});return {ok:true,value:true};});});
- await page.locator('#generate-captions').click();await page.locator('#cancel').waitFor({state:'visible'});await page.locator('#cancel').click();await page.waitForFunction(()=>document.querySelector('#busy-message').hidden);assert.equal(await page.locator('.caption-block').count(),2,'cancel preserves captions');
+ await page.locator('#caption-engine').selectOption('cloud');await page.locator('#generate-captions').click();await page.locator('#cancel').waitFor({state:'visible'});await page.locator('#cancel').click();await page.waitForFunction(()=>document.querySelector('#busy-message').hidden);assert.equal(await page.locator('.caption-block').count(),2,'cancel preserves captions');
  assert.deepEqual(errors,[]);await page.locator('#nav-captions').click();await page.screenshot({path:path.resolve(root,'../../work/captions-ui.png')});console.log('PASS caption module, timeline selection, text/timing/style and settings');
 }finally{if(app){await app.evaluate(({dialog})=>{dialog.showMessageBoxSync=()=>1;});await app.close();}await rm(dir,{recursive:true,force:true});}

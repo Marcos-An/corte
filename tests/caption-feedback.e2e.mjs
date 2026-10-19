@@ -1,49 +1,23 @@
-import assert from 'node:assert/strict';
-import path from 'node:path';
-import {mkdtemp,rm} from 'node:fs/promises';
-import {tmpdir} from 'node:os';
-import {createRequire} from 'node:module';
-import {binaries,run} from '../desktop/media.mjs';
-const require=createRequire(import.meta.url),{_electron:electron}=require('playwright');
-const root=path.resolve(import.meta.dirname,'..'),dir=await mkdtemp(path.join(tmpdir(),'corte-caption-feedback-'));
-await run(binaries().ffmpeg,['-v','error','-y','-f','lavfi','-i','color=size=320x240:rate=30','-f','lavfi','-i','sine=frequency=440','-t','4','-c:v','libx264','-c:a','aac',path.join(dir,'source.mp4')]);
-let app;
+// Controlled provider IPC. Exercises the cloud choice without sending audio or spending API credits.
+import assert from 'node:assert/strict';import path from 'node:path';import {mkdtemp,rm} from 'node:fs/promises';import {tmpdir} from 'node:os';import {createRequire} from 'node:module';import {binaries,run,probe} from '../desktop/media.mjs';import {saveProjectFile} from '../desktop/storage.mjs';import {createProject,addAsset,addClip} from '../src/project.mjs';
+const require=createRequire(import.meta.url),{_electron}=require('playwright'),root=path.resolve(import.meta.dirname,'..'),dir=await mkdtemp(path.join(tmpdir(),'corte-caption-feedback-'));let app;
 try{
- app=await electron.launch({executablePath:process.env.CORTE_EXECUTABLE||require('electron'),args:[...(process.env.CORTE_EXECUTABLE?[]:[root]),'--user-data-dir='+path.join(dir,'data')],env:{...process.env,ELECTRON_RUN_AS_NODE:''}});
- const page=await app.firstWindow(),errors=[];page.on('pageerror',e=>errors.push(e.message));
- await app.evaluate(({BrowserWindow,dialog,ipcMain},file)=>{
-  BrowserWindow.getAllWindows()[0].setBounds({width:1200,height:800});
-  dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});
-  ipcMain.removeHandler('editor:api-status');ipcMain.handle('editor:api-status',()=>({ok:true,value:{configured:globalThis.configured!==false}}));
-  ipcMain.removeHandler('editor:transcribe');ipcMain.handle('editor:transcribe',(_,p)=>new Promise(r=>{globalThis.captionProject=p;globalThis.finishCaption=r;}));
-  ipcMain.removeHandler('editor:cancel');ipcMain.handle('editor:cancel',()=>{globalThis.finishCaption({ok:true,value:[]});return {ok:true,value:true};});
- },path.join(dir,'source.mp4'));
- await page.locator('#import').click();await page.waitForFunction(()=>document.querySelectorAll('.timeline-clip').length===1);
- await page.locator('#nav-captions').click();await page.locator('#generate-captions').click();
- await page.locator('#caption-feedback .loader').waitFor({timeout:3000});
- assert.equal(await page.locator('#captions-panel').getAttribute('aria-busy'),'true');
- await page.screenshot({path:path.resolve(root,'../editor-legendas-loading.png')});
- const bounds=await page.locator('#caption-feedback').boundingBox();assert.ok(bounds.y+bounds.height<800);
- await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].webContents.send('editor:progress',{stage:'transcribe',completed:0,total:1}));
- await page.waitForFunction(()=>document.querySelector('#caption-status').textContent.includes('1/1'));
- await app.evaluate(()=>globalThis.finishCaption({ok:true,value:[{assetId:globalThis.captionProject.clips[0].assetId,provider:'openai',words:[{start:.2,end:1.5,text:'Olá mundo'}]}]}));
- await page.waitForFunction(()=>document.querySelectorAll('.caption-block').length===1);
- assert.match(await page.locator('#caption-status').textContent(),/1 legenda/);
- assert.equal(await page.getByLabel('Texto da legenda 1',{exact:true}).inputValue(),'Olá mundo');
- await page.locator('#generate-captions').click();await app.evaluate(()=>globalThis.finishCaption({ok:false,error:'Limite da API atingido.'}));
- await page.waitForFunction(()=>document.querySelector('#caption-status').textContent.includes('Limite'));
- assert.equal(await page.locator('.caption-block').count(),1,'failure preserves existing captions');
- await page.locator('#generate-captions').click();await page.locator('#caption-cancel').click();
- await page.waitForFunction(()=>document.querySelector('#caption-status').textContent.includes('cancelada'));
- assert.equal(await page.locator('.caption-block').count(),1);
- await page.locator('#generate-captions').click();await app.evaluate(()=>globalThis.finishCaption({ok:true,value:[]}));
- await page.waitForFunction(()=>document.querySelector('#caption-status').textContent.includes('Nenhuma fala'));
- assert.equal(await page.locator('.caption-block').count(),0);
- await app.evaluate(()=>{globalThis.configured=false;});await page.locator('#generate-captions').click();
- await page.waitForFunction(()=>document.querySelector('#settings-dialog').open);
- assert.equal(await page.locator('#captions-panel').getAttribute('aria-busy'),'false');
- await page.locator('#settings-close').click();
- assert.deepEqual(errors,[]);
- await page.screenshot({path:path.resolve(root,'../editor-legendas-feedback.png')});
- console.log('PASS captions: visible loading/progress, success, persistent error, empty, cancellation and key gate (provider IPC controlled; no paid calls)');
-}finally{if(app){await app.evaluate(({app})=>app.exit(0)).catch(()=>{});await app.close().catch(()=>{});}await rm(dir,{recursive:true,force:true});}
+ const video=path.join(dir,'v.mp4'),file=path.join(dir,'project.corte');await run(binaries().ffmpeg,['-v','error','-y','-f','lavfi','-i','color=c=blue:s=320x240:r=30','-f','lavfi','-i','sine=f=440','-t','4','-c:v','libx264','-c:a','aac',video]);const p=addClip(addAsset(createProject(),{id:'v',name:'Voz',...await probe(video)}),'v','c');await saveProjectFile(file,p,new Map([['v',{path:video}]]));
+ app=await _electron.launch({executablePath:process.env.CORTE_TEST_APP||require('electron'),args:[...(process.env.CORTE_TEST_APP?[]:[root]),`--user-data-dir=${dir}/profile`],env:Object.fromEntries(Object.entries(process.env).filter(([k])=>k!=='ELECTRON_RUN_AS_NODE'))});const page=await app.firstWindow(),errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());await page.locator('#preview-add').waitFor();
+ await app.evaluate(({dialog,ipcMain},file)=>{
+  dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});globalThis.configured=true;globalThis.localCalls=0;globalThis.preciseReady=false;globalThis.modelInstalls=0;
+  ipcMain.removeHandler('editor:speech-model');ipcMain.handle('editor:speech-model',()=>({ok:true,value:{installed:globalThis.preciseReady,installing:false}}));
+  ipcMain.removeHandler('editor:speech-model-install');ipcMain.handle('editor:speech-model-install',()=>{globalThis.preciseReady=true;globalThis.modelInstalls++;return {ok:true,value:{installed:true}};});
+  ipcMain.removeHandler('editor:api-status');ipcMain.handle('editor:api-status',()=>({ok:true,value:{configured:globalThis.configured}}));
+  ipcMain.removeHandler('editor:transcribe-local');ipcMain.handle('editor:transcribe-local',()=>{globalThis.localCalls++;return {ok:false,error:'Local path should not run in the cloud test'};});
+  ipcMain.removeHandler('editor:transcribe');ipcMain.handle('editor:transcribe',(_,p)=>new Promise(resolve=>{globalThis.captionProject=p;globalThis.finishCaption=resolve;}));
+  ipcMain.removeHandler('editor:cancel');ipcMain.handle('editor:cancel',()=>{globalThis.finishCaption({ok:false,error:'Transcrição cancelada.'});return {ok:true,value:true};});
+ },file);
+ await page.keyboard.press(process.platform==='darwin'?'Meta+o':'Control+o');await page.locator('.timeline-clip').waitFor();await page.locator('#nav-captions').click();assert.equal(await page.locator('#caption-engine').inputValue(),'local');await page.locator('#caption-model-install').click();await page.waitForFunction(()=>document.querySelector('#caption-model-install').hidden);assert.equal(await app.evaluate(()=>globalThis.modelInstalls),1);await page.locator('#caption-engine').selectOption('cloud');assert.ok(await page.locator('#caption-cloud-hint').isVisible());assert.ok(await page.locator('#caption-settings').isVisible());await page.locator('#generate-captions').click();await page.locator('#caption-feedback .loader').waitFor();assert.equal(await page.locator('#captions-panel').getAttribute('aria-busy'),'true');
+ await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].webContents.send('editor:progress',{stage:'transcribe',completed:0,total:1}));await page.waitForFunction(()=>document.querySelector('#caption-status').textContent.includes('1/1'));
+ await app.evaluate(()=>globalThis.finishCaption({ok:true,value:[{assetId:'v',provider:'openai',words:[{start:.2,end:1.5,text:'Olá mundo'}]}]}));await page.waitForFunction(()=>document.querySelectorAll('.caption-row').length===1);assert.equal(await page.locator('.caption-row textarea').inputValue(),'Olá mundo');
+ await page.locator('[data-caption-view=generate]').click();await page.locator('#generate-captions').click();await app.evaluate(()=>globalThis.finishCaption({ok:false,error:'Limite da API atingido.'}));await page.waitForFunction(()=>document.querySelector('#caption-status').textContent.includes('Limite'));assert.equal(await page.locator('.caption-row').count(),1,'failure preserves captions');
+ await page.locator('#generate-captions').click();await page.locator('#caption-cancel').click();await page.waitForFunction(()=>document.querySelector('#caption-status').textContent.includes('cancelada'));assert.equal(await page.locator('.caption-row').count(),1,'cancel preserves captions');
+ await page.locator('#generate-captions').click();await app.evaluate(()=>globalThis.finishCaption({ok:true,value:[]}));await page.waitForFunction(()=>document.querySelector('#caption-status').textContent.includes('Nenhuma fala'));assert.equal(await page.locator('.caption-row').count(),0);
+ await page.locator('[data-caption-view=generate]').click();await app.evaluate(()=>{globalThis.configured=false;});await page.locator('#generate-captions').click();await page.waitForFunction(()=>document.querySelector('#settings-dialog').open);assert.equal(await page.locator('#captions-panel').getAttribute('aria-busy'),'false');await page.locator('#settings-close').click();await page.locator('#caption-engine').selectOption('local');assert.ok(await page.locator('#caption-cloud-hint').isHidden());assert.ok(await page.locator('#caption-feedback').isHidden());assert.equal(await app.evaluate(()=>globalThis.localCalls),0);assert.deepEqual(errors,[]);console.log('PASS explicit cloud choice, billing notice, progress, success/error/empty/cancel, key gate and service-switch feedback (controlled IPC, no paid calls)');
+}finally{if(app){await app.evaluate(({dialog})=>dialog.showMessageBoxSync=()=>1);await app.close();}await rm(dir,{recursive:true,force:true});}
