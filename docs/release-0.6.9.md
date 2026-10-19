@@ -1,4 +1,4 @@
-Corte 0.6.8 reúne melhorias de edição, revisão de falas e uso no Windows.
+Corte 0.6.9 reúne melhorias de edição, revisão de falas e uso no Windows.
 
 - Equalizador manual para áudio original, música e narração, inclusive por intervalo.
 - Revisão das falas independente das legendas: busca, seleção na timeline e correção manual de texto e tempos, com salvar e desfazer.

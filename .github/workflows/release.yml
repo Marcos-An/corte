@@ -268,7 +268,7 @@ jobs:
       - name: Create draft only after all gates pass
         if: ${{ github.event_name == 'push' || !inputs.dry_run }}
         run: |
-          cat docs/release-0.6.8.md > release/notes.md
+          cat docs/release-0.6.9.md > release/notes.md
           printf '\nSource commit: %s. Build version: %s (stamped in CI).\n' "$EXPECTED_SHA" "$VERSION" >> release/notes.md
           gh release create "v$VERSION" --repo Marcos-An/corte --target "$EXPECTED_SHA" --draft --prerelease --title "Corte $VERSION — beta" --notes-file release/notes.md release/assets/*
       - name: Publish explicitly requested version tag after all validations
