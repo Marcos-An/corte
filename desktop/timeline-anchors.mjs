@@ -33,10 +33,10 @@ export function resolveAnchoredOperations(project,result,transcripts=[]){
   if(op.type==='select_export_ranges'){
    if(Object.keys(op).some(k=>!['type','ranges'].includes(k))||!Array.isArray(op.ranges)||!op.ranges.length||op.ranges.length>20)fail('Seleção de recortes inválida.');
    return {type:'set_export_ranges',ranges:Array.from(op.ranges,r=>{
-    if(!r||typeof r.reason!=='string'||!r.reason.trim()||r.reason.length>500||Object.keys(r).some(k=>!['id','name','from','to','reason'].includes(k)))fail('Candidato de recorte inválido.');
+    if(!r||typeof r.reason!=='string'||!r.reason.trim()||r.reason.length>500||Object.keys(r).some(k=>!['id','name','from','to','reason','exportOptions'].includes(k)))fail('Candidato de recorte inválido.');
     const start=timelineSpan(run,sourceSpan(project,r.from,transcripts)).start,end=timelineSpan(run,sourceSpan(project,r.to,transcripts)).end;
     if(end-start<.1)fail('O fim do recorte precisa vir depois do início na montagem.');
-    return {id:r.id,name:r.name,start,end,reason:r.reason};
+    return {id:r.id,name:r.name,start,end,reason:r.reason,...(r.exportOptions!==undefined?{exportOptions:r.exportOptions}:{})};
    })};
   }
   const {start,end}=timelineSpan(run,sourceSpan(project,op.anchor,transcripts)),{id,x,y,width,rotation,opacity}=op.layer||{};

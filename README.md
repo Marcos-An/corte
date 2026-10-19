@@ -204,7 +204,7 @@ Pedidos com tempos explícitos podem guardar até 20 recortes nomeados. Na anál
 
 Em **Exportar → Vários trechos**, **Ver** localiza o intervalo na timeline e **Salvar trechos** guarda a seleção no projeto, com desfazer/refazer. Use **Salvar projeto** para gravá-la no computador. A seleção reaparece ao reabrir; caminhos, estado de conclusão e permissão para revelar arquivos não são persistidos. Mudanças nos cortes, ordem ou velocidade exigem revisar e salvar os intervalos antes de exportar. Aparência e volume não invalidam os tempos. **Exportar vídeos** continua pedindo uma pasta e preservando arquivos existentes.
 
-O formato da montagem e a resolução são comuns aos recortes. Não há pontuação de viralização, rastreamento automático nem formatos independentes por vídeo. A qualidade semântica depende das evidências e da transcrição; revise os candidatos. Esses recursos novos ainda não integram a versão pública 0.6.6.
+O formato da montagem e a resolução são usados por padrão; as opções individuais descritas abaixo permitem substituí-los em cada recorte. Não há pontuação de viralização nem rastreamento automático. A qualidade semântica depende das evidências e da transcrição; revise os candidatos. Esses recursos novos ainda não integram a versão pública 0.6.6.
 
 ## Equalizador manual — em desenvolvimento após 0.6.6
 
@@ -225,3 +225,9 @@ O desfoque funciona na prévia e no MP4, inclusive na exportação por intervalo
 Em **Legendas → Revisar**, selecione palavras no campo de texto e clique em **Selecionar vídeo**. O intervalo aparece na timeline para ouvir, ajustar, aplicar controles por intervalo ou marcar para remoção e confirmar. Sem seleção de texto, o botão marca a fala inteira. A seleção não edita nem salva a montagem. Editar ou excluir uma legenda continua alterando somente a legenda.
 
 Seleções parciais exigem tempos por palavra já existentes; o editor não estima durações dividindo o texto. Sem esses tempos, use a fala inteira ou gere legendas locais. Os tempos acompanham aparos, velocidade e a instância correta de mídias repetidas. O botão aparece somente no áudio original; a narração não é usada para selecionar/cortar o vídeo. Reconhecimento e legendas importadas podem ter imprecisões: ouça e ajuste a seleção antes de confirmar o corte. Este recurso não transcreve automaticamente nem envia dados.
+
+## Formato por vídeo — em desenvolvimento após 0.6.6
+
+Em **Exportar → Vários trechos**, cada vídeo tem **Formato** (9:16, 16:9, 1:1 ou 4:5) e **Resolução** (720 ou 1080 no lado menor). **Da montagem** e **Da exportação** preservam os padrões existentes. As escolhas podem ser guardadas com **Salvar trechos**, seguidas de **Salvar projeto**, com desfazer/refazer. Alterar uma escolha de um vídeo pronto o devolve aos pendentes; o arquivo anterior permanece preservado.
+
+O formato global, os clipes e os volumes não mudam. Crop, camadas e posições relativas continuam compartilhados entre as versões; não há reenquadramento automático nem composição independente por vídeo. **Ver tempo** localiza o intervalo na montagem original; o formato individual é aplicado ao MP4. Prompts podem incluir `exportOptions:{aspect,height}` em cada item de `set_export_ranges` ou `select_export_ranges`, com `null` para herdar. A proposta mostra essas escolhas antes de aplicar. Este recurso ainda não está no download público 0.6.6.

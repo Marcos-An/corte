@@ -16,7 +16,8 @@ export async function runExportBatch({project,registry,directory,jobs,height=720
   directory=await realpath(directory);if(!(await stat(directory)).isDirectory())throw Error('Pasta inválida.');work=await mkdtemp(path.join(directory,'.corte-batch-'));
   for(const [index,job]of jobs.entries()){
    signal?.throwIfAborted();current=job;emit({phase:'rendering',id:job.id,index});const staged=path.join(work,`${index}.mp4`);
-   await render(project,registry,staged,{height,range:{start:job.start,end:job.end},signal,onProgress:progress=>emit({phase:'rendering',id:job.id,index,renderStage:progress.stage,partCompleted:progress.completed,partTotal:progress.total})});
+   const variant=job.exportOptions?.aspect?{...project,aspect:job.exportOptions.aspect}:project;
+   await render(variant,registry,staged,{height:job.exportOptions?.height??height,range:{start:job.start,end:job.end},signal,onProgress:progress=>emit({phase:'rendering',id:job.id,index,renderStage:progress.stage,partCompleted:progress.completed,partTotal:progress.total})});
    signal?.throwIfAborted();const output=await publish(staged,directory,job.name);result.completed.push({id:job.id,path:output});result.pending=result.pending.filter(id=>id!==job.id);current=null;emit({phase:'completed',id:job.id,index});
    await rm(staged,{force:true});
   }
