@@ -31,7 +31,7 @@ Na versão em desenvolvimento, **Selecionar trecho** permite informar início/fi
 
 Também em desenvolvimento: visuais **Natural, Comida, Quente e P&B** aplicam correção leve em um toque, com ajustes manuais e desfazer. A timeline se encaixa ao abrir/importar o primeiro material; o botão **Encaixar timeline** restaura essa vista. Zoom manual é preservado ao redimensionar a janela. O marcador da régua permite arrastar o cursor sem a linha bloquear clipes/transições.
 
-Em uma trilha de música, **Priorizar narração** reduz o volume durante os clipes de narração da timeline, com entrada/saída suaves de 0,2 s e nível de fundo ajustável. Prévia e exportação usam as mesmas âncoras, recalculadas ao mover/aparar/remover a narração. Não detecta voz no áudio original nem pausas dentro da narração; sem narração, não altera o volume. A IA também pode ajustar esse recurso por `edit_audio` com `ducking` de 0 a 1 (1 desliga).
+Música e narração mantêm volumes independentes e manuais, com fades de entrada/saída. A presença de narração não reduz o volume da música. Configurações antigas de redução automática são aceitas ao abrir projetos, mas ficam inativas na prévia e na exportação.
 
 As propostas da IA apresentam a decisão e as pendências primeiro; resumo, motivos, operações e evidências ficam recolhidos. Os detalhes continuam acessíveis e aplicar/descartar permanece explícito. Os testes `clean-editing.e2e.mjs` e `interval-controls.e2e.mjs` também integram a validação dos pacotes Windows/macOS na pipeline de release.
 

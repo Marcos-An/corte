@@ -625,10 +625,6 @@ body>.busy-message button{flex-shrink:0}
 .color-looks{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;margin:10px 0 18px}
 #color-adjustments .color-looks button{width:auto;min-width:0;padding:8px 3px;margin:0;border:1px solid var(--line);border-radius:7px;font-size:10px;background:#202125}
 #color-adjustments .color-looks button[aria-pressed=true]{border-color:#eee;background:#383a40;color:white}
-#music-ducking-controls{margin:18px 0;padding:14px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
-#music-ducking-controls .switch-row{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:12px}
-#music-ducking-controls input[type=checkbox]{flex:none;padding:0;border:0}
-#music-ducking-level-field{margin-bottom:0!important}
 .proposal-heading{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:4px 0 14px}
 .proposal-heading strong{font-size:14px}.proposal-heading>span{font-size:10px;color:var(--muted);white-space:nowrap}
 #proposal details{border-top:1px solid var(--line);padding:10px 0;margin:0}
@@ -644,10 +640,6 @@ body>.busy-message button{flex-shrink:0}
 #narration-panel h2,#caption-generate-view h2{font-size:20px;margin-top:8px}
 .music-block.compact .trim-handle{pointer-events:none;opacity:0}
 #timeline-fit{flex:none}
-#music-ducking-controls #music-ducking{width:34px;min-width:34px;max-width:34px;height:20px;background:#3a3c43}
-#music-ducking-controls #music-ducking:checked{background:#eeeeef}
-#music-ducking:checked{background:#eeeeef}
-#music-ducking:checked:before{background:#17181b;transform:translateX(14px)}
 /* Drag the visible ruler handle; the line never masks clip or transition controls. */
 .playhead{pointer-events:none}
 .playhead:before{pointer-events:auto;cursor:ew-resize}

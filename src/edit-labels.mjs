@@ -1,6 +1,6 @@
 const number=n=>Number(n.toFixed(2)).toLocaleString('pt-BR');
 export function describePatch(patch){
- const names={brightness:'Brilho',contrast:'Contraste',saturation:'Saturação',temperature:'Temperatura',sharpness:'Nitidez',volume:'Volume',ducking:'Fundo sob narração',fadeIn:'Entrada',fadeOut:'Saída',start:'Posição',in:'Início',out:'Fim'};
+ const names={brightness:'Brilho',contrast:'Contraste',saturation:'Saturação',temperature:'Temperatura',sharpness:'Nitidez',volume:'Volume',fadeIn:'Entrada',fadeOut:'Saída',start:'Posição',in:'Início',out:'Fim'};
  return Object.entries(patch).flatMap(([k,v])=>{
   if(k==='adjustments')return [describePatch(v)];
   if(k==='speed')return [`Velocidade ${number(v)}×`];
