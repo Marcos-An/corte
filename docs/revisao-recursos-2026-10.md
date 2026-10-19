@@ -23,7 +23,7 @@ Referências oficiais consultadas:
 | Tratamento de voz | Volume/fades publicados; equalizador manual implementado em desenvolvimento após 0.6.6; sem redução de ruído/compressor | Validar tratamento com gravações variadas; redução de ruído/compressão opt-in com intensidade e comparação antes/depois | Alta |
 | Curvas de velocidade | Somente velocidade constante, inclusive em intervalos | Rampas com remapeamento correto de áudio, legendas, âncoras e exportação; não aproximar silenciosamente com saltos | Média |
 | Curvas de animação | Linear, acelerar, desacelerar e suave publicados na 0.6.6 | curvas Bézier personalizadas ainda ausentes | Média |
-| Máscaras e privacidade | Camadas/formas existem; sem máscara/desfoque de região rastreado | Começar por região manual animável, depois tracking; verificar desfoque no MP4 | Alta |
+| Máscaras e privacidade | Região manual oval/retangular animável em desenvolvimento após 0.6.6 | Rastreamento automático com trajetória revisável; avaliar custo em vídeos longos | Alta |
 | Remoção de fundo | Ausente | Segmentar com modelo separado, benchmark no Windows e bordas/oclusões revisáveis | Média |
 | Estabilização | Ausente | Análise de movimento, intensidade e recorte visível; cache por fonte | Média |
 | Exportação | MP4 720p/1080p, H.264/AAC; intervalo e fila manual de até 20 vídeos implementados após 0.6.4 | Resolução/FPS/qualidade e versões com formato próprio; custo de 4K explícito | Alta |
@@ -59,7 +59,7 @@ Também foi corrigida a exibição de palavras removidas no começo/fim de uma f
 
 Pedidos só de aparência usam `edit_caption_style`, preservando palavras corrigidas e seus tempos. A contagem/fonte das legendas entra nos metadados do planejador; os textos salvos, inclusive correções por clipe, ficam fora desse contrato. Pedidos para gerar novas legendas continuam separados e precisam da preparação local e revisão.
 
-Esta lista é um plano de evolução, não uma declaração de paridade com os concorrentes. Tracking, rampas, máscaras, estabilização e tratamento de voz ainda não foram implementados nesta rodada.
+Esta lista é um plano de evolução, não uma declaração de paridade com os concorrentes. Tracking, rampas, estabilização e isolamento/redução de ruído ainda estão pendentes; equalização e desfoque manual estão descritos abaixo.
 
 ## Revisão após a publicação 0.6.4
 
@@ -106,3 +106,13 @@ Na interface, Equalizador fica recolhido; a grade compacta mantém os controles 
 Validação: resposta medida em Web Audio real a 44,1/48 kHz e comparação dinâmica antes/depois; resposta em MP4 com fonte e narração, volume/fades, velocidade e exportação de intervalo. Os testes de frequência comparam versões com/sem EQ sob a mesma janela de alongamento de tempo, separando o filtro de diferenças de fase do atempo após novo início. Também há interface, salvar/reabrir, desfazer/refazer, parâmetros inválidos, intervalos sobrepostos e seis prompts reais por metadados (incluindo um pedido de limpeza/isolar voz que permanece pendente). Os testes usam tons e metadados sintéticos, não comprovam qualidade de voz em gravações diversas. A suíte e os testes no pacote Windows estão registrados no relatório da rodada; o gate foi adicionado para os próximos pacotes Windows/macOS.
 
 Após uma equalização parcial, `edit_audio` com patch somente de `audioEQ` e o mesmo ID original acompanha todas as partes criadas anteriormente no plano. Bandas não citadas e volumes distintos são preservados. IDs de partes já salvas continuam representando as partes individuais em novos pedidos; não há agrupamento implícito de todos os áudios que usam a mesma mídia.
+
+## Desfoque manual por região — desenvolvimento após 0.6.6
+
+Camadas de desfoque usam a mesma ordem, histórico, controles geométricos e animação das formas, com intensidade de 1 a 100 e regiões ovais ou retangulares. Há limite de oito áreas; novas áreas e alterações de intervalo devem caber na montagem. Pontos animam posição, tamanho uniforme e opacidade, com as curvas existentes; intensidade e rotação são estáticas. O controle de altura fica desabilitado enquanto há pontos para preservar a proporção. A composição afeta tudo abaixo da camada, incluindo textos; itens acima permanecem nítidos.
+
+A prévia usa backdrop-filter e o MP4 combina uma cópia com Gaussian blur e uma máscara vetorial ASS em RGB. Os canais iguais da máscara evitam alterar crominância fora da região. O relógio ASS segue os quadros de 30 fps, inclusive com curvas e exportações parciais. Renderizadores podem diferir nas bordas do filtro; os testes verificam textura, limites, opacidade e ordem em pixels reais, sem exigir identidade binária. Não altera áudio e não exige modelo adicional.
+
+O planejador dispõe de add_blur e place_blur (âncoras de fonte/fala), edit_component e pontos de animação. Tempos ancorados são resolvidos após cortes e velocidade; recuperação parcial reavalia dependências. Pedidos de rastreamento automático não são simulados por uma área fixa. É preciso revisar cada movimento e toda a duração para cobrir o conteúdo desejado. Tracking permanece uma lacuna separada.
+
+Validação: suíte geral com 456 aprovados e um ignorado, seguida de cinco testes focados (incluindo a regressão adicional de recuperação parcial). Quatro prompts reais pela conexão ChatGPT existente usaram somente metadados/transcrição sintéticos: região explícita, animação, cortes/velocidade com âncora e rastreamento deixado pendente. No pacote Windows 0.6.7 local, os 81 arquivos de execução conferem com o código; interface a 960 px, pixels compostos, opacidade, curvas, ordem com texto, histórico, salvar/reabrir e MP4 por intervalo passaram. Dois testes de pixels/áudio no renderizador nativo também passaram; regressões de curvas, EQ e exportação por intervalo passaram no mesmo pacote. Isso não mede desempenho de projetos longos nem qualidade em gravações reais variadas. Os gates de desfoque foram adicionados à próxima publicação Windows/macOS; esta rodada local não executou macOS.

@@ -1,3 +1,4 @@
+import {MAX_BLUR_LAYERS,BLUR_FIELDS,validateBlurLayer,blurLayer} from './blur.mjs';
 import {validateAudioEQ,patchAudioEQ} from './audio-eq.mjs';
 import {validateExportSelection,saveExportSelection} from './export-selection.mjs';
 import {speechLanguage} from './speech-language.mjs';
@@ -59,9 +60,11 @@ export function validateProject(p) {
   }
   if(p.shapeLayers!==undefined){
     if(!Array.isArray(p.shapeLayers)||p.shapeLayers.length>100)fail('Componentes de forma inválidos.');
+    if(p.shapeLayers.filter(t=>t?.type==='blur').length>MAX_BLUR_LAYERS)fail('Use até 8 áreas de desfoque por projeto.');
     const seen=new Set(),color=v=>v===null||(typeof v==='string'&&/^#[0-9a-f]{6}$/i.test(v));
     for(const t of p.shapeLayers){
-      if(!t||typeof t.id!=='string'||!t.id||seen.has(t.id)||!['rectangle','circle','line','arrow'].includes(t.type)||![t.start,t.end,t.x,t.y,t.width,t.height,t.rotation,t.opacity,t.strokeWidth].every(finite)||t.start<0||t.end-t.start<.02||t.end>21600||t.x<0||t.x>100||t.y<0||t.y>100||t.width<5||t.width>100||t.height<5||t.height>100||t.rotation< -180||t.rotation>180||t.opacity<0||t.opacity>100||t.strokeWidth<0||t.strokeWidth>5||!color(t.fill)||!color(t.stroke))fail('Forma, cor, tempo ou posição inválidos.');
+      if(!t||typeof t.id!=='string'||!t.id||seen.has(t.id)||!['rectangle','circle','line','arrow','blur'].includes(t.type)||![t.start,t.end,t.x,t.y,t.width,t.height,t.rotation,t.opacity,t.strokeWidth].every(finite)||t.start<0||t.end-t.start<.02||t.end>21600||t.x<0||t.x>100||t.y<0||t.y>100||t.width<5||t.width>100||t.height<5||t.height>100||t.rotation< -180||t.rotation>180||t.opacity<0||t.opacity>100||t.strokeWidth<0||t.strokeWidth>5||!color(t.fill)||!color(t.stroke))fail('Forma, cor, tempo ou posição inválidos.');
+      if(t.type==='blur')validateBlurLayer(t);else if(t.strength!==undefined||t.blurShape!==undefined)fail('Parâmetros de desfoque somente em uma área de desfoque.');
       seen.add(t.id);
     }
   }
@@ -154,17 +157,18 @@ export class History {
     const h=new History(data.entries[0].state);h.entries=clone(data.entries);h.cursor=data.cursor;return h;
   }
 }
-const keys={set_export_ranges:['ranges'],edit_caption_style:['style'],generate_captions:['source','style','transcripts','language'],adjust_audio_range:['audioId','start','end','volume'],adjust_audio_eq_range:['audioId','start','end','audioEQ'],adjust_timeline:['clipId','start','end','patch'],insert_clip:['index','clip'],move_range:['clipId','sourceStart','sourceEnd','index'],add_audio:['track'],split:['clipId','time'],trim:['clipId','in','out'],delete:['clipId'],move:['clipId','index'],update:['clipId','volume','crop','speed','background','backgroundColor','adjustments','fadeIn','fadeOut','zoom','freeze','audioEQ'],set_aspect:['aspect'],remove_ranges:['clipId','ranges'],keep_ranges:['clipId','ranges'],freeze_frame:['clipId','time','duration'],adjust_ranges:['clipId','ranges','patch'],set_transition:['leftId','rightId','effect','duration'],set_transition_at:['index','effect','duration','makeRoom'],edit_audio:['audioId','patch'],add_text:['layer'],add_image:['layer'],add_video:['layer'],add_shape:['layer'],edit_component:['layerId','patch'],remove_component:['layerId'],move_component:['layerId','direction'],set_keyframe:['layerId','time','pose'],remove_keyframe:['layerId','time'],set_motion:['layerId','enter','exit']};
+const keys={add_blur:['layer'],set_export_ranges:['ranges'],edit_caption_style:['style'],generate_captions:['source','style','transcripts','language'],adjust_audio_range:['audioId','start','end','volume'],adjust_audio_eq_range:['audioId','start','end','audioEQ'],adjust_timeline:['clipId','start','end','patch'],insert_clip:['index','clip'],move_range:['clipId','sourceStart','sourceEnd','index'],add_audio:['track'],split:['clipId','time'],trim:['clipId','in','out'],delete:['clipId'],move:['clipId','index'],update:['clipId','volume','crop','speed','background','backgroundColor','adjustments','fadeIn','fadeOut','zoom','freeze','audioEQ'],set_aspect:['aspect'],remove_ranges:['clipId','ranges'],keep_ranges:['clipId','ranges'],freeze_frame:['clipId','time','duration'],adjust_ranges:['clipId','ranges','patch'],set_transition:['leftId','rightId','effect','duration'],set_transition_at:['index','effect','duration','makeRoom'],edit_audio:['audioId','patch'],add_text:['layer'],add_image:['layer'],add_video:['layer'],add_shape:['layer'],edit_component:['layerId','patch'],remove_component:['layerId'],move_component:['layerId','direction'],set_keyframe:['layerId','time','pose'],remove_keyframe:['layerId','time'],set_motion:['layerId','enter','exit']};
 const visualPlanFields=['start','end','x','y','width','rotation','opacity'];
 const textPlanFields=['text','start','end','style'];
 const stylePlanFields=['font','size','color','position','preset','positionX','positionY','width','accent','strokeColor','strokeWidth','shadow','shadowColor','spacing','boxColor','boxOpacity','bold','italic','uppercase','hollow','accentLast','glowColor','glow','enter','exit'];
 function planFields(value,allowed){if(!value||typeof value!=='object'||Array.isArray(value)||!Object.keys(value).length||Object.keys(value).some(k=>!allowed.includes(k)))fail('Campos da operação da IA inválidos.');}
 function componentEditor(p,layerId){
  for(const [key,edit,fields] of [['textLayers',editTextLayer,textPlanFields],['imageLayers',editImageLayer,visualPlanFields],['videoLayers',editVideoLayer,[...visualPlanFields,'in','freeze']],['shapeLayers',editShapeLayer,[...visualPlanFields,'type','height','fill','stroke','strokeWidth']]]){
-  const layer=p[key]?.find(t=>t.id===layerId);if(layer)return {edit,fields,layer};
+  const layer=p[key]?.find(t=>t.id===layerId);if(layer)return {edit,fields:layer.type==='blur'?BLUR_FIELDS:fields,layer};
  }fail('Componente da IA não encontrado.');
 }
 function applyPlanOperation(p,op){
+ if(op.type==='add_blur'){planFields(op.layer,['id',...BLUR_FIELDS]);if(typeof op.layer.id!=='string'||!op.layer.id)fail('Identidade de desfoque inválida.');return addBlurLayer(p,op.layer);}
  if(op.type==='set_export_ranges')return validateProject(saveExportSelection(p,op.ranges));
  if(op.type==='edit_caption_style')return validateProject(applyCaptionAppearance(p,op.style));
  if(op.type==='insert_clip'){
@@ -384,12 +388,13 @@ export function editVideoLayer(p,layerId,patch){
  return validateProject(syncLayerOrder(q));
 }
 
+export function addBlurLayer(p,layer){if(!p.clips.length||!finite(layer?.start)||!finite(layer?.end)||layer.end>duration(p)+1e-6)fail('Posicione o desfoque dentro da montagem.');return addShapeLayer(p,blurLayer(layer));}
 export function addShapeLayer(p,layer){const q=clone(p);q.shapeLayers=[...(q.shapeLayers||[]),{...clone(layer),id:layer.id||id()}];return validateProject(syncLayerOrder(q));}
 export function editShapeLayer(p,layerId,patch){
  const q=clone(p),layer=q.shapeLayers?.find(t=>t.id===layerId);if(!layer)fail('Forma não encontrada.');
- const original=clone(layer);
+ const original=clone(layer);if(layer.type==='blur'&&patch&&('start'in patch||'end'in patch)&&((patch.end??layer.end)>duration(p)+1e-6))fail('Posicione o desfoque dentro da montagem.');if(patch?.type!==undefined&&(layer.type==='blur')!==(patch.type==='blur'))fail('Adicione outra forma para mudar o tipo de componente.');
  if(patch===null)q.shapeLayers=q.shapeLayers.filter(t=>t.id!==layerId);
- else for(const k of ['type','start','end','x','y','width','height','rotation','opacity','fill','stroke','strokeWidth'])if(k in patch)layer[k]=clone(patch[k]);
+ else for(const k of ['type','start','end','x','y','width','height','rotation','opacity','fill','stroke','strokeWidth','strength','blurShape'])if(k in patch)layer[k]=clone(patch[k]);
  if(patch!==null)retimeKeyframes(layer,original);
  return validateProject(syncLayerOrder(q));
 }

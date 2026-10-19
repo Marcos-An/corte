@@ -10,7 +10,7 @@ export function createImageScene(stage,canvas,{pause,select,preview,commit,error
   const move=ev=>{
    const round=n=>Math.round(n*10)/10,clamp=(n,min,max)=>Math.max(min,Math.min(max,n));
    patch=resize?{width:round(clamp(initial.width*Math.hypot(ev.clientX-cx,ev.clientY-cy)/from,5,100))}:{x:round(clamp(initial.x+(ev.clientX-e.clientX)/r.width*100,0,100)),y:round(clamp(initial.y+(ev.clientY-e.clientY)/r.height*100,0,100))};
-   if(resize&&initial.kind==='shape'){const factor=clamp(Math.hypot(ev.clientX-cx,ev.clientY-cy)/from,Math.max(5/initial.width,5/initial.height),Math.min(100/initial.width,100/initial.height));patch={width:round(initial.width*factor),height:round(initial.height*factor)};}
+   if(resize&&['shape','blur'].includes(initial.kind)){const factor=clamp(Math.hypot(ev.clientX-cx,ev.clientY-cy)/from,Math.max(5/initial.width,5/initial.height),Math.min(100/initial.width,100/initial.height));patch={width:round(initial.width*factor),height:round(initial.height*factor)};}
    preview(initial.id,patch);
   };
   const end=ev=>{
@@ -26,14 +26,14 @@ export function createImageScene(stage,canvas,{pause,select,preview,commit,error
    let node=nodes.get(t.id);
    if(!node){
     node=document.createElement('div');node.className='image-layer';node.tabIndex=0;node.setAttribute('role','button');
-    const img=document.createElement(t.kind==='video'?'video':'img');img.draggable=false;img.alt='';if(t.kind==='video'){img.muted=true;img.preload='auto';img.playsInline=true;img.crossOrigin='anonymous';}img.onerror=()=>error('Mídia ausente ou inválida. Relocalize o arquivo pela timeline.');
+    const img=t.kind==='blur'?null:document.createElement(t.kind==='video'?'video':'img');if(img){img.draggable=false;img.alt='';if(t.kind==='video'){img.muted=true;img.preload='auto';img.playsInline=true;img.crossOrigin='anonymous';}img.onerror=()=>error('Mídia ausente ou inválida. Relocalize o arquivo pela timeline.');}
     const handle=document.createElement('span');handle.className='image-resize';handle.title='Arraste para redimensionar';
-    node.append(img,handle);node.addEventListener('pointerdown',e=>gesture(node,e));node.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();select(node.entry.id);}});
+    node.append(...(img?[img]:[]),handle);node.addEventListener('pointerdown',e=>gesture(node,e));node.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();select(node.entry.id);}});
     surface.append(node);nodes.set(t.id,node);
    }
-   node.entry=t;node.classList.toggle('shape-layer',t.kind==='shape');node.setAttribute('aria-label','Selecionar '+(t.kind==='shape'?'forma ':t.kind==='video'?'vídeo ':'imagem ')+t.name);node.classList.toggle('selected',t.selected);
+   node.entry=t;node.classList.toggle('blur-layer',t.kind==='blur');node.style.backdropFilter=t.kind==='blur'?`blur(${t.radius}px)`:'';node.style.borderRadius=t.kind==='blur'&&t.blurShape==='ellipse'?'50%':'';node.classList.toggle('shape-layer',t.kind==='shape');node.setAttribute('aria-label','Selecionar '+(t.kind==='blur'?'desfoque ':t.kind==='shape'?'forma ':t.kind==='video'?'vídeo ':'imagem ')+t.name);node.classList.toggle('selected',t.selected);
    Object.assign(node.style,{zIndex:t.z||1,left:t.x+'%',top:t.y+'%',width:t.width+'%',aspectRatio:t.assetWidth+'/'+t.assetHeight,transform:'translate(-50%,-50%) rotate('+t.rotation+'deg)',opacity:t.opacity/100,pointerEvents:busy?'none':'auto'});
-   const img=node.querySelector('img,video');if(img.getAttribute('src')!==t.url){if(t.url)img.src=t.url;else img.removeAttribute('src');}
+   const img=node.querySelector('img,video');if(img&&img.getAttribute('src')!==t.url){if(t.url)img.src=t.url;else img.removeAttribute('src');}
    if(t.kind==='video'){if(!t.playing)img.pause();if(!img.seeking&&Math.abs(img.currentTime-t.sourceTime)>(t.playing ? .2 : .015))img.currentTime=t.sourceTime;if(t.playing&&img.paused&&img.readyState>=2)img.play().catch(()=>error('Não foi possível reproduzir o vídeo sobreposto.'));}
   }
  }

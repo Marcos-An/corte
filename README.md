@@ -213,3 +213,9 @@ O formato da montagem e a resolução são comuns aos recortes. Não há pontua�
 A seleção da timeline permite equalizar somente parte do áudio original. Em música/narração, **Ajuste por intervalo** oferece volume ou uma banda do EQ, preservando as demais bandas, as partes externas e os fades. Tudo entra no histórico e no salvar/reabrir. Os prompts podem usar `update.audioEQ`, `edit_audio.patch.audioEQ`, `adjust_ranges`/`adjust_timeline` e `adjust_audio_eq_range`; patches mantêm as outras bandas e `null` zera a equalização do alvo.
 
 Prévia e MP4 usam o mesmo cálculo de filtros biquad, adaptado à taxa da prévia e a 48 kHz na exportação. Testes verificam resposta em frequência em Web Audio real, bypass durante a reprodução, MP4 original/narração, intervalos e velocidade. EQ não é remoção de ruído, isolamento vocal, de-esser, compressor nem normalização automática. Volumes continuam manuais e nenhuma música baixa pela presença de narração. Não há novo modelo ou download de IA. Recurso ainda fora do download público 0.6.6.
+
+## Desfoque por região — em desenvolvimento após 0.6.6
+
+Em **Componentes → Desfoque**, escolha uma área oval ou retangular e ajuste posição, largura, altura, rotação, intensidade e opacidade. Há até oito áreas por montagem. Os pontos de animação existentes permitem mover, ampliar e suavizar o trajeto manualmente; o tamanho animado conserva a proporção. A ordem das camadas determina o conteúdo afetado, inclusive textos abaixo da área. Revise o efeito durante toda a duração.
+
+O desfoque funciona na prévia e no MP4, inclusive na exportação por intervalo, com desfazer/refazer e salvar/reabrir. Pedidos por prompt podem criar regiões e editar seus controles; referências à fala acompanham cortes e velocidade. Não há rastreamento automático: pedidos para seguir pessoas ou objetos sem trajetória permanecem pendentes. Nenhum modelo adicional é necessário. Recurso ainda fora da versão pública 0.6.6.

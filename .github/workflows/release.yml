@@ -205,6 +205,8 @@ jobs:
           node tests/caption-reuse.integration.mjs
           node tests/caption-feedback.e2e.mjs
           node tests/audio-ranges.e2e.mjs
+          node tests/blur.e2e.mjs
+          node --test tests/blur-render.test.mjs
           node tests/audio-eq.e2e.mjs
           node --test tests/audio-eq-render.test.mjs
           node tests/export-selection.e2e.mjs

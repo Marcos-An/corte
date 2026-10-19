@@ -1,3 +1,4 @@
+import {blurRadius,MAX_BLUR_LAYERS} from './blur.mjs';
 import {createAudioEQPreview} from './audio-eq-preview.mjs';
 import {createAudioEQEditor} from './audio-eq-editor.mjs';
 import {audioEQActive} from './audio-eq.mjs';
@@ -26,7 +27,7 @@ import {INTERVAL_CONTROLS,intervalPatch} from './interval-controls.mjs';
 import {removeTimelineRange,initialRange,moveRange} from './range-selection.mjs';
 import {newEditSession,recordEditStage,editSessionSummary} from './edit-session.mjs';
 import {captionEntries,captionStyle} from './captions.mjs';
-import {transitionRoom,setMotion,createProject,addAsset,addClip,addMusic,editMusic,addTextLayer,editTextLayer,remapWordStyles,addImageLayer,editImageLayer,addVideoLayer,editVideoLayer,addShapeLayer,editShapeLayer,editProject,History,layerOrder,moveLayer,setKeyframe,transitionLimit,setTransition,transitionAt,duration,clipAt,applyPlan} from './project.mjs';
+import {transitionRoom,setMotion,createProject,addAsset,addClip,addMusic,editMusic,addTextLayer,editTextLayer,remapWordStyles,addImageLayer,editImageLayer,addVideoLayer,editVideoLayer,addBlurLayer,addShapeLayer,editShapeLayer,editProject,History,layerOrder,moveLayer,setKeyframe,transitionLimit,setTransition,transitionAt,duration,clipAt,applyPlan} from './project.mjs';
 const $=id=>document.getElementById(id),bridge=window.editor;
 let aiRunning=false,aiProgressState=null;
 let captionPreviewStyle=null,previewCrop=null,adjustmentPreview=null;
@@ -52,6 +53,7 @@ function describeChange(before,after){
 }
 function describeOperation(p,op){
  if(op.type==='set_export_ranges')return `Guardar ${op.ranges.length} recortes para exportar`;
+ if(op.type==='add_blur')return `Desfoque · ${op.layer.start.toFixed(2)}–${op.layer.end.toFixed(2)} s · ${op.layer.blurShape==='ellipse'?'oval':'retângulo'}`;
  if(op.type==='generate_captions')return `Legendas locais · ${op.source==='narration'?'narração':'áudio original'}`;
  if(op.type==='edit_caption_style')return 'Aparência das legendas';
  const c=p.clips.find(c=>c.id===op.clipId),name=p.assets.find(a=>a.id===c?.assetId)?.name||'Projeto';
@@ -173,7 +175,7 @@ function renderTimeline(){
  $('image-track').replaceChildren();$('image-track').hidden=!visualLayers(p).length;document.querySelector('.image-track-label').hidden=$('image-track').hidden;
  const imageLanes=assignLanes(visualLayers(p));
  for(const t of visualLayers(p)){
- const block=document.createElement('button'),{lane,lanes:count}=imageLanes.get(t.id);block.style.setProperty('--lane',lane);block.style.setProperty('--lanes',count);block.className='caption-block image-block'+(t.type?' shape-block':'')+(t.in!==undefined?' video-layer-block':'');block.textContent=p.assets.find(a=>a.id===t.assetId)?.name||SHAPES[t.type]||'Imagem';
+ const block=document.createElement('button'),{lane,lanes:count}=imageLanes.get(t.id);block.style.setProperty('--lane',lane);block.style.setProperty('--lanes',count);block.className='caption-block image-block'+(t.type?' shape-block':'')+(t.in!==undefined?' video-layer-block':'');block.textContent=p.assets.find(a=>a.id===t.assetId)?.name||(t.type==='blur'?'Desfoque':SHAPES[t.type])||'Imagem';
  const name=block.textContent,label=document.createElement('span');label.className='caption-block-text';label.textContent=name;block.replaceChildren(label);block.dataset.imageId=t.id;block.classList.toggle('selected',t.id===selectedImage);block.setAttribute('aria-pressed',String(t.id===selectedImage));block.title='Arraste para mover · puxe as bordas para ajustar o intervalo';
  for(const side of ['start','end']){const h=document.createElement('span');h.className='image-trim '+side;h.dataset.edge=side;h.setAttribute('aria-hidden','true');block.append(h);}
  const place=(start,end)=>{block.style.left=start*zoom+'px';block.style.width=(end-start)*zoom+'px';};place(t.start,t.end);let dragged=false;
@@ -462,7 +464,7 @@ const imageScene=createImageScene($('preview-stage'),canvas,{
 });
 function renderImageScene(){
  const p=componentProject();imageScene.update(visualLayers(p).filter(componentVisible).map(t=>applyKeyframes(!playing&&t.id===selectedImage&&!t.keyframes?.length?{...t,motion:undefined}:t,position)).map(t=>{
- const a=p.assets.find(a=>a.id===t.assetId);if(t.type){const layer=t;return {...layer,name:SHAPES[t.type],kind:'shape',url:'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(shapeSvg(layer,canvas.width,canvas.height)),assetWidth:canvas.width*layer.width/100,assetHeight:canvas.height*layer.height/100,z:layerOrder(p).indexOf(t.id)+1,selected:t.id===selectedImage};}return {...t,name:a.name,kind:t.in!==undefined?'video':'image',sourceTime:t.freeze?t.in:(t.in||0)+position-t.start,playing:playing&&!t.freeze,url:media.get(a.id)?.url,assetWidth:a.width,assetHeight:a.height,z:layerOrder(p).indexOf(t.id)+1,selected:t.id===selectedImage};
+ const a=p.assets.find(a=>a.id===t.assetId);if(t.type==='blur')return {...t,name:'Desfoque',kind:'blur',radius:blurRadius(t,canvas.width),assetWidth:canvas.width*t.width/100,assetHeight:canvas.height*t.height/100,z:layerOrder(p).indexOf(t.id)+1,selected:t.id===selectedImage};if(t.type){const layer=t;return {...layer,name:SHAPES[t.type],kind:'shape',url:'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(shapeSvg(layer,canvas.width,canvas.height)),assetWidth:canvas.width*layer.width/100,assetHeight:canvas.height*layer.height/100,z:layerOrder(p).indexOf(t.id)+1,selected:t.id===selectedImage};}return {...t,name:a.name,kind:t.in!==undefined?'video':'image',sourceTime:t.freeze?t.in:(t.in||0)+position-t.start,playing:playing&&!t.freeze,url:media.get(a.id)?.url,assetWidth:a.width,assetHeight:a.height,z:layerOrder(p).indexOf(t.id)+1,selected:t.id===selectedImage};
  }),busy);
 }
 // Sliders with a data-unit output show their value next to the label, in pt-BR.
@@ -471,7 +473,7 @@ document.addEventListener('input',e=>{if(e.target.matches?.('input[type=range]')
 function renderImageProperties(){
  for(const b of document.querySelectorAll('#image-track .image-block')){b.classList.toggle('selected',b.dataset.imageId===selectedImage);b.setAttribute('aria-pressed',String(b.dataset.imageId===selectedImage));}
  const source=visualLayers(componentProject()).find(t=>t.id===selectedImage),layer=source&&(source.keyframes?.length?applyKeyframes(source,position):source);$('image-properties').hidden=!layer;
- if(!layer)return;$('shape-properties').hidden=!layer.type;if(layer.type){const open=['line','arrow'].includes(layer.type);for(const k of ['height','strokeWidth']){$('shape-'+k).value=layer[k];$('shape-'+k).disabled=busy||!!layer.keyframes?.length;}for(const k of ['fill','stroke']){$('shape-'+k+'-enabled').checked=!!layer[k];$('shape-'+k+'-enabled').disabled=busy||(k==='fill'&&open);$('shape-'+k).value=layer[k]||'#ffffff';$('shape-'+k).disabled=busy||!layer[k]||(k==='fill'&&open);}}$('video-source-field').hidden=layer.in===undefined;$('video-freeze-field').hidden=layer.in===undefined;$('image-freeze').checked=!!layer.freeze;$('image-freeze').disabled=busy;$('image-in').value=layer.in||0;$('remove-image').textContent=layer.type?'Remover forma':layer.in===undefined?'Remover imagem':'Remover vídeo';$('image-name').textContent=project().assets.find(a=>a.id===layer.assetId)?.name||SHAPES[layer.type]||'Imagem';
+ if(!layer)return;const isBlur=layer.type==='blur';$('blur-properties').hidden=!isBlur;$('shape-properties').hidden=!layer.type||isBlur;if(isBlur){$('blur-strength').value=layer.strength;$('blur-shape').value=layer.blurShape;$('blur-height').value=layer.height;$('blur-height').disabled=busy||!!layer.keyframes?.length;$('blur-strength').disabled=$('blur-shape').disabled=busy;}if(layer.type&&!isBlur){const open=['line','arrow'].includes(layer.type);for(const k of ['height','strokeWidth']){$('shape-'+k).value=layer[k];$('shape-'+k).disabled=busy||!!layer.keyframes?.length;}for(const k of ['fill','stroke']){$('shape-'+k+'-enabled').checked=!!layer[k];$('shape-'+k+'-enabled').disabled=busy||(k==='fill'&&open);$('shape-'+k).value=layer[k]||'#ffffff';$('shape-'+k).disabled=busy||!layer[k]||(k==='fill'&&open);}}$('video-source-field').hidden=layer.in===undefined;$('video-freeze-field').hidden=layer.in===undefined;$('image-freeze').checked=!!layer.freeze;$('image-freeze').disabled=busy;$('image-in').value=layer.in||0;$('remove-image').textContent=isBlur?'Remover desfoque':layer.type?'Remover forma':layer.in===undefined?'Remover imagem':'Remover vídeo';$('image-name').textContent=project().assets.find(a=>a.id===layer.assetId)?.name||(isBlur?'Desfoque':SHAPES[layer.type])||'Imagem';
  for(const k of ['start','end','x','y','width','rotation','opacity'])$('image-'+k).value=layer[k];for(const input of $('image-properties').querySelectorAll('input[type=range]'))sliderReadout(input);
  for(const k of ['x','y','width','opacity'])$('image-'+k).disabled=busy||!!layer.keyframes?.length&&(position<layer.start||position>layer.end);
 }
@@ -481,6 +483,9 @@ for(const k of ['in','start','end','x','y','width','rotation','opacity'])$('imag
 });
 for(const k of ['x','y','width','rotation','opacity'])$('image-'+k).oninput=guard(()=>{if(!busy&&selectedImage){imagePreview={id:selectedImage,patch:{[k]:Number($('image-'+k).value)}};renderImageScene();}});
 $('remove-image').onclick=guard(()=>{if(!busy&&selectedImage)commit(editVisual(project(),selectedImage,null),{label:'Remover imagem'});});
+const blurProperties=document.createElement('section');blurProperties.id='blur-properties';blurProperties.hidden=true;blurProperties.innerHTML='<label>Região<select id="blur-shape"><option value="ellipse">Oval</option><option value="rectangle">Retângulo</option></select></label><label class="slider-field"><span>Intensidade<output for="blur-strength" data-unit="%"></output></span><input id="blur-strength" type="range" min="1" max="100" step="1"></label><label class="slider-field"><span>Altura<output for="blur-height" data-unit="%" data-digits="1"></output></span><input id="blur-height" type="range" min="5" max="100" step="0.1"></label><p class="hint">Área manual: revise toda a duração. Afeta as camadas abaixo.</p>';$('shape-properties').after(blurProperties);
+for(const [id,key]of [['blur-strength','strength'],['blur-height','height'],['blur-shape','blurShape']]){const input=$(id);input.onchange=guard(()=>{if(busy||!selectedImage)return;commit(editVisual(project(),selectedImage,{[key]:key==='blurShape'?input.value:Number(input.value)}),{label:'Ajustar desfoque'});imagePreview=null;renderComponents();});if(key!=='blurShape')input.oninput=guard(()=>{if(busy||!selectedImage)return;imagePreview={id:selectedImage,patch:{[key]:Number(input.value)}};renderImageScene();});}
+$('add-blur').onclick=guard(()=>{if(busy||!project().clips.length)return;const start=Math.min(position,Math.max(0,duration(project())-.02)),id=crypto.randomUUID();selectedImage=id;selectedText=null;commit(moveLayer(addBlurLayer(project(),{id,start,end:Math.min(duration(project()),start+3),x:50,y:50,width:35,height:25,rotation:0,opacity:100}),id,'front'),{label:'Adicionar desfoque'});showModule('components');});
 $('add-image').onclick=()=>importVideos('image');$('add-video-layer').onclick=()=>importVideos('video-layer');
 for(const type of Object.keys(SHAPES))$('add-shape-'+type).onclick=guard(()=>{
  if(busy||!project().clips.length)return;
@@ -605,6 +610,7 @@ function renderComponents(){
  const layers=componentProject().textLayers||[];
  for(const b of document.querySelectorAll('#text-track .text-block'))b.classList.toggle('selected',b.dataset.textId===selectedText);
  const layer=layers.find(t=>t.id===selectedText);$('text-properties').hidden=!layer;
+ $('add-blur').disabled=busy||!project().clips.length||(project().shapeLayers||[]).filter(t=>t.type==='blur').length>=MAX_BLUR_LAYERS;
  $('add-text').disabled=busy||!project().clips.length;for(const type of Object.keys(SHAPES))$('add-shape-'+type).disabled=busy||!project().clips.length;
  if(!layer)return;
  const style=textLook(layer);

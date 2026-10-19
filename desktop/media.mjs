@@ -1,3 +1,4 @@
+import {blurMaskAss,blurFilterGraph} from './blur-render.mjs';
 import {audioEQFilter} from '../src/audio-eq.mjs';
 import {prepareExportWindow} from '../src/export-range.mjs';
 import {sliceClip} from '../src/clip-slicing.mjs';
@@ -146,7 +147,9 @@ export async function renderProject(project,registry,destination,{height=720,sig
       const component=[...(scene.textLayers||[]),...(scene.shapeLayers||[]),...(scene.imageLayers||[]),...(scene.videoLayers||[])].find(t=>t.id===id);if(sceneWindow&&component&&(component.end<=sceneWindow.start||component.start>=sceneWindow.end))continue;
       const text=scene.textLayers?.find(t=>t.id===id),words=id==='@captions'?captions:text?[text]:null;
       const shape=scene.shapeLayers?.find(t=>t.id===id);
-      if(words||shape){
+      if(shape?.type==='blur'){
+        const mask=path.join(temp,`blur-${filters.length}.ass`),next=`layer${filters.length}`;await writeFile(mask,blurMaskAss(shape,size.width,size.height,sceneWindow));filters.push(...blurFilterGraph(shape,previous,next,size.width,mask,fonts,escape));previous=next;
+      }else if(words||shape){
         if(words&&!words.length)continue;
         const ass=path.join(temp,`text-${filters.length}.ass`),next=`layer${filters.length}`;
         await writeFile(ass,shape?shapeAss(shape,size.width,size.height,sceneWindow):toAss(words,size.width,size.height,scene.captionStyle,sceneWindow));

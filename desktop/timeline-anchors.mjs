@@ -2,7 +2,7 @@
 // An anchor names words of a clip's transcript or a stretch of its source; it is placed where that material plays.
 import {planningLineage} from '../src/project.mjs';
 import {clipDuration} from '../src/clip-time.mjs';
-const ANCHORED=['place_overlay','place_still','place_text','select_export_ranges'],RESHAPING=['insert_clip','move_range','trim','split','delete','move','remove_ranges','keep_ranges','adjust_ranges','adjust_timeline','freeze_frame'];
+const ANCHORED=['place_blur','place_overlay','place_still','place_text','select_export_ranges'],RESHAPING=['insert_clip','move_range','trim','split','delete','move','remove_ranges','keep_ranges','adjust_ranges','adjust_timeline','freeze_frame'];
 const fail=message=>{throw Error(message);};
 function sourceSpan(project,anchor,transcripts){
  const clip=project.clips.find(c=>c.id===anchor?.clipId);if(!clip)fail(`Trecho ${anchor?.clipId} não encontrado para ancorar o componente.`);
@@ -41,6 +41,7 @@ export function resolveAnchoredOperations(project,result,transcripts=[]){
   }
   const {start,end}=timelineSpan(run,sourceSpan(project,op.anchor,transcripts)),{id,x,y,width,rotation,opacity}=op.layer||{};
   if(op.type==='place_text')return {type:'add_text',layer:{id:op.layer?.id,text:op.layer?.text,start,end,style:op.layer?.style}};
+  if(op.type==='place_blur')return {type:'add_blur',layer:{...op.layer,start,end}};
   const asset=project.assets.find(a=>a.id===op.layer?.assetId);if(!asset||asset.kind==='audio')fail('Mídia do componente não encontrada.');
   if(asset.kind==='image')return {type:'add_image',layer:{id,assetId:asset.id,start,end,x,y,width,rotation,opacity}};
   if(!Number.isFinite(op.layer.in)||op.layer.in<0||op.layer.in>=asset.duration||(op.type!=='place_still'&&op.layer.in+end-start>asset.duration+.000001))fail(`O trecho da fonte de ${id} não cabe na mídia: in + duração passa de ${asset.duration} s.`);
