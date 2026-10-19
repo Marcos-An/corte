@@ -187,6 +187,7 @@ jobs:
           fi
           node tests/import-progress.e2e.mjs
           node tests/project-hydration.e2e.mjs
+          node tests/relink-folder.e2e.mjs
           node tests/project-save.e2e.mjs
           node tests/save-reopen.e2e.mjs
           node tests/playhead-scroll.e2e.mjs

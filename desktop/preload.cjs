@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('editor',{
   recordingDisarm:()=>invoke('editor:recording-disarm'),
   recordingSave:(bytes,mime)=>invoke('editor:recording-save',bytes,mime),
   importMedia:kind=>invoke('editor:import',kind),
+  relinkFolder:project=>invoke('editor:relink-folder',project),
   relink:assetId=>invoke('editor:relink',assetId),
   saveProject:(project,history,mode)=>invoke('editor:save',project,history,mode),
   onSaveProject:listener=>{const handler=(_event,mode)=>listener(mode);ipcRenderer.on('editor:save-project',handler);return ()=>ipcRenderer.removeListener('editor:save-project',handler);},

@@ -1,11 +1,12 @@
 import {spawn} from 'node:child_process';
+import {progressHeartbeat} from './progress-heartbeat.mjs';
 import {mkdir,mkdtemp,writeFile,readFile,rm} from 'node:fs/promises';import path from 'node:path';
 import {planSchema,buildPrompt,codexArgs,codexExecutable,codexEnv,loginStatus,codexFailure} from './ai.mjs';
 import {validateProject,validatePlan,simulatePlan} from '../src/project.mjs';
 import {requestQualityPlan} from './quality.mjs';
 import {assertCaptionProviderPlan} from '../src/caption-plan.mjs';
 const schema={type:'object',properties:{route:{type:'string',enum:['local_quality','edit_plan','unsupported_visual']},plan:{anyOf:[planSchema,{type:'null'}]}},required:['route','plan'],additionalProperties:false};
-export async function interpretIntent({home,cache,project,prompt,signal,scopeClipId=null}){
+export async function interpretIntent({home,cache,project,prompt,signal,scopeClipId=null,onProgress=()=>{}}){
  if(!(await loginStatus(home)).connected)throw new Error('Conecte sua conta ChatGPT para interpretar o pedido. Nenhuma imagem será enviada.');
  await mkdir(cache,{recursive:true});const temp=await mkdtemp(path.join(cache,'intent-'));
  try{const schemaFile=path.join(temp,'schema.json'),result=path.join(temp,'result.json');await writeFile(schemaFile,JSON.stringify(schema));
@@ -15,7 +16,8 @@ edit_plan: somente operações determináveis pelo texto/metadados, sem ver víd
  const contract=buildPrompt(project,prompt,[],{scopeClipId});
  const bin=codexExecutable();const output=await new Promise((resolve,reject)=>{
   const child=spawn(bin.file,[...bin.prefix,...codexArgs(schemaFile,result,[])],{cwd:temp,env:{...codexEnv(process.env),...bin.env,CODEX_HOME:home},signal,windowsHide:true});let text='',settled=false;const timer=setTimeout(()=>child.kill(),120000);
-  const finish=error=>{if(settled)return;settled=true;clearTimeout(timer);error?reject(error):resolve(text);};child.stderr.resume();child.stdout.on('data',d=>{text+=d;if(text.length>2e6){child.kill();finish(new Error('Resposta muito grande.'));}});child.stdin.on('error',()=>{});child.stdin.end(input+'\n'+contract);
+  const stopHeartbeat=progressHeartbeat({stage:'intent'},onProgress);
+  const finish=error=>{if(settled)return;settled=true;clearTimeout(timer);stopHeartbeat();error?reject(error):resolve(text);};child.stderr.resume();child.stdout.on('data',d=>{text+=d;if(text.length>2e6){child.kill();finish(new Error('Resposta muito grande.'));}});child.stdin.on('error',()=>{});child.stdin.end(input+'\n'+contract);
   child.on('error',()=>finish(new Error(signal?.aborted?'Análise cancelada.':'Não foi possível interpretar o pedido.')));child.on('close',code=>finish(code===0?null:new Error(signal?.aborted?'Análise cancelada.':codexFailure(text))));
  });
  const events=output.trim().split('\n').map(s=>{try{return JSON.parse(s)}catch{return {}}});

@@ -237,3 +237,11 @@ O formato global, os clipes e os volumes não mudam. Crop, camadas e posições 
 Em **Configurações → Prévia leve**, **Preparar prévias** cria cópias locais H.264 de até 720 px no lado maior, a 30 fps. A preparação é manual, sequencial, pode ser cancelada e reaproveita cópias válidas. Vídeo principal, transições e vídeos sobrepostos podem usá-las. Crop e velocidade continuam proporcionais; o áudio da prévia é recodificado em AAC. **Usar cópias leves na edição** alterna a comparação com os originais. A preferência fica neste computador e não altera o projeto.
 
 Exportação, análise da IA, legendas e cópia portátil continuam usando os originais. O cache é separado de modelos e miniaturas e invalida a cópia quando a assinatura do arquivo muda. **Limpar prévias** remove essas cópias e volta ao original; os originais permanecem necessários e não são modificados. Falha de decodificação da cópia também retorna ao original. Preparar ocupa espaço em disco e exige processamento inicial; não é garantia de fluidez em toda configuração. Este recurso ainda não está na versão pública 0.6.6.
+
+## Relocalizar por pasta — em desenvolvimento após 0.6.6
+
+Quando faltarem mídias, **Localizar pasta…** procura na pasta escolhida e nas subpastas. Usa o nome original salvo, mesmo que o título no editor tenha mudado, e valida duração, dimensões, tipo e presença de áudio. Nomes repetidos ou arquivos incompatíveis permanecem pendentes; **Uma por vez…** continua disponível. Nenhuma pasta é pesquisada automaticamente.
+
+A busca pode ser cancelada e mantém as mídias já vinculadas. Cortes, volumes e histórico não mudam; use **Salvar projeto** para guardar os caminhos novos. Uma busca incompleta pede uma pasta menor e não aplica resultados parciais da varredura. A correspondência usa nomes e metadados, não um hash do conteúdo original ausente. Limites: 20 mil entradas, oito níveis; links para outras pastas não são seguidos.
+
+O progresso da IA distingue interpretação, áudio, cenas, planejamento e conferência. A espera pelo planejador mostra tempo decorrido, sem porcentagem ou previsão inventadas. Narração futura permanece pendente até ser importada: não autoriza silenciar o original, e um corte incerto não deve ser substituído por volume zero. Ajustes manuais explícitos de volume continuam disponíveis.
