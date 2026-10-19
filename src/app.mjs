@@ -10,6 +10,7 @@ import {FONTS,FONT_CATEGORIES} from './fonts.mjs';
 import {TEXT_PRESETS,ENTER_ANIMATIONS,EXIT_ANIMATIONS,presetOf,fullLook,textAppearance} from './text-style.mjs';
 import {editCaption,addCaptionAt,alignCaptions} from './caption-editing.mjs';
 import {analysisSamplingStep,aiProgress,assignLanes,timelineEdgeSpeed,timelinePointerTime,playbackStart,editorPanel,validateScopedPlan,dragCrop,nextClipTime,previewSize,EDIT_STAGES} from './editor-experience.mjs';
+import {INTERVAL_CONTROLS,intervalPatch} from './interval-controls.mjs';
 import {removeTimelineRange,initialRange,moveRange} from './range-selection.mjs';
 import {newEditSession,recordEditStage,editSessionSummary} from './edit-session.mjs';
 import {captionEntries,captionStyle} from './captions.mjs';
@@ -60,6 +61,7 @@ function describeOperation(p,op){
  if(op.type==='trim')return `Aparar · ${name} · ${seconds(op.in)}–${seconds(op.out)}`;
  if(op.type==='split')return `Dividir · ${name} · ${seconds(op.time)}`;
  if(op.type==='move')return `Mover · ${name} · posição ${op.index+1}`;
+ if(op.type==='adjust_timeline')return `Ajustar intervalo da montagem · ${seconds(op.start)}–${seconds(op.end)} · ${JSON.stringify(op.patch)}`;
  if(op.type==='adjust_ranges')return `${({speed:'Velocidade',zoom:'Zoom suave',crop:'Zoom/enquadramento',adjustments:'Ajustes de imagem',volume:'Volume'})[Object.keys(op.patch)[0]]} em trechos · ${name} · ${op.ranges.map(([start,end])=>`${seconds(start)}–${seconds(end)}`).join(', ')} · ${JSON.stringify(Object.values(op.patch)[0])}`.slice(0,4000);
  if(op.ranges)return `${op.type==='keep_ranges'?'Manter':'Remover'} intervalos · ${name} · ${op.ranges.map(([start,end])=>`${seconds(start)}–${seconds(end)}`).join(', ')}`.slice(0,4000);
  return `Remover · ${name}`;
@@ -89,7 +91,7 @@ function updateButtons(){
  const hasSelected=project().clips.some(c=>c.id===selected);$('ai-scope').disabled=busy;$('ai-scope').querySelector('[value=selected]').disabled=!hasSelected;
  if(pending?.scope&&pending.scope!==selected){pending=null;$('proposal').hidden=true;}
  $('analyze').disabled=busy||!project().clips.length||!$('prompt').value.trim()||($('ai-scope').value==='selected'&&!hasSelected);
- $('range-delete').disabled=busy||rangeMode!=='remove'||!rangeSelection;
+ $('range-delete').disabled=busy||rangeMode!=='remove'||!rangeSelection;for(const input of $('interval-adjustments').querySelectorAll('input,select,button'))input.disabled=busy||!rangeSelection;
  $('play').disabled=openingProject||timelineDuration()<=0||!!media.get(clipAt(project(),Math.min(position,Math.max(0,duration(project())-.001)))?.clip.assetId)?.pending;$('connect').disabled=busy||connected;
  for(const type of Object.keys(SHAPES))$('add-shape-'+type).disabled=busy||!project().clips.length;renderComponents();
 }
@@ -251,10 +253,13 @@ const rangeOverlay=document.createElement('div');rangeOverlay.addEventListener('
 rangeOverlay.addEventListener('contextmenu',e=>{
  e.preventDefault();e.stopPropagation();if(busy||!rangeSelection)return;closeClipMenu();
  const menu=document.createElement('div');clipMenu=menu;menu.className='clip-context-menu';menu.setAttribute('role','menu');
- for(const [label,action] of [['Confirmar remoção',()=>$('range-delete').click()],['Cancelar remoção',cancelRange]]){const button=document.createElement('button');button.setAttribute('role','menuitem');button.textContent=label;button.addEventListener('click',()=>{closeClipMenu();action();});menu.append(button);}
+ const actions=rangeMode==='remove'?[['Confirmar remoção',()=>$('range-delete').click()],['Cancelar remoção',cancelRange]]:[['Ajustar seleção',()=>$('interval-property').focus()],['Reproduzir seleção',()=>$('range-play').click()],['Cancelar seleção',cancelRange]];
+ for(const [label,action] of actions){const button=document.createElement('button');button.setAttribute('role','menuitem');button.textContent=label;button.addEventListener('click',()=>{closeClipMenu();action();});menu.append(button);}
  document.body.append(menu);const box=menu.getBoundingClientRect();menu.style.left=`${Math.max(0,Math.min(e.clientX,innerWidth-box.width))}px`;menu.style.top=`${Math.max(0,Math.min(e.clientY,innerHeight-box.height))}px`;menu.firstChild.focus();
 });
 function renderRange(){
+ if(!rangeSelection)rangeMode=false;$('range-mode').setAttribute('aria-pressed',String(rangeMode==='select'));$('mark-remove').setAttribute('aria-pressed',String(rangeMode==='remove'));
+ $('interval-adjustments').hidden=rangeMode!=='select';if(rangeSelection){$('interval-start').value=Number(rangeSelection.start.toFixed(3));$('interval-end').value=Number(rangeSelection.end.toFixed(3));}for(const key of ['start','end'])$('interval-'+key).max=duration(project());
  const marking=rangeMode==='remove'&&!!rangeSelection&&rangeSelection.end-rangeSelection.start>=.02;
  $('mark-remove').hidden=marking;$('range-delete').hidden=$('range-clear').hidden=!marking;
  rangeOverlay.classList.toggle('removal',rangeMode==='remove');document.querySelector('.range-toolbar').classList.toggle('removal',rangeMode==='remove');$('range-play').textContent=rangeMode==='remove'?'▷ Prévia sem o trecho':'▷ Reproduzir seleção';$('range-play').setAttribute('aria-label',rangeMode==='remove'?'Prévia sem o trecho':'Reproduzir seleção');
@@ -275,6 +280,12 @@ function beginRange(e,edge){
 }
 for(const id of ['video-track','audio-track'])$(id).addEventListener('pointerdown',e=>beginRange(e),true);
 function activateRange(mode){if(busy)return;stop();rangeMode=rangeMode===mode?false:mode;cutMode=false;$('video-track').classList.remove('cut-mode');if(rangeMode&&!rangeSelection)rangeSelection=initialRange(position,duration(project()));if(!rangeMode)rangeSelection=null;$('range-mode').setAttribute('aria-pressed',String(rangeMode==='select'));$('mark-remove').setAttribute('aria-pressed',String(rangeMode==='remove'));renderTimeline();}
+for(const [key,control]of Object.entries(INTERVAL_CONTROLS)){const option=document.createElement('option');option.value=key;option.textContent=control.label;$('interval-property').append(option);}
+function intervalControl(){const c=INTERVAL_CONTROLS[$('interval-property').value];for(const key of ['value','slider']){const input=$('interval-'+key);input.min=c.min;input.max=c.max;input.step=c.step;input.value=c.initial;}$('interval-unit').textContent='%';}
+$('interval-property').onchange=intervalControl;intervalControl();
+$('interval-slider').oninput=()=>{$('interval-value').value=$('interval-slider').value;};$('interval-value').oninput=()=>{$('interval-slider').value=$('interval-value').value;};
+for(const edge of ['start','end'])$('interval-'+edge).onchange=guard(()=>{const start=Number($('interval-start').value),end=Number($('interval-end').value);if(!Number.isFinite(start)||!Number.isFinite(end)||start<0||end>duration(project())||end-start<.02){renderRange();throw Error('Informe um início e fim válidos dentro da montagem.');}rangeSelection={start,end};renderRange();updateButtons();});
+$('interval-apply').onclick=guard(()=>{if(busy||!rangeSelection)return;const before={...rangeSelection},oldDuration=duration(project()),property=$('interval-property').value,patch=intervalPatch(property,Number($('interval-value').value));const next=applyPlan(project(),{summary:'Ajustar seleção',questions:[],unsupported:[],operations:[{type:'adjust_timeline',clipId:null,start:before.start,end:before.end,patch}]});commit(next,{label:INTERVAL_CONTROLS[property].label+' no intervalo',details:[`${before.start.toFixed(2)}–${before.end.toFixed(2)} s · ${JSON.stringify(patch)}`]});rangeMode='select';rangeSelection={start:before.start,end:Math.min(duration(next),before.end+duration(next)-oldDuration)};renderRange();updateButtons();seek(before.start);});
 $('range-mode').addEventListener('click',()=>activateRange('select'));
 $('mark-remove').addEventListener('click',()=>activateRange('remove'));
 function cancelRange(){stop();closeClipMenu();rangeMode=false;rangeSelection=null;$('mark-remove').setAttribute('aria-pressed','false');$('range-mode').setAttribute('aria-pressed','false');renderTimeline();}
@@ -970,7 +981,7 @@ $('copy-performance-diagnostics').onclick=guard(async()=>{await bridge.copyPerfo
 async function openSavedProject(token){
  if(busy){if(token)toast('Conclua a operação atual e abra o projeto pelo menu Arquivo.',true);return;}document.activeElement?.blur?.();if(dirty && !confirm('Abrir outro projeto e descartar alterações não salvas?'))return;stop();openingProject=true;setBusy(true,'Abrindo projeto…');
  try{const r=await bridge.openProject(token);
- if(r){$('ai-scope').value='all';mediaHydrationState=r.hydrationId?{id:r.hydrationId,assets:r.assets,pending:r.assets.filter(a=>a.pending).length,errors:[]}:null;lastHydrationErrors=0;projectFileLabel(r.file);selectedCaptionKey=null;history=r.history?History.from(r.history):new History(r.project);media.clear();for(const a of r.assets)media.set(a.id,a);selected=r.project.clips[0]?.id||null;position=0;pending=null;$('proposal').hidden=true;markDirty(false);render();if(r.errors?.length)toast(r.errors.join('\n'),true);else if(r.assets.some(a=>a.missing))toast('Algumas mídias estão ausentes. Clique com o botão direito no trecho para localizar a mídia.',true);if(r.hydrationId)applyMediaState(await bridge.mediaState(r.hydrationId));}
+ if(r){rangeSelection=null;rangeMode=false;$('ai-scope').value='all';mediaHydrationState=r.hydrationId?{id:r.hydrationId,assets:r.assets,pending:r.assets.filter(a=>a.pending).length,errors:[]}:null;lastHydrationErrors=0;projectFileLabel(r.file);selectedCaptionKey=null;history=r.history?History.from(r.history):new History(r.project);media.clear();for(const a of r.assets)media.set(a.id,a);selected=r.project.clips[0]?.id||null;position=0;pending=null;$('proposal').hidden=true;markDirty(false);render();if(r.errors?.length)toast(r.errors.join('\n'),true);else if(r.assets.some(a=>a.missing))toast('Algumas mídias estão ausentes. Clique com o botão direito no trecho para localizar a mídia.',true);if(r.hydrationId)applyMediaState(await bridge.mediaState(r.hydrationId));}
  }finally{openingProject=false;setBusy(false);}
 }
 async function relinkAssets(assets){if(busy)return;stop();setBusy(true,'Localizando mídias…',false);try{for(const asset of assets){const result=await bridge.relink(asset);if(!result)break;media.set(asset.id,result);markDirty();render();}}finally{setBusy(false);}}

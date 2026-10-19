@@ -1,5 +1,7 @@
 import {KEYFRAME_FIELDS,keyframeAt,retimeKeyframes,validateKeyframes,validateMotion} from './keyframes.mjs';
 import {clipSpeed,clipDuration,sourceTime,zoomAt} from './clip-time.mjs';
+import {DEFAULT_ADJUSTMENTS} from './color-adjustments.mjs';
+import {sliceClip} from './clip-slicing.mjs';
 import {FONT_FAMILIES} from './fonts.mjs';
 import {validateTranscript,captionStyle} from './captions.mjs';
 const clone = value => structuredClone(value);
@@ -74,7 +76,7 @@ export function validateProject(p) {
     if(c.freeze!==undefined&&(!finite(c.freeze)||c.freeze<.1||c.freeze>10||p.assets.find(x=>x.id===c.assetId)?.kind==='image'||c.out-c.in>.1||c.speed!==undefined&&c.speed!==1))fail('Quadro congelado inválido: use de 0,1 a 10 segundos em um único quadro de vídeo.');
     if(c.zoom!==undefined){const z=c.zoom;if(!z||typeof z!=='object'||Object.keys(z).some(k=>!['from','to'].includes(k))||![z.from,z.to].every(finite)||z.from<1||z.from>2||z.to<1||z.to>2)fail('Zoom suave inválido. Use fatores de 1 a 2.');}
     if(c.adjustments!==undefined){const a=c.adjustments;if(!a||typeof a!=='object'||Object.keys(a).some(k=>!['brightness','contrast','saturation','temperature','sharpness'].includes(k))||![a.brightness,a.contrast,a.saturation].every(finite)||a.brightness< -1||a.brightness>1||a.contrast<0||a.contrast>2||a.saturation<0||a.saturation>2||a.temperature!==undefined&&(!finite(a.temperature)||a.temperature< -1||a.temperature>1)||a.sharpness!==undefined&&(!finite(a.sharpness)||a.sharpness<0||a.sharpness>1))fail('Ajustes de imagem inválidos.');}
-    validateAudioFades(c);clips.add(c.id);
+    validateAudioFades(c);if(c.fadeWindow!==undefined){const w=c.fadeWindow;if(!w||Object.keys(w).some(k=>!['offset','duration','scale'].includes(k))||![w.offset,w.duration,w.scale].every(finite)||w.offset<0||w.duration<=0||w.duration>21600||w.scale<=0||w.scale>64||w.offset+clipDuration(c)*w.scale>w.duration+1e-5)fail('Continuidade dos fades inválida.');}clips.add(c.id);
   }
   validateTransitions(p);
   return p;
@@ -107,17 +109,17 @@ export function editProject(p,op) {
       const z=zoomAt(c,(op.time-c.in)/clipSpeed(c));if(z>1)still.zoom={from:z,to:z};
       if(op.time-c.in<.02)q.clips.splice(index,0,still);
       else if(c.out-op.time<.02)q.clips.splice(index+1,0,still);
-      else{const right={...clone(c),id:id(),in:op.time};c.out=op.time;if(c.fadeOut!==undefined)c.fadeOut=0;if(right.fadeIn!==undefined)right.fadeIn=0;q.clips.splice(index+1,0,still,right);}
+      else{const right=sliceClip(c,op.time,c.out,id());Object.assign(c,sliceClip(c,c.in,op.time));if(!c.fadeWindow&&c.fadeOut!==undefined)c.fadeOut=0;if(!right.fadeWindow&&right.fadeIn!==undefined)right.fadeIn=0;q.clips.splice(index+1,0,still,right);}
       break;
     }
     case 'split': {
       if(!finite(op.time) || op.time-c.in<.02 || c.out-op.time<.02) fail('Posicione o cursor dentro do trecho para dividir.');
-      const right={...clone(c),id:op.newId||id(),in:op.time};if(c.fadeOut!==undefined)c.fadeOut=0;if(right.fadeIn!==undefined)right.fadeIn=0;c.out=op.time;q.clips.splice(index+1,0,right);for(const t of q.transitions||[])if(t.leftId===c.id)t.leftId=right.id;break;
+      const right=sliceClip(c,op.time,c.out,op.newId||id());Object.assign(c,sliceClip(c,c.in,op.time));if(!c.fadeWindow&&c.fadeOut!==undefined)c.fadeOut=0;if(!right.fadeWindow&&right.fadeIn!==undefined)right.fadeIn=0;c.out=op.time;q.clips.splice(index+1,0,right);for(const t of q.transitions||[])if(t.leftId===c.id)t.leftId=right.id;break;
     }
-    case 'trim': c.in=op.in;c.out=op.out;break;
+    case 'trim': Object.assign(c,sliceClip(c,op.in,op.out));break;
     case 'delete': q.clips.splice(index,1);break;
     case 'move': if(!Number.isInteger(op.index) || op.index<0 || op.index>=q.clips.length) fail('Posição inválida.');q.clips.splice(index,1);q.clips.splice(op.index,0,c);break;
-    case 'update': for(const key of ['volume','crop','background','backgroundColor','fadeIn','fadeOut','adjustments','speed','zoom','freeze']) if(key in op){if(key==='zoom'&&(op.zoom===null||op.zoom.from===1&&op.zoom.to===1))delete c.zoom;else c[key]=clone(op[key]);}break;
+    case 'update': if('adjustments' in op)planFields(op.adjustments,Object.keys(DEFAULT_ADJUSTMENTS));if(('fadeIn' in op||'fadeOut' in op)&&c.fadeWindow)delete c.fadeWindow;if('speed' in op&&c.fadeWindow&&finite(op.speed)&&op.speed>0)c.fadeWindow.scale*=op.speed/clipSpeed(c);for(const key of ['volume','crop','background','backgroundColor','fadeIn','fadeOut','adjustments','speed','zoom','freeze']) if(key in op){if(key==='zoom'&&(op.zoom===null||op.zoom.from===1&&op.zoom.to===1))delete c.zoom;else c[key]=key==='adjustments'?{brightness:0,contrast:1,saturation:1,...c.adjustments,...clone(op[key])}:clone(op[key]);}break;
     default: fail('Operação ainda não suportada.');
   }
   return validateProject(reconcileTransitions(q));
@@ -146,7 +148,7 @@ export class History {
     const h=new History(data.entries[0].state);h.entries=clone(data.entries);h.cursor=data.cursor;return h;
   }
 }
-const keys={insert_clip:['index','clip'],move_range:['clipId','sourceStart','sourceEnd','index'],add_audio:['track'],split:['clipId','time'],trim:['clipId','in','out'],delete:['clipId'],move:['clipId','index'],update:['clipId','volume','crop','speed','background','backgroundColor','adjustments','fadeIn','fadeOut','zoom','freeze'],set_aspect:['aspect'],remove_ranges:['clipId','ranges'],keep_ranges:['clipId','ranges'],freeze_frame:['clipId','time','duration'],adjust_ranges:['clipId','ranges','patch'],set_transition:['leftId','rightId','effect','duration'],set_transition_at:['index','effect','duration','makeRoom'],edit_audio:['audioId','patch'],add_text:['layer'],add_image:['layer'],add_video:['layer'],add_shape:['layer'],edit_component:['layerId','patch'],remove_component:['layerId'],move_component:['layerId','direction'],set_keyframe:['layerId','time','pose'],remove_keyframe:['layerId','time'],set_motion:['layerId','enter','exit']};
+const keys={adjust_timeline:['clipId','start','end','patch'],insert_clip:['index','clip'],move_range:['clipId','sourceStart','sourceEnd','index'],add_audio:['track'],split:['clipId','time'],trim:['clipId','in','out'],delete:['clipId'],move:['clipId','index'],update:['clipId','volume','crop','speed','background','backgroundColor','adjustments','fadeIn','fadeOut','zoom','freeze'],set_aspect:['aspect'],remove_ranges:['clipId','ranges'],keep_ranges:['clipId','ranges'],freeze_frame:['clipId','time','duration'],adjust_ranges:['clipId','ranges','patch'],set_transition:['leftId','rightId','effect','duration'],set_transition_at:['index','effect','duration','makeRoom'],edit_audio:['audioId','patch'],add_text:['layer'],add_image:['layer'],add_video:['layer'],add_shape:['layer'],edit_component:['layerId','patch'],remove_component:['layerId'],move_component:['layerId','direction'],set_keyframe:['layerId','time','pose'],remove_keyframe:['layerId','time'],set_motion:['layerId','enter','exit']};
 const visualPlanFields=['start','end','x','y','width','rotation','opacity'];
 const textPlanFields=['text','start','end','style'];
 const stylePlanFields=['font','size','color','position','preset','positionX','positionY','width','accent','strokeColor','strokeWidth','shadow','shadowColor','spacing','boxColor','boxOpacity','bold','italic','uppercase','hollow','accentLast','glowColor','glow','enter','exit'];
@@ -209,10 +211,12 @@ export function validatePlan(p,plan) {
     const allowed=keys[op?.type];if(!allowed || (op.type==='update'? !('clipId' in op):allowed.some(k=>k!=='makeRoom'&&!(k in op))) || Object.keys(op).some(k=>k!=='type' && !allowed.includes(k))) fail('Operação da IA inválida.');
     if(op.type==='update'&&op.crop)planFields(op.crop,['x','y','w','h']);
     if(op.type==='update' && !keys.update.slice(1).some(k=>k in op)) fail('Ajuste vazio.');
-    if(op.type==='adjust_ranges'){planFields(op.patch,['speed','crop','adjustments','volume','zoom']);if(op.patch.crop)planFields(op.patch.crop,['x','y','w','h']);}
+    if(['adjust_ranges','adjust_timeline'].includes(op.type)){planFields(op.patch,['speed','crop','adjustments','volume','zoom']);if(op.patch.crop)planFields(op.patch.crop,['x','y','w','h']);if(op.patch.adjustments)planFields(op.patch.adjustments,Object.keys(DEFAULT_ADJUSTMENTS));}
+    if(op.type==='update'&&op.adjustments)planFields(op.adjustments,Object.keys(DEFAULT_ADJUSTMENTS));
+    if(op.type==='adjust_timeline'&&(![op.start,op.end].every(finite)||op.start<0||op.end-op.start<.02||op.clipId!==null&&(typeof op.clipId!=='string'||!p.clips.some(c=>c.id===op.clipId))))fail('Intervalo da montagem inválido.');
     if(['remove_ranges','keep_ranges','adjust_ranges'].includes(op.type)) {
       const c=p.clips.find(c=>c.id===op.clipId),a=p.assets.find(a=>a.id===c?.assetId);
-      if(!a || !Array.isArray(op.ranges) || op.ranges.length>100 || op.ranges.some(r=>!Array.isArray(r) || r.length!==2 || !r.every(finite) || r[0]<0 || r[1]<=r[0] || r[1]>a.duration+.000001)) fail('Intervalos da IA inválidos.');
+      if(!a || !Array.isArray(op.ranges) || op.ranges.length>100 || op.ranges.some(r=>!Array.isArray(r) || r.length!==2 || !r.every(finite) || r[0]<0 || r[1]<=r[0] || r[1]>(a.kind==='image'?21600:a.duration)+.000001)) fail('Intervalos da IA inválidos.');
     }
   }
   return plan;
@@ -226,7 +230,17 @@ export function planLineage(p,plan) {
   validatePlan(p,plan);let q=clone(p);
   // A frozen frame belongs to its clip's lineage but holds one instant: updates and range edits of the clip skip it.
   const root=new Map(q.clips.map(c=>[c.id,c.id])),family=clipId=>q.clips.filter(c=>root.get(c.id)===clipId&&!c.freeze);
-  for(const op of plan.operations) {
+  const queue=[...plan.operations];for(let operationIndex=0;operationIndex<queue.length;operationIndex++){
+    const op=queue[operationIndex];
+    if(op.type==='adjust_timeline'){
+      const members=op.clipId===null?q.clips:q.clips.filter(c=>c.id===op.clipId||root.get(c.id)===op.clipId),total=members.reduce((n,c)=>n+clipDuration(c),0);
+      if(!members.length||op.end>total+1e-6)fail('O intervalo ultrapassa a duração atual da montagem ou do trecho selecionado.');
+      let offset=0;const edits=[];for(const c of members){const length=clipDuration(c),start=Math.max(op.start,offset),end=Math.min(op.end,offset+length);if(end-start>=.000001){
+       if(c.freeze){if(start>offset+1e-6||end<offset+length-1e-6)fail('Selecione o quadro congelado inteiro para ajustar suas propriedades.');edits.push({type:'update',clipId:c.id,...op.patch});}
+       else edits.push({type:'adjust_ranges',clipId:c.id,ranges:[[Math.max(c.in,c.in+(start-offset)*clipSpeed(c)),Math.min(c.out,c.in+(end-offset)*clipSpeed(c))]],patch:op.patch});
+      }offset+=length;}
+      if(!edits.length)fail('O intervalo não contém mídia para ajustar.');queue.splice(operationIndex+1,0,...edits);continue;
+    }
     if(op.type==='move_range'){
       if(!finite(op.sourceStart)||!finite(op.sourceEnd)||op.sourceStart<0||op.sourceEnd-op.sourceStart<.02||!Number.isInteger(op.index)||op.index<0)fail('Intervalo ou destino de movimento inválido.');
       const members=family(op.clipId);if(!members.length||members.some(c=>c.freeze))fail('Trecho de origem não encontrado para mover.');
@@ -238,7 +252,7 @@ export function planLineage(p,plan) {
         // Never silently discard a sub-frame remainder at a requested boundary.
         if(ranges.reduce((n,[a,b])=>n+b-a,0)<c.out-c.in-1e-6)fail('A borda do intervalo deixaria um fragmento menor que 0,02 s. Ajuste os tempos.');
         for(const [i,[a,b,moving]]of ranges.entries()){
-          const piece={...clone(c),id:i===0?c.id:id(),in:a,out:b};
+          const piece=sliceClip(c,a,b,i===0?c.id:id());
           if(c.zoom)piece.zoom={from:zoomAt(c,(a-c.in)/clipSpeed(c)),to:zoomAt(c,(b-c.in)/clipSpeed(c))};
           if(a>c.in&&piece.fadeIn!==undefined)piece.fadeIn=0;if(b<c.out&&piece.fadeOut!==undefined)piece.fadeOut=0;
           root.set(piece.id,root.get(c.id));if(moving){selected.push(piece);}else remaining.push(piece);
@@ -261,8 +275,8 @@ export function planLineage(p,plan) {
       if(op.type!=='keep_ranges'){segments=[];let cursor=c.in;for(const [start,end] of merged){if(start>cursor)segments.push({in:cursor,out:start});if(op.type==='adjust_ranges')segments.push({in:start,out:end,patched:true});cursor=end;}if(cursor<c.out)segments.push({in:cursor,out:c.out});}
       // An adjustment never cuts: a sliver shorter than a piece is merged into its neighbour instead of vanishing.
       if(op.type==='adjust_ranges'){const kept=[];for(const s of segments){if(s.out-s.in<.02&&kept.length)kept.at(-1).out=s.out;else kept.push({...s});}if(kept.length>1&&kept[0].out-kept[0].in<.02){kept[1].in=kept[0].in;kept.shift();}segments=kept;}
-      const pieces=segments.filter(s=>s.out-s.in>=.02).map((s,i)=>({...clone(c),id:i===0?c.id:id(),in:s.in,out:s.out}));
-      for(const [i,piece] of pieces.entries()){root.set(piece.id,root.get(c.id));if(i>0&&piece.fadeIn!==undefined)piece.fadeIn=0;if(i<pieces.length-1&&piece.fadeOut!==undefined)piece.fadeOut=0;}
+      const pieces=segments.filter(s=>s.out-s.in>=.02).map((s,i)=>sliceClip(c,s.in,s.out,i===0?c.id:id(),{preserveFades:op.type==='adjust_ranges'}));
+      for(const [i,piece] of pieces.entries()){root.set(piece.id,root.get(c.id));if(op.type!=='adjust_ranges'){if(i>0&&piece.fadeIn!==undefined)piece.fadeIn=0;if(i<pieces.length-1&&piece.fadeOut!==undefined)piece.fadeOut=0;}}
       q.clips.splice(index,1,...pieces);reconcileTransitions(q);validateProject(q);
       if(op.type==='adjust_ranges')for(const [i,s] of segments.filter(s=>s.out-s.in>=.02).entries())if(s.patched)q=applyPlanOperation(q,{type:'update',clipId:pieces[i].id,...op.patch});
     }

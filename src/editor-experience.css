@@ -607,3 +607,13 @@ dialog>.context-heading strong{font-size:15px}
 /* Status rows wrap instead of squeezing their actions in smaller windows. */
 body>.busy-message{flex-wrap:wrap}
 body>.busy-message button{flex-shrink:0}
+.range-toolbar{flex-wrap:wrap;gap:8px}
+.timeline-toolbar #range-mode{display:inline-flex}
+#interval-adjustments{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:0;padding:8px;border:1px solid var(--border,#41434b);border-radius:8px;min-width:0;width:100%;box-sizing:border-box}
+#interval-adjustments[hidden]{display:none}
+#interval-adjustments legend{font-size:11px;padding:0 5px;color:var(--muted)}
+#interval-adjustments label{display:flex;align-items:center;gap:5px;font-size:11px}
+#interval-adjustments input[type=number]{width:76px;min-width:0;padding:5px}
+#interval-adjustments select{width:120px;min-width:0;padding:5px}
+#interval-slider{width:120px;min-width:80px;flex:1}
+#interval-apply{flex-shrink:0}

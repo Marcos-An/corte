@@ -2,7 +2,7 @@
 // An anchor names words of a clip's transcript or a stretch of its source; it is placed where that material plays.
 import {planLineage} from '../src/project.mjs';
 import {clipDuration} from '../src/clip-time.mjs';
-const ANCHORED=['place_overlay','place_still','place_text'],RESHAPING=['insert_clip','move_range','trim','split','delete','move','remove_ranges','keep_ranges','adjust_ranges','freeze_frame'];
+const ANCHORED=['place_overlay','place_still','place_text'],RESHAPING=['insert_clip','move_range','trim','split','delete','move','remove_ranges','keep_ranges','adjust_ranges','adjust_timeline','freeze_frame'];
 const fail=message=>{throw Error(message);};
 function sourceSpan(project,anchor,transcripts){
  const clip=project.clips.find(c=>c.id===anchor?.clipId);if(!clip)fail(`Trecho ${anchor?.clipId} não encontrado para ancorar o componente.`);

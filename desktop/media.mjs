@@ -1,3 +1,4 @@
+import {sliceClip} from '../src/clip-slicing.mjs';
 import {clipSpeed,clipDuration,zoomAt} from '../src/clip-time.mjs';
 import {adjustmentFilter} from '../src/color-adjustments.mjs';
 // Smooth zoom: zoompan keeps the framed size and recentres every frame (a per-frame scale + crop drifted to a corner).
@@ -70,12 +71,12 @@ export function dimensions(aspect,height=720) {
 function tempoFilter(speed){const filters=[];while(speed<.5){filters.push('atempo=0.5');speed/=.5;}while(speed>2){filters.push('atempo=2');speed/=2;}if(speed!==1)filters.push('atempo='+speed);return filters.length?filters.join(',')+',':'';}
 // A transition re-renders a window of the clip: its smooth zoom continues from where the clip is, not from the start.
 export function transitionSegment(c,start,end){
- const piece={...c,in:start,out:end};if(c.zoom)piece.zoom={from:zoomAt(c,(start-c.in)/clipSpeed(c)),to:zoomAt(c,(end-c.in)/clipSpeed(c))};return piece;
+ return sliceClip(c,start,end);
 }
 export function buildSegmentArgs(c,a,input,out,aspect,height=720) {
   validateProject({version:1,name:'Render',aspect,assets:[a],clips:[c]});
   // A frozen frame loops its first decoded frame for the hold; its sound is silence.
-  const speed=clipSpeed(c),timing=c.freeze?'trim=end_frame=1,loop=loop=-1:size=1:start=0,setpts=N/30/TB,':speed===1?'':`trim=duration=${c.out-c.in},setpts=(PTS-STARTPTS)/${speed},`,audioTiming=speed===1?'':`atrim=duration=${c.out-c.in},asetpts=PTS-STARTPTS,${tempoFilter(speed)}`;
+  const speed=clipSpeed(c),timing=c.freeze?'trim=end_frame=1,loop=loop=-1:size=1:start=0,setpts=N/30/TB,':speed===1?'':`trim=duration=${c.out-c.in},setpts=(PTS-STARTPTS)/${speed},`,audioTiming=speed===1?'asetpts=PTS-STARTPTS,':`atrim=duration=${c.out-c.in},asetpts=PTS-STARTPTS,${tempoFilter(speed)}`;
   const size=dimensions(aspect,height),r=c.crop,bg=c.background==='color'?c.backgroundColor.replace('#','0x'):'black';
   const filter=`${timing}${adjustmentFilter(c.adjustments)}crop=iw*${r.w}:ih*${r.h}:iw*${r.x}:ih*${r.y},${zoomFilter(c,a)}scale=${size.width}:${size.height}:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=${size.width}:${size.height}:(ow-iw)/2:(oh-ih)/2:${bg},setsar=1,fps=30,format=yuv420p`;
   const args=['-hide_banner','-loglevel','error','-y',...(a.kind==='image'?['-loop','1']:['-ss',String(c.in)]),'-i',input];

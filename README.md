@@ -4,7 +4,7 @@ Editor desktop de vídeo com Electron, edição não destrutiva e assistência p
 
 ## Download
 
-Windows **0.6.2**: [downloads e notas da versão](https://github.com/Marcos-An/corte/releases/tag/v0.6.2). As versões anteriores para macOS continuam nas releases anteriores.
+Windows x64 e macOS Apple Silicon **0.6.2**: [downloads e notas da versão](https://github.com/Marcos-An/corte/releases/tag/v0.6.2).
 
 - **macOS Apple Silicon (arm64):** arquivo `.dmg` ou `.zip`. Não há pacote Intel nesta versão.
 - **Windows x64:** instalador `Corte.Setup.0.6.2.exe`.
@@ -27,6 +27,8 @@ A Release inclui fontes correspondentes das ferramentas GPL e `SHA256SUMS`. O ZI
 - Menu à esquerda por padrão, alternável para baixo nas configurações.
 - Projetos `.corte` editáveis, relocalização de mídia e MP4 H.264/AAC em 720p/1080p.
 
+Na versão em desenvolvimento, **Selecionar trecho** permite informar início/fim em segundos e aplicar volume, brilho, contraste, saturação, temperatura, nitidez, velocidade ou zoom apenas nesse intervalo, inclusive atravessando clipes. Cada aplicação entra no histórico e preserva os demais ajustes. Alterar velocidade muda a duração selecionada. Ajustes sucessivos preservam a posição do zoom e dos fades existentes. Quadros congelados devem ser selecionados inteiros.
+
 ### Salvar e reabrir
 
 - **Salvar / Ctrl+S:** atualiza o arquivo aberto. Na primeira gravação, escolha um nome; `.corte` é acrescentado se omitido, com confirmação antes de substituir um destino existente.
@@ -39,13 +41,15 @@ Projetos antigos com referências absolutas continuam legíveis. Cópias portát
 
 ## IA e privacidade
 
-A assistência de edição utiliza a conta ChatGPT conectada pelo app. O fluxo atual interpreta texto/metadados para montar um plano validado de operações; planos válidos são aplicados em um único histórico. Erros, pedidos não suportados ou que precisam de esclarecimento não aplicam parte do plano.
+A assistência utiliza a conta ChatGPT conectada pelo app. O modo por texto interpreta metadados e tempos explícitos; um pedido com recursos não suportados ou perguntas não aplica operações. O modo híbrido transcreve localmente e compartilha a transcrição e quadros selecionados após autorização. Ele apresenta uma proposta revisável, com alterações independentes possíveis e pendências explícitas; não equivale a concluir automaticamente todo pedido.
 
 Para transições, componentes e trilhas independentes, use **Montagem inteira**. **Trecho selecionado** limita as alterações ao clipe escolhido.
 
-A IA não reconhece semanticamente pessoas/ações nem corta pelo conteúdo da fala nesse fluxo. O detector local de nitidez é uma heurística, não um substituto para esses critérios. O código inclui caminhos visuais experimentais, mas sua presença não significa que estejam disponíveis no fluxo ativo.
+No modo híbrido, palavras com tempos confiáveis podem orientar cortes de fala; quadros amostrados podem sustentar decisões visuais. Amostras não comprovam eventos nas lacunas nem o instante exato de toda ação. Tempos incertos e recursos ausentes ficam pendentes. O detector local de nitidez é uma heurística e não identifica pessoas, pratos, ingredientes ou ações por si só. Informações oficiais como endereço/data precisam ser fornecidas; não são inventadas.
 
-Geração de legendas na nuvem usa uma chave OpenAI configurada pelo usuário; seu áudio é enviado ao provedor nessa ação. Há também código de transcrição local que depende de modelos externos. Testes opt-in de IA/transcrição podem consumir cota/créditos ou enviar mídia: leia o teste e autorize o material antes de executar.
+Na versão em desenvolvimento, pedidos completos resolvíveis por texto/metadados passam por uma rota rápida no fluxo padrão: não transcrevem nem decodificam mídia, mas continuam exigindo revisão antes de aplicar. Pedidos visuais, mistos, ambíguos e edição por etapas seguem para a análise com evidências. Essa otimização não acelera a inferência visual em si.
+
+Há transcrição local com modelos instalados/verificados pelo aplicativo e reutilização de análises em cache. Geração de legendas na nuvem usa uma chave OpenAI configurada pelo usuário; seu áudio é enviado ao provedor nessa ação. Testes opt-in de IA/transcrição podem consumir cota/créditos ou enviar mídia: leia o teste e autorize o material antes de executar. `tests/complex-prompts.live.mjs` testa pedidos reais usando apenas metadados sintéticos, com `CORTE_TEST_CODEX_HOME` e `CORTE_PROMPT_REPORT` definidos explicitamente.
 
 Credenciais, cookies, caches, gravações e mídias do usuário pertencem aos dados locais do aplicativo e **não devem ser adicionados ao Git**. Não há credenciais incluídas no repositório. Limites/custos dependem da conta e do uso; não há promessa de custo zero.
 
