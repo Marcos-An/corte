@@ -184,7 +184,7 @@ body.preview-focus #timeline-resizer{display:none}
 .caption-block.selected:not(.compact) .trim-handle{display:flex;opacity:1;width:7px;background:#b8a1bb;color:#242027}
 .caption-block.selected:not(.compact){padding:0 9px}
 .caption-row.selected{border-color:#b8a1bb;background:#29232c}
-.caption-row-actions{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px}
+.caption-row-actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-top:8px}
 .caption-row-actions button{font-size:11px;padding:7px 9px;border-radius:7px;background:#303035;color:#eee}
 .caption-row-actions .caption-remove{background:transparent;color:#bdb2c0}
 #caption-timing-status{font-size:10px;color:#d4c0d6;white-space:nowrap}

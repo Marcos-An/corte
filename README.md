@@ -219,3 +219,9 @@ Prévia e MP4 usam o mesmo cálculo de filtros biquad, adaptado à taxa da prév
 Em **Componentes → Desfoque**, escolha uma área oval ou retangular e ajuste posição, largura, altura, rotação, intensidade e opacidade. Há até oito áreas por montagem. Os pontos de animação existentes permitem mover, ampliar e suavizar o trajeto manualmente; o tamanho animado conserva a proporção. A ordem das camadas determina o conteúdo afetado, inclusive textos abaixo da área. Revise o efeito durante toda a duração.
 
 O desfoque funciona na prévia e no MP4, inclusive na exportação por intervalo, com desfazer/refazer e salvar/reabrir. Pedidos por prompt podem criar regiões e editar seus controles; referências à fala acompanham cortes e velocidade. Não há rastreamento automático: pedidos para seguir pessoas ou objetos sem trajetória permanecem pendentes. Nenhum modelo adicional é necessário. Recurso ainda fora da versão pública 0.6.6.
+
+## Seleção de vídeo pelo texto — em desenvolvimento após 0.6.6
+
+Em **Legendas → Revisar**, selecione palavras no campo de texto e clique em **Selecionar vídeo**. O intervalo aparece na timeline para ouvir, ajustar, aplicar controles por intervalo ou marcar para remoção e confirmar. Sem seleção de texto, o botão marca a fala inteira. A seleção não edita nem salva a montagem. Editar ou excluir uma legenda continua alterando somente a legenda.
+
+Seleções parciais exigem tempos por palavra já existentes; o editor não estima durações dividindo o texto. Sem esses tempos, use a fala inteira ou gere legendas locais. Os tempos acompanham aparos, velocidade e a instância correta de mídias repetidas. O botão aparece somente no áudio original; a narração não é usada para selecionar/cortar o vídeo. Reconhecimento e legendas importadas podem ter imprecisões: ouça e ajuste a seleção antes de confirmar o corte. Este recurso não transcreve automaticamente nem envia dados.
