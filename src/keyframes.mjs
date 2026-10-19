@@ -86,9 +86,10 @@ export function keyframeExpression(t,field,clock='t'){
   return delta?`+(${delta})*${curve}`:'';
  }).join('');
 }
-export function* keyframeSamples(t,extraRanges=[]){
+export function* keyframeSamples(t,extraRanges=[],window=null){
  const points=pointsOf(t),ranges=[...extraRanges,...points.slice(1).flatMap((p,i)=>KEYFRAME_FIELDS.some(k=>p[k]!==points[i][k])?[[t.start+points[i].time,t.start+p.time]]:[])];
- const boundaries=[...new Set([t.start,t.end,...ranges.flat().filter(time=>time>t.start&&time<t.end)])].sort((a,b)=>a-b);
+ const start=Math.max(t.start,window?.start??t.start),end=Math.min(t.end,window?.end??t.end);if(end<=start)return;
+ const boundaries=[...new Set([start,end,...ranges.flat().filter(time=>time>start&&time<end)])].sort((a,b)=>a-b);
  for(let i=0;i<boundaries.length-1;i++){
   const start=boundaries[i],end=boundaries[i+1],middle=(start+end)/2;
   if(!ranges.some(([a,b])=>middle>=a&&middle<b)){yield {start,end,time:middle};continue;}

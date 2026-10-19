@@ -42,21 +42,21 @@ export function normalizeRecognition(result,duration){
  const words=result.chunks.filter(c=>typeof c.text==='string'&&c.text.trim()).map(c=>({start:c.timestamp?.[0],end:c.timestamp?.[1],text:c.text.trim()}));
  validateTranscript({assetId:'recognition',words},duration);return words;
 }
-export function toAss(captions,width,height,options){
+export function toAss(captions,width,height,options,window=null){
  if(captions.some(c=>c.keyframes?.length))return toAss(captions.flatMap(c=>{
   if(!c.keyframes?.length)return [c];
   const t={...c,style:captionStyle(c.style||options)},span=animationSpan(t.start,t.end),ranges=[];
   if(motionOf('enter',t.style.enter))ranges.push([t.start,t.start+span]);if(motionOf('exit',t.style.exit))ranges.push([t.end-span,t.end]);
-  return [...keyframeSamples(t,ranges)].flatMap(sample=>{
+  return [...keyframeSamples(t,ranges,window)].flatMap(sample=>{
    const interval=assFrameInterval(sample.start,sample.end);if(!interval)return [];
    const pose=applyKeyframes(t,sample.time),anim=animationAt(t.style,t.start,t.end,sample.time);
    return {...pose,keyframes:undefined,...interval,style:{...pose.style,enter:undefined,exit:undefined},renderPose:{x:pose.keyframePose.x+anim.x,y:pose.keyframePose.y+anim.y,opacity:pose.keyframePose.opacity*anim.opacity,scale:anim.scale}};
   });
- }),width,height,options);
+ }),width,height,options,window);
  if(captions.some(c=>c.style)){
-  const base=toAss([],width,height,options),styles=[],events=[];
+  const base=toAss([],width,height,options,window),styles=[],events=[];
   captions.forEach((c,i)=>{
-   const ass=toAss([{...c,style:undefined}],width,height,c.style||options);
+   const ass=toAss([{...c,style:undefined}],width,height,c.style||options,window);
    styles.push(ass.match(/^Style: Default,.*$/m)[0].replace('Style: Default,','Style: Layer'+i+','));
    events.push(...(ass.match(/^Dialogue: .*$/gm)||[]).map(line=>line.replace('Dialogue: 0,','Dialogue: '+i+',').replace(',Default,,',',Layer'+i+',,')));
   });

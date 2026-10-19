@@ -664,3 +664,5 @@ body>.busy-message button{flex-shrink:0}
 @media(max-height:800px){.library:has(#captions-panel:not([hidden]))>.context-heading{padding:6px 20px}#captions-panel{padding-top:6px}#captions-panel .caption-tabs{margin-bottom:10px}#captions-panel .subtitle-files{margin-bottom:8px}#caption-generate-view .caption-engine-field{margin:6px 0}}
 
 .keyframe-curve{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:10px 0;font-size:11px}.keyframe-curve select{min-width:0;max-width:180px;background:var(--soft);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px}
+
+.export-range-fields{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}.export-range-fields label{display:grid;gap:6px;font-size:12px}.export-range-fields input{width:100%;min-width:0;padding:8px;background:var(--soft);color:var(--text);border:1px solid var(--line);border-radius:6px}#export-dialog .export-range-error{color:var(--danger);font-size:12px}

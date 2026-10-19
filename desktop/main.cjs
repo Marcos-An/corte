@@ -130,11 +130,12 @@ if(primary)app.whenReady().then(async()=>{
  handler('diagnostic-error',error=>{sessionLog.record({event:'renderer-error',stage:'renderer',...diagnosticError(error)});return true;});
  handler('diagnostic-export',async()=>{const picked=await dialog.showSaveDialog(window,{title:'Exportar diagnóstico local',defaultPath:`Corte-diagnostico-${new Date().toISOString().slice(0,10)}.json`,filters:[{name:'Diagnóstico JSON',extensions:['json']}]});if(picked.canceled)return false;const file=/\.json$/i.test(picked.filePath)?picked.filePath:picked.filePath+'.json';await fs.writeFile(file,sessionLog.export(),{mode:0o600});return true;});
  handler('performance-diagnostics',async()=>{const text=await diagnostics.read();clipboard.writeText(`Corte ${app.getVersion()} · ${process.platform}\n${text||'Sem medições disponíveis.'}`);return true;});
- handler('export',async(p,height)=>{
+ handler('export',async(p,height,range=null)=>{
    authorized(p);if(abort)throw new Error('Já há uma operação em andamento.');
-   const picked=await dialog.showSaveDialog(window,{title:'Exportar vídeo',defaultPath:`${p.name.replace(/[<>:"/\\|?*]/g,'_')}.mp4`,filters:[{name:'Vídeo MP4',extensions:['mp4']}]});if(picked.canceled)return null;
+   const {validateExportRange}=await import('../src/export-range.mjs');validateExportRange(p,range);media.dimensions(p.aspect,height);
+   const picked=await dialog.showSaveDialog(window,{title:'Exportar vídeo',defaultPath:`${p.name.replace(/[<>:"/\\|?*]/g,'_')}${range?'-trecho':''}.mp4`,filters:[{name:'Vídeo MP4',extensions:['mp4']}]});if(picked.canceled)return null;
    if(!/\.mp4$/i.test(picked.filePath))throw new Error('Use a extensão .mp4.');
-   abort=new AbortController();try{return await media.renderProject(p,registry,picked.filePath,{height,signal:abort.signal,onProgress:notify});}finally{abort=null;}
+   abort=new AbortController();try{return await media.renderProject(p,registry,picked.filePath,{height,range,signal:abort.signal,onProgress:notify});}finally{abort=null;}
  });
  handler('status',async()=>({...await ai.loginStatus(home),platform:process.platform}));
  // Accurate speech recognition is an optional ~1.1 GB download; recognition verifies every checksum before using it.

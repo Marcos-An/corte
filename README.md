@@ -16,6 +16,8 @@ A Release inclui fontes correspondentes das ferramentas GPL e `SHA256SUMS`. O ZI
 
 Em desenvolvimento após 0.6.4: **Componentes → Animação → Personalizar movimento → Curva** oferece Linear, Acelerar, Desacelerar e Suave entre o ponto selecionado e o próximo. Aparar o componente mantém a curva; adicionar um ponto sem mudar a pose preserva o movimento. Funciona em texto, imagem, vídeo e forma, inclusive por prompt, com desfazer e salvar/reabrir. Não muda a velocidade do vídeo.
 
+Em desenvolvimento após 0.6.4: **Exportar → Intervalo** permite informar início/fim em segundos; uma seleção da timeline já preenche os campos. O projeto e seu histórico permanecem intactos. O render processa os clipes próximos, mantém a fase de legendas/animações e usa margem de transição quando necessário. Saída MP4 720p/1080p a 30 fps; intervalos de pelo menos 0,1 s. Exportação em lote ainda não está disponível.
+
 ## Editor
 
 Na versão 0.6.4: **Arquivos de legenda** importa SRT/VTT e exporta os tempos atuais da montagem, sem serviço externo. Em música/narração, **Volume por intervalo** permite definir início/fim e volume manual; a IA usa `adjust_audio_range` para a mesma edição. Veja o [inventário e as próximas prioridades](docs/revisao-recursos-2026-10.md).

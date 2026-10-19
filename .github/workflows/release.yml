@@ -205,6 +205,8 @@ jobs:
           node tests/caption-reuse.integration.mjs
           node tests/caption-feedback.e2e.mjs
           node tests/audio-ranges.e2e.mjs
+          node tests/export-range.e2e.mjs
+          node --test tests/export-range-render.test.mjs
           node tests/keyframe-curves.e2e.mjs
           CORTE_TEST_EASING=ease-in-out node tests/keyframes-preview.e2e.mjs
           node tests/freeze-frame.e2e.mjs
@@ -254,7 +256,7 @@ jobs:
       - name: Create draft only after all gates pass
         if: ${{ github.event_name == 'push' || !inputs.dry_run }}
         run: |
-          printf 'Curvas suaves e transcrição em mais idiomas:\n- Curvas Linear, Acelerar, Desacelerar e Suave entre pontos de animação de texto, imagem, vídeo e forma.\n- Aparos e novos pontos preservam o movimento; controles de curva e pedidos por prompt conservam as poses existentes.\n- Escolha do idioma do áudio ou detecção automática no reconhecimento local, salva no projeto e com caches separados.\n- Legendas da narração respeitam o fim do vídeo após cortes e mudanças de velocidade, preservando áudio e transcrição.\n- Correção da sincronização por quadro de texto e formas animadas na exportação.\n- Painel de legendas mais compacto, com instalação do modelo preciso recolhida.\n\nVolumes continuam manuais, sem redução automática. Tradução e rampas de velocidade não estão incluídas. Reconhecimento local pode errar; revise os textos.\nWindows: atualização automática sem baixar novamente os modelos básicos.\nMac arm64 e Windows x64, sem assinatura/notarização. Fontes GPL e SHA256SUMS incluídos. Testes e auditorias dos pacotes executados nos runners.\n\nSource commit: %s. Build version: %s (stamped in CI).\n' "$EXPECTED_SHA" "$VERSION" > release/notes.md
+          printf 'Exportação por intervalo, curvas suaves e transcrição em mais idiomas:\n- Exporte um intervalo da montagem preservando efeitos, legendas, música e narração, sem editar o projeto.\n- Correção do relógio de quadros em sequências de cortes de duração fracionada.\n- Curvas Linear, Acelerar, Desacelerar e Suave entre pontos de animação de texto, imagem, vídeo e forma.\n- Aparos e novos pontos preservam o movimento; controles de curva e pedidos por prompt conservam as poses existentes.\n- Escolha do idioma do áudio ou detecção automática no reconhecimento local, salva no projeto e com caches separados.\n- Legendas da narração respeitam o fim do vídeo após cortes e mudanças de velocidade, preservando áudio e transcrição.\n- Correção da sincronização por quadro de texto e formas animadas na exportação.\n- Painel de legendas mais compacto, com instalação do modelo preciso recolhida.\n\nVolumes continuam manuais, sem redução automática. Tradução e rampas de velocidade não estão incluídas. Reconhecimento local pode errar; revise os textos.\nWindows: atualização automática sem baixar novamente os modelos básicos.\nMac arm64 e Windows x64, sem assinatura/notarização. Fontes GPL e SHA256SUMS incluídos. Testes e auditorias dos pacotes executados nos runners.\n\nSource commit: %s. Build version: %s (stamped in CI).\n' "$EXPECTED_SHA" "$VERSION" > release/notes.md
           gh release create "v$VERSION" --repo Marcos-An/corte --target "$EXPECTED_SHA" --draft --prerelease --title "Corte $VERSION — beta" --notes-file release/notes.md release/assets/*
       - name: Publish explicitly requested version tag after all validations
         if: github.event_name == 'push'

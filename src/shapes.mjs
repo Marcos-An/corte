@@ -32,10 +32,10 @@ export function shapeSvg(t,width,height){
 const color=hex=>'&H'+(hex||'#000000').slice(5,7)+(hex||'#000000').slice(3,5)+(hex||'#000000').slice(1,3)+'&';
 const alpha=(visible,opacity)=>'&H'+Math.round(visible?255*(1-opacity/100):255).toString(16).padStart(2,'0')+'&';
 const time=v=>{const c=Math.round(v*100);return Math.floor(c/360000)+':'+String(Math.floor(c/6000)%60).padStart(2,'0')+':'+String(Math.floor(c/100)%60).padStart(2,'0')+'.'+String(c%100).padStart(2,'0');};
-export function shapeAss(t,width,height){
+export function shapeAss(t,width,height,window=null){
  if(animated(t)){
   const header=shapeAss({...t,keyframes:undefined,motion:undefined},width,height).split('Dialogue:')[0],events=[];
-  for(const sample of keyframeSamples(t)){
+  for(const sample of keyframeSamples(t,[],window)){
    const interval=assFrameInterval(sample.start,sample.end);if(!interval)continue;
    const pose=applyKeyframes(t,sample.time),ass=shapeAss({...pose,keyframes:undefined,motion:undefined,...interval},width,height);
    events.push(...(ass.match(/^Dialogue: .*$/gm)||[]));
