@@ -4,10 +4,10 @@ Editor desktop de vídeo com Electron, edição não destrutiva e assistência p
 
 ## Download
 
-Windows x64 e macOS Apple Silicon **0.6.2**: [downloads e notas da versão](https://github.com/Marcos-An/corte/releases/tag/v0.6.2).
+Windows x64 e macOS Apple Silicon **0.6.3**: [downloads e notas da versão](https://github.com/Marcos-An/corte/releases/tag/v0.6.3).
 
 - **macOS Apple Silicon (arm64):** arquivo `.dmg` ou `.zip`. Não há pacote Intel nesta versão.
-- **Windows x64:** instalador `Corte.Setup.0.6.2.exe`.
+- **Windows x64:** instalador `Corte.Setup.0.6.3.exe`.
 - Pacotes **sem assinatura digital/notarização**; macOS/Windows podem mostrar avisos de segurança. Não desative a proteção do sistema inteiro.
 
 O aplicativo empacotado foi validado no Mac com mídia sintética, salvar/reabrir e exportação real. A interface Windows foi validada nesta máquina com edição complexa, salvar/reabrir, desfazer, exportação MP4 e atualização; o instalador e o feed passaram por auditoria de integridade. Esta versão é beta, não uma certificação de estabilidade.
@@ -27,9 +27,9 @@ A Release inclui fontes correspondentes das ferramentas GPL e `SHA256SUMS`. O ZI
 - Menu à esquerda por padrão, alternável para baixo nas configurações.
 - Projetos `.corte` editáveis, relocalização de mídia e MP4 H.264/AAC em 720p/1080p.
 
-Na versão em desenvolvimento, **Selecionar trecho** permite informar início/fim em segundos e aplicar volume, brilho, contraste, saturação, temperatura, nitidez, velocidade ou zoom apenas nesse intervalo, inclusive atravessando clipes. Cada aplicação entra no histórico e preserva os demais ajustes. Alterar velocidade muda a duração selecionada. Ajustes sucessivos preservam a posição do zoom e dos fades existentes. Quadros congelados devem ser selecionados inteiros.
+A partir da versão 0.6.3, **Selecionar trecho** permite informar início/fim em segundos e aplicar volume, brilho, contraste, saturação, temperatura, nitidez, velocidade ou zoom apenas nesse intervalo, inclusive atravessando clipes. Cada aplicação entra no histórico e preserva os demais ajustes. Alterar velocidade muda a duração selecionada. Ajustes sucessivos preservam a posição do zoom e dos fades existentes. Quadros congelados devem ser selecionados inteiros.
 
-Também em desenvolvimento: visuais **Natural, Comida, Quente e P&B** aplicam correção leve em um toque, com ajustes manuais e desfazer. A timeline se encaixa ao abrir/importar o primeiro material; o botão **Encaixar timeline** restaura essa vista. Zoom manual é preservado ao redimensionar a janela. O marcador da régua permite arrastar o cursor sem a linha bloquear clipes/transições.
+Também na versão 0.6.3: visuais **Natural, Comida, Quente e P&B** aplicam correção leve em um toque, com ajustes manuais e desfazer. A timeline se encaixa ao abrir/importar o primeiro material; o botão **Encaixar timeline** restaura essa vista. Zoom manual é preservado ao redimensionar a janela. O marcador da régua permite arrastar o cursor sem a linha bloquear clipes/transições.
 
 Música e narração mantêm volumes independentes e manuais, com fades de entrada/saída. A presença de narração não reduz o volume da música. Configurações antigas de redução automática são aceitas ao abrir projetos, mas ficam inativas na prévia e na exportação.
 
@@ -53,7 +53,7 @@ Para transições, componentes e trilhas independentes, use **Montagem inteira**
 
 No modo híbrido, palavras com tempos confiáveis podem orientar cortes de fala; quadros amostrados podem sustentar decisões visuais. Amostras não comprovam eventos nas lacunas nem o instante exato de toda ação. Tempos incertos e recursos ausentes ficam pendentes. O detector local de nitidez é uma heurística e não identifica pessoas, pratos, ingredientes ou ações por si só. Informações oficiais como endereço/data precisam ser fornecidas; não são inventadas.
 
-Na versão em desenvolvimento, pedidos completos resolvíveis por texto/metadados passam por uma rota rápida no fluxo padrão: não transcrevem nem decodificam mídia, mas continuam exigindo revisão antes de aplicar. Pedidos visuais, mistos, ambíguos e edição por etapas seguem para a análise com evidências. Essa otimização não acelera a inferência visual em si.
+A partir da versão 0.6.3, pedidos completos resolvíveis por texto/metadados passam por uma rota rápida no fluxo padrão: não transcrevem nem decodificam mídia, mas continuam exigindo revisão antes de aplicar. Pedidos visuais, mistos, ambíguos e edição por etapas seguem para a análise com evidências. Essa otimização não acelera a inferência visual em si.
 
 Há transcrição local com modelos instalados/verificados pelo aplicativo e reutilização de análises em cache. Geração de legendas na nuvem usa uma chave OpenAI configurada pelo usuário; seu áudio é enviado ao provedor nessa ação. Testes opt-in de IA/transcrição podem consumir cota/créditos ou enviar mídia: leia o teste e autorize o material antes de executar. `tests/complex-prompts.live.mjs` testa pedidos reais usando apenas metadados sintéticos, com `CORTE_TEST_CODEX_HOME` e `CORTE_PROMPT_REPORT` definidos explicitamente.
 
