@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {createProject,addAsset,addClip,editProject,History} from '../src/project.mjs';
-import {captionEntries} from '../src/captions.mjs';
+import {createProject,addAsset,addClip,editProject,History,addMusic} from '../src/project.mjs';
+import {captionEntries,toSrt,projectCaptions} from '../src/captions.mjs';
 import {editCaption,addCaptionAt} from '../src/caption-editing.mjs';
 function fixture(){let p=addClip(addAsset(createProject(),{id:'a',name:'a',duration:10,width:640,height:360,hasAudio:true}),'a','c');p=addClip(p,'a','d');p.transcripts=[{assetId:'a',words:[{text:'olá',start:0,end:2}]}];return p;}
 test('delete caption only from selected occurrence; undo and source transcript preserved',()=>{
@@ -29,4 +29,13 @@ test('manual text replacement after trimming whole words remains fully visible a
 });
 test('word timing cannot extend a caption page across the next page boundary',()=>{
  const p=fixture(),long='Palavra_super_longa_com_mais_de_trinta_caracteres';p.transcripts=[{assetId:'a',words:[{start:0,end:4,text:long+' próxima',tokens:[{text:long,start:0,end:3},{text:'próxima',start:1,end:4}]}]}];const entries=captionEntries(p);assert.equal(entries[0].end,1);assert.equal(entries[1].start,1);
+});
+
+test('narration captions stop at the montage end without changing source speech or audio, and return when extended',()=>{
+ let p=fixture();p.clips=p.clips.slice(0,1);p.clips[0].out=4;p=addMusic(p,{id:'voice',name:'Voz',kind:'audio',duration:8,width:0,height:0,hasAudio:true},{id:'n',role:'narration',in:1,out:7,start:2,volume:.6});p.captionSource='narration';p.transcripts.push({assetId:'voice',words:[{start:2,end:4,text:'Prato bonito',tokens:[{text:'Prato',start:2,end:3},{text:'bonito',start:3,end:4}]},{start:5,end:6,text:'Final'}]});
+ const saved=structuredClone(p),entries=captionEntries(p).filter(c=>c.clipId==='n');assert.equal(entries.length,1);assert.equal(entries[0].text,'Prato');assert.equal(entries[0].start,3);assert.equal(entries[0].end,4);assert.ok(entries[0].tokens.every(t=>t.end<=4));assert.deepEqual(p,saved);
+ const longer=structuredClone(p);longer.clips[0].out=10;assert.deepEqual(captionEntries(longer).map(c=>c.text),['Prato bonito','Final']);const history=new History(longer);history.commit(p);assert.equal(captionEntries(history.undo()).length,2);assert.equal(captionEntries(history.redo())[0].text,'Prato');assert.equal(captionEntries(JSON.parse(JSON.stringify(p)))[0].end,4);assert.match(toSrt(projectCaptions(p)),/00:00:03,000 --> 00:00:04,000/);assert.ok(!toSrt(projectCaptions(p)).includes('bonito'));const fast=structuredClone(longer);fast.clips[0].speed=2.5;assert.equal(captionEntries(fast)[0].text,'Prato');const held=structuredClone(p);held.clips[0].freeze=8;assert.deepEqual(captionEntries(held).map(c=>c.text),['Prato bonito','Final']);
+ const earlier=structuredClone(p);earlier.clips[0].out=1;assert.deepEqual(captionEntries(earlier),[]);
+ const audioOnly=structuredClone(p);audioOnly.clips=[];assert.deepEqual(captionEntries(audioOnly).map(c=>c.text),['Prato bonito','Final']);
+ const legacy=structuredClone(p);delete legacy.transcripts.at(-1).words[0].tokens;assert.equal(captionEntries(legacy)[0].end,4);
 });

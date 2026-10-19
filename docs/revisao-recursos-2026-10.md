@@ -18,8 +18,8 @@ Referências oficiais consultadas:
 | Vários Shorts de um vídeo longo | Há recorte e formato vertical; não há fluxo completo de várias versões | Propor candidatos com início/fim e justificativa, permitir revisar cada um e exportar em lote | Alta |
 | Reenquadramento automático | Crop manual, zoom e ajustes por intervalo existem | Rastrear pessoa/objeto com confiança, prévia da trajetória e correção manual; não confundir CLIP com tracking | Alta |
 | Legendas | Edição, estilos, karaokê e posição por fala existem; geração local implementada nesta revisão | Revisão de palavras incertas, seleção do idioma local e tradução opcional | Alta |
-| Legendas SRT/WebVTT | Implementado nesta revisão; ainda fora da release pública | Importação local e exportação dos tempos atuais; confirmar também no pacote antes da próxima release | Alta |
-| Volume em parte da música/narração | Implementado nesta revisão; ainda fora da release pública | Controle manual e operação de IA `adjust_audio_range`; preservar fades, narração e histórico | Alta |
+| Legendas SRT/WebVTT | Publicado na 0.6.4 | Importação local e exportação dos tempos atuais; validado também nos pacotes Windows/macOS da 0.6.4 | Alta |
+| Volume em parte da música/narração | Publicado na 0.6.4 | Controle manual e operação de IA `adjust_audio_range`; preservar fades, narração e histórico | Alta |
 | Tratamento de voz | Volume/fades existem; sem redução de ruído/EQ/compressor na interface | Controles opt-in com comparação antes/depois, intensidade e coerência entre prévia/MP4 | Alta |
 | Curvas de velocidade | Somente velocidade constante, inclusive em intervalos | Rampas com remapeamento correto de áudio, legendas, âncoras e exportação; não aproximar silenciosamente com saltos | Média |
 | Curvas de animação | Keyframes lineares e presets existem | Easing e editor compacto; preservar a curva ao aparar um componente | Média |
@@ -60,3 +60,7 @@ Também foi corrigida a exibição de palavras removidas no começo/fim de uma f
 Pedidos só de aparência usam `edit_caption_style`, preservando palavras corrigidas e seus tempos. A contagem/fonte das legendas entra nos metadados do planejador; os textos salvos, inclusive correções por clipe, ficam fora desse contrato. Pedidos para gerar novas legendas continuam separados e precisam da preparação local e revisão.
 
 Esta lista é um plano de evolução, não uma declaração de paridade com os concorrentes. Tracking, rampas, máscaras, estabilização, lote e tratamento de voz ainda não foram implementados nesta rodada.
+
+## Revisão após a publicação 0.6.4
+
+Correção em desenvolvimento: legendas de narração respeitam o fim da montagem ao encurtar ou acelerar o vídeo. Palavras fora desse intervalo não entram na prévia nem no SRT/MP4. A trilha de áudio e a transcrição continuam intactas e voltam a fornecer legendas quando o vídeo é ampliado. Projetos somente de áudio preservam a exportação de legendas sem exigir clipe visual. Essa correção ainda não faz parte do download 0.6.4.

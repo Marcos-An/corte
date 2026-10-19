@@ -1,4 +1,4 @@
-import {clipDuration,montageTime} from './clip-time.mjs';
+import {clipDuration,montageTime,sourceTime} from './clip-time.mjs';
 import {FONT_FAMILIES} from './fonts.mjs';
 import {ANIMATION_IDS,animationSpan,motionOf,animationAt} from './text-style.mjs';
 import {applyKeyframes,keyframeSamples} from './keyframes.mjs';
@@ -23,11 +23,11 @@ export function splitCaptionWords(words){
  });
 }
 export function captionEntries(p){
- let offset=0;const result=[];
- for(const c of (p.captionSource==='narration'?(p.music||[]).filter(c=>c.role==='narration'):p.clips)){if(c.freeze){offset+=clipDuration(c);continue;}if(p.captionSource==='narration')offset=c.start;const t=p.transcripts?.find(t=>t.assetId===c.assetId);
+ let offset=0;const result=[],narration=p.captionSource==='narration',montageEnd=p.clips.length?p.clips.reduce((sum,c)=>sum+clipDuration(c),0):Infinity;
+ for(const c of (p.captionSource==='narration'?(p.music||[]).filter(c=>c.role==='narration'):p.clips)){if(c.freeze){offset+=clipDuration(c);continue;}if(p.captionSource==='narration')offset=c.start;const upper=narration?Math.min(c.out,sourceTime(c,Math.max(0,montageEnd-c.start))):c.out,t=p.transcripts?.find(t=>t.assetId===c.assetId);
   for(const [wordIndex,w] of splitCaptionWords(c.captionWords??t?.words??[]).entries()){
-   const parts=w.text.trim().split(/\s+/),tokens=w.tokens?.length===parts.length?w.tokens.map((t,i)=>({...t,text:parts[i]})).filter(t=>t.end>c.in&&t.start<c.out||t.start===t.end&&t.start>=c.in&&t.start<=c.out):undefined,cropped=tokens&&tokens.length!==w.tokens.length,start=Math.max(w.start,c.in,cropped?tokens[0]?.start??w.start:w.start),end=Math.min(w.end,c.out,cropped&&tokens.length?Math.max(...tokens.map(t=>t.end)):w.end);
-   if(end>start&&(!tokens||tokens.length))result.push({start:offset+montageTime(c,start),end:offset+montageTime(c,end),text:tokens?tokens.map(t=>t.text).join(' '):w.text,assetId:c.assetId,clipId:c.id,wordIndex,...(w.place?{place:w.place}:{}),...(tokens?{tokens:tokens.map(t=>({...t,start:offset+montageTime(c,Math.max(c.in,t.start)),end:offset+montageTime(c,Math.min(c.out,t.end))}))}:{})});
+   const parts=w.text.trim().split(/\s+/),tokens=w.tokens?.length===parts.length?w.tokens.map((t,i)=>({...t,text:parts[i]})).filter(t=>t.end>c.in&&t.start<upper||t.start===t.end&&t.start>=c.in&&t.start<=upper):undefined,cropped=tokens&&tokens.length!==w.tokens.length,start=Math.max(w.start,c.in,cropped?tokens[0]?.start??w.start:w.start),end=Math.min(w.end,upper,cropped&&tokens.length?Math.max(...tokens.map(t=>t.end)):w.end);
+   if(end>start&&(!tokens||tokens.length))result.push({start:offset+montageTime(c,start),end:offset+montageTime(c,end),text:tokens?tokens.map(t=>t.text).join(' '):w.text,assetId:c.assetId,clipId:c.id,wordIndex,...(w.place?{place:w.place}:{}),...(tokens?{tokens:tokens.map(t=>({...t,start:offset+montageTime(c,Math.max(c.in,t.start)),end:offset+montageTime(c,Math.min(upper,t.end))}))}:{})});
   }offset+=clipDuration(c);
  }return result;
 }
