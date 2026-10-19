@@ -185,47 +185,51 @@ jobs:
           else
             export CORTE_TEST_APP="$(node -p "require('node:path').resolve('release/win-unpacked/Corte.exe')")"
           fi
-          node tests/import-progress.e2e.mjs
-          node tests/project-hydration.e2e.mjs
-          node tests/relink-folder.e2e.mjs
-          node tests/project-save.e2e.mjs
-          node tests/save-reopen.e2e.mjs
-          node tests/playhead-scroll.e2e.mjs
-          node tests/updater-download.integration.mjs
-          node tests/update-ui.e2e.mjs
-          node tests/hybrid-edit.e2e.mjs
-          node tests/ai-scope.e2e.mjs
-          node tests/ai-stages.e2e.mjs
-          node tests/interval-controls.e2e.mjs
-          node tests/clean-editing.e2e.mjs
-          node tests/subtitle-files.e2e.mjs
-          node tests/local-captions.e2e.mjs
-          CORTE_TEST_CAPTION_LANGUAGE=en node tests/local-captions.e2e.mjs
-          node tests/speech-language.integration.mjs
-          node tests/caption-proposal.e2e.mjs
-          node tests/caption-reuse.integration.mjs
-          node tests/caption-feedback.e2e.mjs
-          node tests/audio-ranges.e2e.mjs
-          node tests/blur.e2e.mjs
-          node tests/transcript-selection.e2e.mjs
-          node tests/speech-review.e2e.mjs
-          node --test tests/blur-render.test.mjs
-          node tests/audio-eq.e2e.mjs
-          node --test tests/audio-eq-render.test.mjs
-          node tests/export-selection.e2e.mjs
-          node tests/export-batch.e2e.mjs
-          node --test tests/export-batch-render.test.mjs
-          node tests/export-range.e2e.mjs
-          node --test tests/export-range-render.test.mjs
-          node tests/keyframe-curves.e2e.mjs
-          CORTE_TEST_EASING=ease-in-out node tests/keyframes-preview.e2e.mjs
-          node tests/freeze-frame.e2e.mjs
-          node tests/session-diagnostics.e2e.mjs
-          node tests/preview-proxy.e2e.mjs
-          node --test tests/preview-proxy-render.test.mjs
-          node tests/visual-process.e2e.mjs
-          node tests/edit-quality.integration.mjs
-          node tests/speech-timing.integration.mjs
+          set +e
+          failures=0
+          run_check() { "$@"; result=$?; if [ "$result" -ne 0 ]; then failures=$((failures + 1)); fi; }
+          run_check node tests/import-progress.e2e.mjs
+          run_check node tests/project-hydration.e2e.mjs
+          run_check node tests/relink-folder.e2e.mjs
+          run_check node tests/project-save.e2e.mjs
+          run_check node tests/save-reopen.e2e.mjs
+          run_check node tests/playhead-scroll.e2e.mjs
+          run_check node tests/updater-download.integration.mjs
+          run_check node tests/update-ui.e2e.mjs
+          run_check node tests/hybrid-edit.e2e.mjs
+          run_check node tests/ai-scope.e2e.mjs
+          run_check node tests/ai-stages.e2e.mjs
+          run_check node tests/interval-controls.e2e.mjs
+          run_check node tests/clean-editing.e2e.mjs
+          run_check node tests/subtitle-files.e2e.mjs
+          run_check node tests/local-captions.e2e.mjs
+          CORTE_TEST_CAPTION_LANGUAGE=en run_check node tests/local-captions.e2e.mjs
+          run_check node tests/speech-language.integration.mjs
+          run_check node tests/caption-proposal.e2e.mjs
+          run_check node tests/caption-reuse.integration.mjs
+          run_check node tests/caption-feedback.e2e.mjs
+          run_check node tests/audio-ranges.e2e.mjs
+          run_check node tests/blur.e2e.mjs
+          run_check node tests/transcript-selection.e2e.mjs
+          run_check node tests/speech-review.e2e.mjs
+          run_check node --test tests/blur-render.test.mjs
+          run_check node tests/audio-eq.e2e.mjs
+          run_check node --test tests/audio-eq-render.test.mjs
+          run_check node tests/export-selection.e2e.mjs
+          run_check node tests/export-batch.e2e.mjs
+          run_check node --test tests/export-batch-render.test.mjs
+          run_check node tests/export-range.e2e.mjs
+          run_check node --test tests/export-range-render.test.mjs
+          run_check node tests/keyframe-curves.e2e.mjs
+          CORTE_TEST_EASING=ease-in-out run_check node tests/keyframes-preview.e2e.mjs
+          run_check node tests/freeze-frame.e2e.mjs
+          run_check node tests/session-diagnostics.e2e.mjs
+          run_check node tests/preview-proxy.e2e.mjs
+          run_check node --test tests/preview-proxy-render.test.mjs
+          run_check node tests/visual-process.e2e.mjs
+          run_check node tests/edit-quality.integration.mjs
+          run_check node tests/speech-timing.integration.mjs
+          test "$failures" -eq 0
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: release-${{ matrix.platform }}
@@ -268,7 +272,7 @@ jobs:
       - name: Create draft only after all gates pass
         if: ${{ github.event_name == 'push' || !inputs.dry_run }}
         run: |
-          cat docs/release-0.6.9.md > release/notes.md
+          cat docs/release-0.6.10.md > release/notes.md
           printf '\nSource commit: %s. Build version: %s (stamped in CI).\n' "$EXPECTED_SHA" "$VERSION" >> release/notes.md
           gh release create "v$VERSION" --repo Marcos-An/corte --target "$EXPECTED_SHA" --draft --prerelease --title "Corte $VERSION — beta" --notes-file release/notes.md release/assets/*
       - name: Publish explicitly requested version tag after all validations
