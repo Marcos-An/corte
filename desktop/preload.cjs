@@ -29,6 +29,8 @@ contextBridge.exposeInMainWorld('editor',{
   onMediaState:listener=>{const handler=(_event,state)=>listener(state);ipcRenderer.on('editor:media-state',handler);return ()=>ipcRenderer.removeListener('editor:media-state',handler);},
   onOpenProject:listener=>{const handler=(_event,token)=>listener(token);ipcRenderer.on('editor:open-project',handler);return ()=>ipcRenderer.removeListener('editor:open-project',handler);},
   exportProject:(project,height,range=null)=>invoke('editor:export',project,height,range),
+  exportBatch:(project,height,jobs,runId)=>invoke('editor:export-batch',project,height,jobs,runId),
+  revealExport:file=>invoke('editor:reveal-export',file),
   status:()=>invoke('editor:status'),
   speechModel:()=>invoke('editor:speech-model'),
   searchModel:()=>invoke('editor:search-model'),

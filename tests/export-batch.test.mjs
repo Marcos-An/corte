@@ -1,0 +1,27 @@
+import test from 'node:test';import assert from 'node:assert/strict';import path from 'node:path';import {mkdtemp,readFile,writeFile,readdir,rm} from 'node:fs/promises';import {tmpdir} from 'node:os';
+import * as m from '../src/project.mjs';import {validateExportJobs,safeExportStem} from '../src/export-batch.mjs';import {runExportBatch,publishExportFile} from '../desktop/export-batch.mjs';
+const fixture=()=>m.addClip(m.addAsset(m.createProject(),{id:'v',name:'Video',duration:5,width:100,height:100,hasAudio:false}),'v','c');
+const jobs=()=>[1,2,3].map(n=>({id:'job'+n,name:'Vídeo '+n,start:n-1,end:n}));
+async function sandbox(run){const directory=await mkdtemp(path.join(tmpdir(),'corte-batch-test-'));try{await run(directory);}finally{await rm(directory,{recursive:true,force:true});}}
+test('batch validation rejects missing/duplicate IDs, invalid ranges, unexpected paths and empty/oversized queues',()=>{
+ const p=fixture();assert.equal(validateExportJobs(p,jobs()).length,3);for(const list of [[],Array(1),Array(21).fill(jobs()[0]),[{...jobs()[0],id:'../escape'}],[jobs()[0],jobs()[0]],[{...jobs()[0],name:''}],[{...jobs()[0],name:'x'.repeat(101)}],[{...jobs()[0],name:'a\0b'}],[{...jobs()[0],path:'elsewhere'}],[{...jobs()[0],end:7}],[{...jobs()[0],start:1,end:1.01}]])assert.throws(()=>validateExportJobs(p,list));
+ assert.equal(safeExportStem('CON.mp4'),'Video-CON');assert.equal(safeExportStem('LPT¹.'),'Video-LPT1');assert.equal(safeExportStem(' .. / a\\b : *? '),'- a-b - --');assert.equal(safeExportStem('...'),'Trecho');assert.ok(!/[<>:"/\\|?*]/.test(safeExportStem('Reels / jantar: 🍣')));
+});
+test('publishing and fallback copying choose unique names and preserve existing files',()=>sandbox(async directory=>{
+ const source=path.join(directory,'staged');await writeFile(source,'new');const existing=path.join(directory,'Video.mp4');await writeFile(existing,'old');const a=await publishExportFile(source,directory,'Video'),b=await publishExportFile(source,directory,'Video');assert.equal(path.basename(a),'Video (2).mp4');assert.equal(path.basename(b),'Video (3).mp4');assert.equal(await readFile(existing,'utf8'),'old');assert.equal(await readFile(a,'utf8'),'new');
+ const fallback=await publishExportFile(source,directory,'Video',{linker:async()=>{throw Object.assign(Error('Not supported'),{code:'ENOTSUP'});}});assert.equal(path.basename(fallback),'Video (4).mp4');assert.equal(await readFile(fallback,'utf8'),'new');
+}));
+test('completed files survive cancellation and only pending jobs are retried; the project stays unchanged',()=>sandbox(async directory=>{
+ const p=fixture(),before=structuredClone(p),controller=new AbortController(),events=[],list=jobs();let rendered=0;
+ const first=await runExportBatch({project:p,registry:new Map(),directory,jobs:list,runId:'first',signal:controller.signal,onProgress:e=>events.push(e)},{render:async(_p,_r,file)=>{rendered++;if(rendered===2){controller.abort();controller.signal.throwIfAborted();}await writeFile(file,'first');}});
+ assert.equal(first.completed.length,1);assert.equal(first.canceled,true);assert.equal(first.failed,null);assert.deepEqual(first.pending,['job2','job3']);assert.equal(await readFile(first.completed[0].path,'utf8'),'first');assert.ok(events.every(e=>e.runId==='first'));assert.ok(!(await readdir(directory)).some(f=>f.startsWith('.corte-batch-')));
+ const second=await runExportBatch({project:p,registry:new Map(),directory,jobs:list.filter(j=>first.pending.includes(j.id))},{render:async(_p,_r,file)=>writeFile(file,'retry')});assert.equal(second.completed.length,2);assert.deepEqual(second.pending,[]);assert.deepEqual(p,before);assert.equal(await readFile(first.completed[0].path,'utf8'),'first');
+}));
+test('errors stop the queue, preserve finished outputs and expose a sanitized actionable failure',()=>sandbox(async directory=>{
+ const p=fixture();let calls=0;const result=await runExportBatch({project:p,registry:new Map(),directory,jobs:jobs()},{render:async(_p,_r,file)=>{if(++calls===2)throw Object.assign(Error('secret C:/private/source.mov'),{code:'ENOSPC'});await writeFile(file,'done');}});assert.equal(result.completed.length,1);assert.equal(result.failed.id,'job2');assert.match(result.error,/Espaço/);assert.ok(!JSON.stringify(result).includes('private'));assert.deepEqual(result.pending,['job2','job3']);assert.ok(!(await readdir(directory)).some(f=>f.startsWith('.corte-batch-')));
+}));
+test('pre-cancellation performs no writes and progress callbacks cannot damage completed jobs',()=>sandbox(async directory=>{
+ const p=fixture(),before=await readdir(directory);const canceled=await runExportBatch({project:p,registry:new Map(),directory,jobs:jobs(),signal:AbortSignal.abort()},{render:async()=>{throw Error('Must not render');}});assert.equal(canceled.canceled,true);assert.deepEqual(await readdir(directory),before);
+ const done=await runExportBatch({project:p,registry:new Map(),directory,jobs:jobs().slice(0,1),onProgress:()=>{throw Error('Closed window');}},{render:async(_p,_r,file)=>writeFile(file,'ok')});assert.equal(done.completed.length,1);assert.equal(done.error,null);
+ const file=path.join(directory,'not-folder');await writeFile(file,'original');const invalid=await runExportBatch({project:p,registry:new Map(),directory:file,jobs:jobs()});assert.ok(invalid.error);assert.equal(await readFile(file,'utf8'),'original');
+}));

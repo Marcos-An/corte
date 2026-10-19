@@ -1,4 +1,4 @@
-const {app,BrowserWindow,ipcMain,dialog,protocol,safeStorage,clipboard,screen,Menu,MenuItem}=require('electron');
+const {app,BrowserWindow,ipcMain,dialog,protocol,safeStorage,clipboard,screen,Menu,MenuItem,shell}=require('electron');
 const path=require('node:path');
 const fs=require('node:fs/promises');
 app.setName('Corte');
@@ -137,6 +137,17 @@ if(primary)app.whenReady().then(async()=>{
    if(!/\.mp4$/i.test(picked.filePath))throw new Error('Use a extensão .mp4.');
    abort=new AbortController();try{return await media.renderProject(p,registry,picked.filePath,{height,range,signal:abort.signal,onProgress:notify});}finally{abort=null;}
  });
+ const exportedFiles=new Set();
+ handler('export-batch',async(p,height,jobs,runId)=>{
+  authorized(p);if(abort)throw Error('Já há uma operação em andamento.');
+  const {validateExportJobs}=await import('../src/export-batch.mjs');jobs=validateExportJobs(p,jobs);media.dimensions(p.aspect,height);if(typeof runId!=='string'||!/^[-A-Za-z0-9_]{1,64}$/.test(runId))throw Error('Fila inválida.');
+  const controller=new AbortController(),sources=new Map(registry);abort=controller;
+  try{const picked=await dialog.showOpenDialog(window,{title:'Pasta para os vídeos',properties:['openDirectory','createDirectory']});if(picked.canceled)return null;
+   const {runExportBatch}=await import('./export-batch.mjs'),report=await runExportBatch({project:p,registry:sources,directory:picked.filePaths[0],jobs,height,runId,signal:controller.signal,onProgress:notify,onError:error=>sessionLog.failure(error)});
+   for(const file of report.completed)exportedFiles.add(path.resolve(file.path));while(exportedFiles.size>1000)exportedFiles.delete(exportedFiles.values().next().value);return report;
+  }finally{if(abort===controller)abort=null;}
+ });
+ handler('reveal-export',file=>{if(typeof file!=='string'||!path.isAbsolute(file)||!exportedFiles.has(path.resolve(file)))throw Error('Arquivo não pertence às exportações desta sessão.');shell.showItemInFolder(file);return true;});
  handler('status',async()=>({...await ai.loginStatus(home),platform:process.platform}));
  // Accurate speech recognition is an optional ~1.1 GB download; recognition verifies every checksum before using it.
  const speechManifest=JSON.parse(await fs.readFile(path.join(__dirname,'../vendor/models/speech-accurate-manifest.json'),'utf8'));

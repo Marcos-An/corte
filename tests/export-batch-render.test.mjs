@@ -1,0 +1,10 @@
+import test from 'node:test';import assert from 'node:assert/strict';import path from 'node:path';import {mkdtemp,rm,readFile,readdir} from 'node:fs/promises';import {tmpdir} from 'node:os';
+import {usePackagedMedia} from './packaged-media.mjs';import {binaries,run,probe} from '../desktop/media.mjs';import {runExportBatch} from '../desktop/export-batch.mjs';import * as m from '../src/project.mjs';usePackagedMedia();
+test('batch writes multiple real MP4s with individual durations and never replaces an original media file',async()=>{
+ const directory=await mkdtemp(path.join(tmpdir(),'corte-batch-render-'));try{
+  const source=path.join(directory,'source.mp4');await run(binaries().ffmpeg,['-v','error','-y','-f','lavfi','-i','color=blue:s=160x160:r=30','-f','lavfi','-i','sine=f=600:r=48000','-t','3','-c:v','libx264','-c:a','aac',source]);const input=await readFile(source);let p=m.addClip(m.addAsset(m.createProject(),{id:'v',name:'Video',...await probe(source)}),'v','c');p.aspect='1:1';const before=structuredClone(p),events=[],result=await runExportBatch({project:p,registry:new Map([['v',{path:source}]]),directory,jobs:[{id:'a',name:'source',start:0,end:1},{id:'b',name:'source',start:1,end:2.5}],height:720,onProgress:e=>events.push(e)});
+  assert.equal(result.error,null);assert.equal(result.canceled,false);assert.deepEqual(result.pending,[]);assert.deepEqual(result.completed.map(j=>j.id),['a','b']);assert.deepEqual(result.completed.map(j=>path.basename(j.path)),['source (2).mp4','source (3).mp4']);
+  for(const [i,job]of result.completed.entries()){const info=await probe(job.path);assert.ok(Math.abs(info.duration-(i?1.5:1))<.05);assert.equal(info.width,720);assert.equal(info.height,720);assert.equal(info.hasAudio,true);}
+  assert.deepEqual(await readFile(source),input);assert.deepEqual(p,before);assert.ok(!(await readdir(directory)).some(n=>n.startsWith('.corte-batch-')));assert.deepEqual(events.filter(e=>e.phase==='completed').map(e=>e.completed),[1,2]);
+ }finally{await rm(directory,{recursive:true,force:true});}
+});
