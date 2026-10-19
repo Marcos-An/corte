@@ -14,6 +14,8 @@ O aplicativo empacotado foi validado no Mac com mídia sintética, salvar/reabri
 
 A Release inclui fontes correspondentes das ferramentas GPL e `SHA256SUMS`. O ZIP automático do código-fonte não é um aplicativo instalável.
 
+Em desenvolvimento após 0.6.4: **Componentes → Animação → Personalizar movimento → Curva** oferece Linear, Acelerar, Desacelerar e Suave entre o ponto selecionado e o próximo. Aparar o componente mantém a curva; adicionar um ponto sem mudar a pose preserva o movimento. Funciona em texto, imagem, vídeo e forma, inclusive por prompt, com desfazer e salvar/reabrir. Não muda a velocidade do vídeo.
+
 ## Editor
 
 Na versão 0.6.4: **Arquivos de legenda** importa SRT/VTT e exporta os tempos atuais da montagem, sem serviço externo. Em música/narração, **Volume por intervalo** permite definir início/fim e volume manual; a IA usa `adjust_audio_range` para a mesma edição. Veja o [inventário e as próximas prioridades](docs/revisao-recursos-2026-10.md).
@@ -34,7 +36,7 @@ Para alterar somente a aparência, a IA usa `edit_caption_style`: muda fonte/tam
 - Texto editável no próprio vídeo, imagens/PNG transparente, vídeos sobrepostos silenciosos e formas (retângulo, círculo, linha e seta).
 - Fundos preto, cor e borrado; transições dissolver, escurecer e deslizar, respeitando margens reais.
 - Brilho, contraste, saturação, velocidade constante de 0,25× a 4× e fades de áudio.
-- Presets e keyframes lineares de posição, tamanho e opacidade nos componentes.
+- Presets e keyframes de posição, tamanho e opacidade nos componentes, lineares por padrão.
 - Legendas em um bloco na timeline, até duas linhas por página e karaokê quando há tempos por palavra.
 - Menu à esquerda por padrão, alternável para baixo nas configurações.
 - Projetos `.corte` editáveis, relocalização de mídia e MP4 H.264/AAC em 720p/1080p.

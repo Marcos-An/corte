@@ -2,7 +2,7 @@ import {speechLanguage} from './speech-language.mjs';
 import {clipDuration,montageTime,sourceTime} from './clip-time.mjs';
 import {FONT_FAMILIES} from './fonts.mjs';
 import {ANIMATION_IDS,animationSpan,motionOf,animationAt} from './text-style.mjs';
-import {applyKeyframes,keyframeSamples} from './keyframes.mjs';
+import {applyKeyframes,keyframeSamples,assFrameInterval} from './keyframes.mjs';
 // Transcripts stay in source time: timeline edits never rewrite recognition results.
 export function validateTranscript(t,duration,allowInstant=false){
  if(t?.language!==undefined)speechLanguage({speechLanguage:t.language});
@@ -47,9 +47,10 @@ export function toAss(captions,width,height,options){
   if(!c.keyframes?.length)return [c];
   const t={...c,style:captionStyle(c.style||options)},span=animationSpan(t.start,t.end),ranges=[];
   if(motionOf('enter',t.style.enter))ranges.push([t.start,t.start+span]);if(motionOf('exit',t.style.exit))ranges.push([t.end-span,t.end]);
-  return [...keyframeSamples(t,ranges)].map(sample=>{
+  return [...keyframeSamples(t,ranges)].flatMap(sample=>{
+   const interval=assFrameInterval(sample.start,sample.end);if(!interval)return [];
    const pose=applyKeyframes(t,sample.time),anim=animationAt(t.style,t.start,t.end,sample.time);
-   return {...pose,keyframes:undefined,start:sample.start,end:sample.end,style:{...pose.style,enter:undefined,exit:undefined},renderPose:{x:pose.keyframePose.x+anim.x,y:pose.keyframePose.y+anim.y,opacity:pose.keyframePose.opacity*anim.opacity,scale:anim.scale}};
+   return {...pose,keyframes:undefined,...interval,style:{...pose.style,enter:undefined,exit:undefined},renderPose:{x:pose.keyframePose.x+anim.x,y:pose.keyframePose.y+anim.y,opacity:pose.keyframePose.opacity*anim.opacity,scale:anim.scale}};
   });
  }),width,height,options);
  if(captions.some(c=>c.style)){

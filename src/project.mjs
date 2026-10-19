@@ -1,5 +1,5 @@
 import {speechLanguage} from './speech-language.mjs';
-import {KEYFRAME_FIELDS,keyframeAt,retimeKeyframes,validateKeyframes,validateMotion} from './keyframes.mjs';
+import {KEYFRAME_PATCH_FIELDS,updateKeyframePoints,retimeKeyframes,validateKeyframes,validateMotion} from './keyframes.mjs';
 import {clipSpeed,clipDuration,sourceTime,zoomAt} from './clip-time.mjs';
 import {DEFAULT_ADJUSTMENTS} from './color-adjustments.mjs';
 import {sliceClip} from './clip-slicing.mjs';
@@ -203,7 +203,7 @@ function applyPlanOperation(p,op){
   planFields(op.patch,fields);const patch=clone(op.patch);if(patch.style){planFields(patch.style,stylePlanFields);patch.style={...layer.style,...patch.style};}return edit(p,op.layerId,patch);
  }
  if(op.type==='move_component'){componentEditor(p,op.layerId);return moveLayer(p,op.layerId,op.direction);}
- if(op.type==='set_keyframe'){planFields(op.pose,KEYFRAME_FIELDS);return setKeyframe(p,op.layerId,op.time,op.pose);}
+ if(op.type==='set_keyframe'){planFields(op.pose,KEYFRAME_PATCH_FIELDS);return setKeyframe(p,op.layerId,op.time,op.pose);}
  if(op.type==='remove_keyframe')return setKeyframe(p,op.layerId,op.time,null);
  return editProject(p,op);
 }
@@ -383,9 +383,9 @@ export function editShapeLayer(p,layerId,patch){
 export function setKeyframe(p,layerId,time,patch){
  const q=clone(p),t=[...(q.imageLayers||[]),...(q.videoLayers||[]),...(q.shapeLayers||[]),...(q.textLayers||[])].find(t=>t.id===layerId);
  if(!t)fail('Componente do keyframe não encontrado.');
- if(!finite(time)||time<0||time>t.end-t.start+1e-9||patch!==null&&(!patch||typeof patch!=='object'||Object.keys(patch).some(k=>!KEYFRAME_FIELDS.includes(k))))fail('Tempo ou ajuste de keyframe inválido.');
+ if(!finite(time)||time<0||time>t.end-t.start+1e-9||patch!==null&&(!patch||typeof patch!=='object'||Object.keys(patch).some(k=>!KEYFRAME_PATCH_FIELDS.includes(k))))fail('Tempo ou ajuste de keyframe inválido.');
  time=Math.round(time*1000)/1000;if(time>t.end-t.start)time=t.end-t.start;
- const point=patch===null?null:{...keyframeAt(t,time),...patch,time};t.keyframes=(t.keyframes||[]).filter(p=>Math.abs(p.time-time)>1e-7);if(point)t.keyframes.push(point);t.keyframes.sort((a,b)=>a.time-b.time);if(!t.keyframes.length)delete t.keyframes;
+ t.keyframes=updateKeyframePoints(t,time,patch);if(!t.keyframes.length)delete t.keyframes;
  return validateProject(q);
 }
 

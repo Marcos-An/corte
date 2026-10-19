@@ -1,5 +1,5 @@
 import {SPEECH_LANGUAGES,speechLanguage} from './speech-language.mjs';
-import {applyKeyframes,keyframeAt} from './keyframes.mjs';
+import {applyKeyframes,keyframeAt,EASINGS} from './keyframes.mjs';
 import {clipSpeed,clipDuration,sourceTime,montageTime} from './clip-time.mjs';
 import {DEFAULT_ADJUSTMENTS} from './color-adjustments.mjs';import {zoomAt,zoomedCrop} from './clip-time.mjs';
 import {audioLevel} from './audio-envelope.mjs';
@@ -422,10 +422,13 @@ function renderKeyframes(){
  const points=t.keyframes||[],local=position-t.start,inside=local>=0&&local<=t.end-t.start,at=points.findIndex(p=>Math.abs(p.time-local)<.00051),list=$('keyframe-points'),signature=JSON.stringify([t.id,points]);
  if(list.dataset.points!==signature){list.replaceChildren(...points.map(p=>{const b=document.createElement('button');b.dataset.keyframeTime=String(p.time);b.textContent=decimal(p.time,2,0)+' s';b.onclick=guard(()=>{stop();seek(t.start+p.time);});return b;}));if(!points.length)list.textContent='Nenhum ponto';list.dataset.points=signature;}
  for(const b of list.querySelectorAll('button')){b.setAttribute('aria-pressed',String(at>=0&&b.dataset.keyframeTime===String(points[at].time)));b.disabled=busy;}
+ $('keyframe-easing').value=at>=0?points[at].easing||'linear':'linear';$('keyframe-easing').disabled=busy||playing||at<0||at>=points.length-1;$('keyframe-easing').title=at>=0&&points[at].curveWindow?'Curva preservada após aparo. Escolher outra reinicia a curva neste intervalo.':'Movimento deste ponto até o próximo.';
  $('keyframe-time').textContent=decimal(local,2)+' s';$('keyframe-add').textContent=at<0?'Adicionar ponto':'Atualizar ponto';$('keyframe-add').disabled=busy||playing||!inside;$('keyframe-remove').disabled=busy||playing||at<0;
  $('keyframe-prev').disabled=busy||!points.some(p=>p.time<local-.00051);$('keyframe-next').disabled=busy||!points.some(p=>p.time>local+.00051);
  const p=componentProject(),current=[...visualLayers(p),...(p.textLayers||[])].find(x=>x.id===t.id),opacity=keyframeAt(current,local).opacity;$('keyframe-opacity').value=opacity;$('keyframe-opacity').disabled=busy||playing||!inside||!points.length;$('keyframe-opacity-value').textContent=Math.round(opacity)+'%';
 }
+for(const curve of EASINGS){const option=document.createElement('option');option.value=curve.id;option.textContent=curve.label;$('keyframe-easing').append(option);}
+$('keyframe-easing').onchange=guard(()=>{const t=selectedComponent();if(busy||playing||!t)return;const at=t.keyframes?.findIndex(p=>Math.abs(p.time-(position-t.start))<.00051)??-1;if(at>=0&&at<t.keyframes.length-1)commit(setKeyframe(project(),t.id,t.keyframes[at].time,{easing:$('keyframe-easing').value}),{label:'Curva de animação'});});
 $('keyframe-add').onclick=guard(()=>{const t=selectedComponent();if(!busy&&!playing&&t)commit(setKeyframe(project(),t.id,componentTime(t),{}),{label:'Adicionar / atualizar keyframe'});});
 $('keyframe-remove').onclick=guard(()=>{const t=selectedComponent();if(!busy&&!playing&&t)commit(setKeyframe(project(),t.id,componentTime(t),null),{label:'Remover keyframe'});});
 for(const direction of ['prev','next'])$('keyframe-'+direction).onclick=guard(()=>{const t=selectedComponent();if(!t)return;const local=position-t.start,point=direction==='prev'?t.keyframes?.findLast(p=>p.time<local-.00051):t.keyframes?.find(p=>p.time>local+.00051);if(point){stop();seek(t.start+point.time);}});

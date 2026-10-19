@@ -1,6 +1,6 @@
 # Revisão de recursos — VidIO, CapCut e Corte
 
-Revisão de 19/10/2026. Base publicada: Corte 0.6.3. O inventário do Corte foi conferido no código local (`src`, `desktop` e testes). Recursos dos concorrentes são descrições dos fabricantes, não resultados de testes comparativos.
+Revisão de 19/10/2026. Base publicada: Corte 0.6.4; melhorias posteriores estão identificadas como desenvolvimento. O inventário do Corte foi conferido no código local (`src`, `desktop` e testes). Recursos dos concorrentes são descrições dos fabricantes, não resultados de testes comparativos.
 
 Referências oficiais consultadas:
 
@@ -22,7 +22,7 @@ Referências oficiais consultadas:
 | Volume em parte da música/narração | Publicado na 0.6.4 | Controle manual e operação de IA `adjust_audio_range`; preservar fades, narração e histórico | Alta |
 | Tratamento de voz | Volume/fades existem; sem redução de ruído/EQ/compressor na interface | Controles opt-in com comparação antes/depois, intensidade e coerência entre prévia/MP4 | Alta |
 | Curvas de velocidade | Somente velocidade constante, inclusive em intervalos | Rampas com remapeamento correto de áudio, legendas, âncoras e exportação; não aproximar silenciosamente com saltos | Média |
-| Curvas de animação | Keyframes lineares e presets existem | Easing e editor compacto; preservar a curva ao aparar um componente | Média |
+| Curvas de animação | Linear, acelerar, desacelerar e suave implementados após 0.6.4 | Validar e publicar as curvas predefinidas; curvas Bézier personalizadas ainda ausentes | Média |
 | Máscaras e privacidade | Camadas/formas existem; sem máscara/desfoque de região rastreado | Começar por região manual animável, depois tracking; verificar desfoque no MP4 | Alta |
 | Remoção de fundo | Ausente | Segmentar com modelo separado, benchmark no Windows e bordas/oclusões revisáveis | Média |
 | Estabilização | Ausente | Análise de movimento, intensidade e recorte visível; cache por fonte | Média |
@@ -68,3 +68,7 @@ Correção em desenvolvimento: legendas de narração respeitam o fim da montage
 Idioma da análise local (em desenvolvimento após 0.6.4): seletor compacto em Legendas → Transcrição, salvo no projeto com desfazer/refazer. Português continua padrão para projetos antigos; há detecção automática e português/inglês/espanhol/francês/italiano/alemão/japonês. A configuração é compartilhada pela análise local de fala e pela geração local de legendas. Trocar a seleção não reescreve legendas existentes nem envia áudio; exige uma nova geração para substituir o resultado. Pedidos por prompt podem informar o idioma da fala, com preparação antes de aplicar. Tradução permanece não suportada.
 
 A chave do cache separa idiomas e preserva os caches anteriores de português. Evidências de fala só são reaproveitadas para legendas quando o idioma solicitado é o mesmo. A escolha fica oculta no modo nuvem, cujo comportamento não foi alterado. Inglês explícito e detecção automática foram verificados com voz sintética en-US; as demais opções passam por validação de configuração e ainda exigem avaliação de qualidade com gravações nos respectivos idiomas. Nenhum modelo adicional é necessário.
+
+Curvas de animação (em desenvolvimento após 0.6.4): o controle Curva fica em Componentes → Animação → Personalizar movimento e define o trajeto do ponto selecionado até o próximo. Linear preserva projetos antigos; Acelerar, Desacelerar e Suave atuam sobre posição, tamanho e opacidade, em texto, imagem, vídeo e forma. Não mudam a velocidade do vídeo nem os volumes. Aparos mantêm a porção exata da curva; adicionar um ponto sem alterar a pose preserva o trajeto, e removê-lo reúne os segmentos compatíveis. Desfazer/refazer e salvar/reabrir preservam a escolha.
+
+O planejador pode usar `set_keyframe` com `pose.easing`; um patch só de easing conserva as poses. A prévia e as expressões do FFmpeg usam o mesmo polinômio normalizado. Texto/formas exportados via ASS foram corrigidos para associar cada pose ao quadro correto de 30 fps, evitando atraso e sobreposição por arredondamento em centésimos. A exportação foi medida em pixels, com comparação independente de posição e opacidade, inclusive após aparo, nos quatro tipos de componente. Não há editor gráfico de Bézier ou rampas de velocidade.

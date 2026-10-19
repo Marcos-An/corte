@@ -1,4 +1,4 @@
-import {applyKeyframes,keyframeSamples,animated} from './keyframes.mjs';
+import {applyKeyframes,keyframeSamples,animated,assFrameInterval} from './keyframes.mjs';
 // Geometry is shared by the preview SVG and the native ASS vector renderer.
 export const SHAPES={rectangle:'Retângulo',circle:'Círculo',line:'Linha',arrow:'Seta'};
 const n=v=>Math.round(v*1000)/1000;
@@ -36,7 +36,8 @@ export function shapeAss(t,width,height){
  if(animated(t)){
   const header=shapeAss({...t,keyframes:undefined,motion:undefined},width,height).split('Dialogue:')[0],events=[];
   for(const sample of keyframeSamples(t)){
-   const pose=applyKeyframes(t,sample.time),ass=shapeAss({...pose,keyframes:undefined,motion:undefined,start:sample.start,end:sample.end},width,height);
+   const interval=assFrameInterval(sample.start,sample.end);if(!interval)continue;
+   const pose=applyKeyframes(t,sample.time),ass=shapeAss({...pose,keyframes:undefined,motion:undefined,...interval},width,height);
    events.push(...(ass.match(/^Dialogue: .*$/gm)||[]));
   }
   return header+events.join('\n')+'\n';
