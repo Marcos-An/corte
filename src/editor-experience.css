@@ -646,3 +646,7 @@ body>.busy-message button{flex-shrink:0}
 #proposal{max-height:none;overflow:visible;border-left:0;padding-left:0}
 .library:has(#ai-panel:not([hidden])){overflow:hidden;min-height:0}
 .inspector>.context-heading{position:sticky;top:0;z-index:4;background:var(--panel)}
+
+.subtitle-files{margin:0 0 12px;font-size:12px}.subtitle-files summary{cursor:pointer;color:var(--muted)}.subtitle-file-actions{display:flex;flex-wrap:wrap;gap:6px;padding-top:8px}.subtitle-file-actions .reset{margin:0;width:auto}
+
+#audio-range-editor{font-size:12px;margin:12px 0}#audio-range-editor summary{cursor:pointer;margin-bottom:8px}#audio-range-editor label{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:6px 0}#music-editor #audio-range-editor input{width:100px;min-width:0}#audio-range-editor button{width:100%;margin:8px 0 0}

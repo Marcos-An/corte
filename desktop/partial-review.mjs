@@ -1,6 +1,6 @@
 import {resolveSpeechOperations} from './speech-edit.mjs';import {resolveAnchoredOperations} from './timeline-anchors.mjs';import {validatePlan,applyPlan} from '../src/project.mjs';
 const reshapes=op=>['trim','delete','move','move_range','insert_clip','keep_ranges','remove_ranges','remove_words','tighten_pauses','freeze_frame','adjust_ranges','adjust_timeline'].includes(op.type)||op.type==='update'&&'speed' in op;
-const absolute=op=>['adjust_timeline','add_text','add_image','add_video','add_shape','set_keyframe','remove_keyframe','set_transition_at'].includes(op.type)||op.type==='edit_component'&&['start','end','in'].some(k=>k in op.patch)||op.type==='edit_audio'&&'start' in op.patch||op.type==='add_audio'&&op.track.start!==0||['move','move_range','insert_clip'].includes(op.type)&&op.index!==0;
+const absolute=op=>['adjust_audio_range','adjust_timeline','add_text','add_image','add_video','add_shape','set_keyframe','remove_keyframe','set_transition_at'].includes(op.type)||op.type==='edit_component'&&['start','end','in'].some(k=>k in op.patch)||op.type==='edit_audio'&&'start' in op.patch||op.type==='add_audio'&&op.track.start!==0||['move','move_range','insert_clip'].includes(op.type)&&op.index!==0;
 // Only a proposal that already passed provider and executable-plan validation reaches this recovery path.
 // Re-run source anchors after pruning cuts; never retain absolute timings calculated from a discarded montage.
 export function recoverIndependentReview({project,result,transcripts,gaps,isSafe}){

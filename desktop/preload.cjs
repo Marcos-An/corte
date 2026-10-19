@@ -44,6 +44,8 @@ contextBridge.exposeInMainWorld('editor',{
   apiRemove:()=>invoke('editor:api-remove'),
   captionEstimate:project=>invoke('editor:caption-estimate',project),
   transcribe:project=>invoke('editor:transcribe',project),
+  importSubtitles:()=>invoke('editor:subtitle-import'),
+  exportSubtitles:(project,format)=>invoke('editor:subtitle-export',project,format),
   cancel:()=>invoke('editor:cancel'),
   setBusy:value=>invoke('editor:busy',value),
   setDirty:dirty=>invoke('editor:dirty',dirty),

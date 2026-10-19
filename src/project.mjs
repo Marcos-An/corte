@@ -8,7 +8,7 @@ const clone = value => structuredClone(value);
 const id = () => globalThis.crypto.randomUUID();
 const fail = message => { throw new Error(message); };
 const finite = value => typeof value === 'number' && Number.isFinite(value);
-function validateAudioFades(c){for(const k of ['fadeIn','fadeOut'])if(c[k]!==undefined&&(!finite(c[k])||c[k]<0||c[k]>10))fail('Fade de áudio inválido. Use de 0 a 10 segundos.');}
+function validateAudioFades(c){for(const k of ['fadeIn','fadeOut'])if(c[k]!==undefined&&(!finite(c[k])||c[k]<0||c[k]>10))fail('Fade de áudio inválido. Use de 0 a 10 segundos.');if(c.fadeWindow!==undefined){const w=c.fadeWindow;if(!w||Object.keys(w).some(k=>!['offset','duration','scale'].includes(k))||![w.offset,w.duration,w.scale].every(finite)||w.offset<0||w.duration<=0||w.duration>21600||w.scale<=0||w.scale>64||w.offset+clipDuration(c)*w.scale>w.duration+1e-5)fail('Continuidade dos fades inválida.');}}
 export const ASPECTS = ['9:16', '16:9', '1:1', '4:5'];
 export function createProject(name='Meu projeto') { return {version:1,name,aspect:'9:16',assets:[],clips:[],captionStyle:{font:'Anton',size:6.5,color:'#ffffff',accent:'#eac39b',position:'bottom',preset:'outline'}}; }
 export function validateProject(p) {
@@ -76,7 +76,7 @@ export function validateProject(p) {
     if(c.freeze!==undefined&&(!finite(c.freeze)||c.freeze<.1||c.freeze>10||p.assets.find(x=>x.id===c.assetId)?.kind==='image'||c.out-c.in>.1||c.speed!==undefined&&c.speed!==1))fail('Quadro congelado inválido: use de 0,1 a 10 segundos em um único quadro de vídeo.');
     if(c.zoom!==undefined){const z=c.zoom;if(!z||typeof z!=='object'||Object.keys(z).some(k=>!['from','to'].includes(k))||![z.from,z.to].every(finite)||z.from<1||z.from>2||z.to<1||z.to>2)fail('Zoom suave inválido. Use fatores de 1 a 2.');}
     if(c.adjustments!==undefined){const a=c.adjustments;if(!a||typeof a!=='object'||Object.keys(a).some(k=>!['brightness','contrast','saturation','temperature','sharpness'].includes(k))||![a.brightness,a.contrast,a.saturation].every(finite)||a.brightness< -1||a.brightness>1||a.contrast<0||a.contrast>2||a.saturation<0||a.saturation>2||a.temperature!==undefined&&(!finite(a.temperature)||a.temperature< -1||a.temperature>1)||a.sharpness!==undefined&&(!finite(a.sharpness)||a.sharpness<0||a.sharpness>1))fail('Ajustes de imagem inválidos.');}
-    validateAudioFades(c);if(c.fadeWindow!==undefined){const w=c.fadeWindow;if(!w||Object.keys(w).some(k=>!['offset','duration','scale'].includes(k))||![w.offset,w.duration,w.scale].every(finite)||w.offset<0||w.duration<=0||w.duration>21600||w.scale<=0||w.scale>64||w.offset+clipDuration(c)*w.scale>w.duration+1e-5)fail('Continuidade dos fades inválida.');}clips.add(c.id);
+    validateAudioFades(c);clips.add(c.id);
   }
   validateTransitions(p);
   return p;
@@ -148,7 +148,7 @@ export class History {
     const h=new History(data.entries[0].state);h.entries=clone(data.entries);h.cursor=data.cursor;return h;
   }
 }
-const keys={adjust_timeline:['clipId','start','end','patch'],insert_clip:['index','clip'],move_range:['clipId','sourceStart','sourceEnd','index'],add_audio:['track'],split:['clipId','time'],trim:['clipId','in','out'],delete:['clipId'],move:['clipId','index'],update:['clipId','volume','crop','speed','background','backgroundColor','adjustments','fadeIn','fadeOut','zoom','freeze'],set_aspect:['aspect'],remove_ranges:['clipId','ranges'],keep_ranges:['clipId','ranges'],freeze_frame:['clipId','time','duration'],adjust_ranges:['clipId','ranges','patch'],set_transition:['leftId','rightId','effect','duration'],set_transition_at:['index','effect','duration','makeRoom'],edit_audio:['audioId','patch'],add_text:['layer'],add_image:['layer'],add_video:['layer'],add_shape:['layer'],edit_component:['layerId','patch'],remove_component:['layerId'],move_component:['layerId','direction'],set_keyframe:['layerId','time','pose'],remove_keyframe:['layerId','time'],set_motion:['layerId','enter','exit']};
+const keys={adjust_audio_range:['audioId','start','end','volume'],adjust_timeline:['clipId','start','end','patch'],insert_clip:['index','clip'],move_range:['clipId','sourceStart','sourceEnd','index'],add_audio:['track'],split:['clipId','time'],trim:['clipId','in','out'],delete:['clipId'],move:['clipId','index'],update:['clipId','volume','crop','speed','background','backgroundColor','adjustments','fadeIn','fadeOut','zoom','freeze'],set_aspect:['aspect'],remove_ranges:['clipId','ranges'],keep_ranges:['clipId','ranges'],freeze_frame:['clipId','time','duration'],adjust_ranges:['clipId','ranges','patch'],set_transition:['leftId','rightId','effect','duration'],set_transition_at:['index','effect','duration','makeRoom'],edit_audio:['audioId','patch'],add_text:['layer'],add_image:['layer'],add_video:['layer'],add_shape:['layer'],edit_component:['layerId','patch'],remove_component:['layerId'],move_component:['layerId','direction'],set_keyframe:['layerId','time','pose'],remove_keyframe:['layerId','time'],set_motion:['layerId','enter','exit']};
 const visualPlanFields=['start','end','x','y','width','rotation','opacity'];
 const textPlanFields=['text','start','end','style'];
 const stylePlanFields=['font','size','color','position','preset','positionX','positionY','width','accent','strokeColor','strokeWidth','shadow','shadowColor','spacing','boxColor','boxOpacity','bold','italic','uppercase','hollow','accentLast','glowColor','glow','enter','exit'];
@@ -188,6 +188,7 @@ function applyPlanOperation(p,op){
  }
  if(op.type==='set_motion')return setMotion(p,op.layerId,{enter:op.enter,exit:op.exit});
  if(op.type==='edit_audio'){planFields(op.patch,['in','out','start','volume','fadeIn','fadeOut']);return editMusic(p,op.audioId,op.patch);}
+ if(op.type==='adjust_audio_range')return adjustAudioRange(p,op.audioId,op.start,op.end,op.volume);
  if(op.type.startsWith('add_')){
   const definitions={add_text:[addTextLayer,textPlanFields],add_image:[addImageLayer,[...visualPlanFields,'assetId']],add_video:[addVideoLayer,[...visualPlanFields,'assetId','in','freeze']],add_shape:[addShapeLayer,[...visualPlanFields,'type','height','fill','stroke','strokeWidth']]};
   const [add,fields]=definitions[op.type];planFields(op.layer,['id',...fields]);if(typeof op.layer.id!=='string'||!op.layer.id)fail('Identidade de componente inválida.');
@@ -230,8 +231,15 @@ export function planLineage(p,plan) {
   validatePlan(p,plan);let q=clone(p);
   // A frozen frame belongs to its clip's lineage but holds one instant: updates and range edits of the clip skip it.
   const root=new Map(q.clips.map(c=>[c.id,c.id])),family=clipId=>q.clips.filter(c=>root.get(c.id)===clipId&&!c.freeze);
+  const audioRoot=new Map((q.music||[]).map(c=>[c.id,c.id]));
   const queue=[...plan.operations];for(let operationIndex=0;operationIndex<queue.length;operationIndex++){
     const op=queue[operationIndex];
+    if(op.type==='adjust_audio_range'){
+      const members=(q.music||[]).filter(c=>c.id===op.audioId||audioRoot.get(c.id)===op.audioId),start=Math.min(...members.map(c=>c.start)),end=Math.max(...members.map(c=>c.start+clipDuration(c)));
+      if(!members.length||!finite(op.start)||!finite(op.end)||op.start<start-1e-6||op.end>end+1e-6||op.end-op.start<.02)fail('Intervalo fora do áudio escolhido.');
+      for(const c of members){const from=Math.max(op.start,c.start),to=Math.min(op.end,c.start+clipDuration(c));if(to-from<1e-6)continue;const before=new Set((q.music||[]).map(c=>c.id));q=adjustAudioRange(q,c.id,from,to,op.volume);for(const piece of q.music)if(!before.has(piece.id))audioRoot.set(piece.id,audioRoot.get(c.id)||c.id);}
+      continue;
+    }
     if(op.type==='adjust_timeline'){
       const members=op.clipId===null?q.clips:q.clips.filter(c=>c.id===op.clipId||root.get(c.id)===op.clipId),total=members.reduce((n,c)=>n+clipDuration(c),0);
       if(!members.length||op.end>total+1e-6)fail('O intervalo ultrapassa a duração atual da montagem ou do trecho selecionado.');
@@ -285,7 +293,18 @@ export function planLineage(p,plan) {
 }
 
 export function addMusic(p,asset,clip){const q=clone(p);if(!q.assets.some(a=>a.id===asset.id))q.assets.push(clone(asset));q.music=[...(q.music||[]),{id:clip.id||id(),assetId:asset.id,in:clip.in,out:clip.out,start:clip.start??0,volume:clip.volume??1,...(clip.role?{role:clip.role}:{}),...(clip.fadeIn!==undefined?{fadeIn:clip.fadeIn}:{}),...(clip.fadeOut!==undefined?{fadeOut:clip.fadeOut}:{})}];return validateProject(q);}
-export function editMusic(p,clipId,patch){const q=clone(p),c=q.music?.find(c=>c.id===clipId);if(!c)fail('Trecho de música não encontrado.');if(patch===null)q.music=q.music.filter(c=>c.id!==clipId);else for(const k of ['in','out','start','volume','fadeIn','fadeOut'])if(k in patch)c[k]=patch[k];return validateProject(q);}
+export function editMusic(p,clipId,patch){const q=clone(p),c=q.music?.find(c=>c.id===clipId);if(!c)fail('Trecho de música não encontrado.');if(patch===null)q.music=q.music.filter(c=>c.id!==clipId);else{if(c.fadeWindow){if('fadeIn'in patch||'fadeOut'in patch||patch.in!==undefined&&patch.in<c.in||patch.out!==undefined&&patch.out>c.out)delete c.fadeWindow;else if('in'in patch)c.fadeWindow.offset+=(patch.in-c.in)*c.fadeWindow.scale;}for(const k of ['in','out','start','volume','fadeIn','fadeOut'])if(k in patch)c[k]=patch[k];}return validateProject(q);}
+export function adjustAudioRange(p,audioId,start,end,volume){
+ const q=clone(p),index=q.music?.findIndex(c=>c.id===audioId),c=q.music?.[index];
+ if(!c||![start,end,volume].every(finite)||start<c.start-1e-6||end>c.start+clipDuration(c)+1e-6||end-start<.02-1e-9||volume<0||volume>2)fail('Intervalo ou volume do áudio inválido.');
+ start=Math.max(start,c.start);end=Math.min(end,c.start+clipDuration(c));
+ const from=c.in+start-c.start,to=c.in+end-c.start,pieces=[];
+ for(const [a,b,level] of [[c.in,from,c.volume],[from,to,volume],[to,c.out,c.volume]]){
+  if(b-a<1e-8)continue;if(b-a<.02-1e-9)fail('Mantenha pelo menos 0,02 s em cada parte do áudio.');
+  const piece=sliceClip(c,a,b,pieces.length?id():c.id,{preserveFades:true});piece.start=c.start+a-c.in;piece.volume=level;pieces.push(piece);
+ }
+ q.music.splice(index,1,...pieces);return validateProject(q);
+}
 
 export function addTextLayer(p,layer){const q=clone(p);q.textLayers=[...(q.textLayers||[]),{...clone(layer),id:layer.id||id()}];return validateProject(syncLayerOrder(q));}
 const words=text=>text.split(/\s+/).filter(Boolean);

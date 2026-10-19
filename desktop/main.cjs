@@ -26,6 +26,20 @@ if(primary)app.whenReady().then(async()=>{
  const cache=path.join(app.getPath('userData'),'cache'),home=path.join(app.getPath('userData'),'chatgpt');await fs.mkdir(cache,{recursive:true});
  const {keyStore}=await import('./credentials.mjs'),{captionEstimate,transcribeCloud}=await import('./cloud-captions.mjs');
  const keys=keyStore(path.join(app.getPath('userData'),'openai-key.enc'),safeStorage);
+ const subtitleFiles=await import('../src/subtitle-files.mjs');
+ handler('subtitle-import',async()=>{
+  const picked=await dialog.showOpenDialog(window,{title:'Importar legendas',properties:['openFile'],filters:[{name:'Legendas SRT / WebVTT',extensions:['srt','vtt']}]});
+  if(picked.canceled)return null;
+  const file=picked.filePaths[0],stat=await fs.stat(file);if(stat.size>2*1024*1024)throw Error('O arquivo de legendas deve ter até 2 MB.');
+  const text=await fs.readFile(file,'utf8');subtitleFiles.parseSubtitles(text);return text;
+ });
+ handler('subtitle-export',async(project,format)=>{
+  const text=subtitleFiles.exportSubtitles(project,format);
+  const picked=await dialog.showSaveDialog(window,{title:'Exportar legendas',defaultPath:`Legendas.${format}`,filters:[{name:format==='vtt'?'WebVTT':'SubRip',extensions:[format]}]});
+  if(picked.canceled)return false;
+  const file=picked.filePath.toLowerCase().endsWith('.'+format)?picked.filePath:picked.filePath+'.'+format;
+  await fs.writeFile(file,text,'utf8');return true;
+ });
  const {createDiagnostics}=await import('./diagnostics.mjs'),{beginMediaHydration}=await import('./open-media.mjs');
  const diagnostics=createDiagnostics(path.join(app.getPath('userData'),'diagnostics','performance.jsonl'));let hydration=null,ensureModels=async()=>{};
  async function timed(stage,fn){const started=performance.now();try{const value=await fn();diagnostics.record({stage,elapsedMs:performance.now()-started,outcome:'ok'});return value;}catch(error){diagnostics.record({stage,elapsedMs:performance.now()-started,outcome:'error'});throw error;}}

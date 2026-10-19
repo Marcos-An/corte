@@ -16,6 +16,8 @@ A Release inclui fontes correspondentes das ferramentas GPL e `SHA256SUMS`. O ZI
 
 ## Editor
 
+Em desenvolvimento após a 0.6.3: **Arquivos de legenda** importa SRT/VTT e exporta os tempos atuais da montagem, sem serviço externo. Em música/narração, **Volume por intervalo** permite definir início/fim e volume manual; a IA usa `adjust_audio_range` para a mesma edição. Esses recursos ainda não estão no instalador publicado. Veja o [inventário e as próximas prioridades](docs/revisao-recursos-2026-10.md).
+
 - Importação de vídeos/fotos diretamente na timeline, sem biblioteca de arquivos usados.
 - Cortes, aparo, reordenação, enquadramento, formatos, volume, histórico e desfazer/refazer.
 - Música e narração em trilhas independentes; áudio original vinculado ao vídeo.
