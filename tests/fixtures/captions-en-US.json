@@ -1,0 +1,13 @@
+{
+  "voice": "Microsoft Zira Desktop",
+  "culture": "en-US",
+  "rate": 1,
+  "text": "Hello, today we are visiting a new restaurant. The food looks delicious.",
+  "duration": 5.094,
+  "expectedWords": [
+    "hello",
+    "restaurant",
+    "food",
+    "delicious"
+  ]
+}

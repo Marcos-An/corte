@@ -199,6 +199,8 @@ jobs:
           node tests/clean-editing.e2e.mjs
           node tests/subtitle-files.e2e.mjs
           node tests/local-captions.e2e.mjs
+          CORTE_TEST_CAPTION_LANGUAGE=en node tests/local-captions.e2e.mjs
+          node tests/speech-language.integration.mjs
           node tests/caption-proposal.e2e.mjs
           node tests/caption-reuse.integration.mjs
           node tests/caption-feedback.e2e.mjs

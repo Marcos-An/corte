@@ -1,3 +1,4 @@
+import {SPEECH_LANGUAGES,speechLanguage} from './speech-language.mjs';
 import {applyKeyframes,keyframeAt} from './keyframes.mjs';
 import {clipSpeed,clipDuration,sourceTime,montageTime} from './clip-time.mjs';
 import {DEFAULT_ADJUSTMENTS} from './color-adjustments.mjs';import {zoomAt,zoomedCrop} from './clip-time.mjs';
@@ -769,6 +770,7 @@ function showCaptionModule(show){showModule(show?'captions':null);if(show)setCap
 function renderCaptions(){
  renderCaptionSamples();
  for(const id of ['export-srt','export-vtt'])$(id).disabled=busy||!captionEntries(project()).length;
+ $('caption-language').value=speechLanguage(project());
  $('caption-source-field').hidden=!project().music?.some(c=>c.role==='narration')&&project().captionSource!=='narration';$('caption-source').value=project().captionSource||'original';$('caption-source-title').textContent=$('caption-source-field').hidden?'Áudio original':'Voz';
  const list=$('caption-words');list.replaceChildren();const p=project(),style=captionStyle(p.captionStyle);
  const placed=captionEntries(p).filter(w=>w.place).length;$('align-captions').disabled=busy||!placed;$('align-captions').textContent=placed?`Alinhar todas (${placed})`:'Alinhar todas';
@@ -868,6 +870,8 @@ $('recording-stop').onclick=()=>{if(recorder?.state==='recording')recorder.stop(
 $('recording-cancel').onclick=()=>{recordDiscard=true;if(recorder?.state==='recording')recorder.stop();};
 window.addEventListener('beforeunload',()=>{recordStream?.getTracks().forEach(t=>t.stop());});
 $('nav-narration').onclick=()=>showModule(editorPanel(activePanel,'narration'));
+for(const language of SPEECH_LANGUAGES){const option=document.createElement('option');option.value=language.id;option.textContent=language.label;$('caption-language').append(option);}
+$('caption-language').onchange=guard(()=>commit({...project(),speechLanguage:$('caption-language').value},{label:'Idioma do áudio'}));
 $('caption-source').onchange=guard(()=>commit({...project(),captionSource:$('caption-source').value},{label:'Fonte das legendas'}));
 $('mute-original').onclick=guard(()=>{const p=project();p.clips.forEach(c=>c.volume=0);commit(p,{label:'Silenciar áudio original'});});
 $('import-narration').onclick=guard(async()=>{
@@ -944,7 +948,7 @@ $('install-update').onclick=guard(async()=>{
  await bridge.installUpdate();
 });
 let captionSpeechReady=false,captionSpeechInstalling=false;
-function renderCaptionModel(){const cloud=$('caption-engine').value==='cloud';$('caption-local-hint').hidden=cloud;$('caption-local-hint').textContent=captionSpeechInstalling?'Baixando reconhecimento preciso…':captionSpeechReady?'Modelo preciso · processamento local.':'Modelo básico · revise o reconhecimento.';$('caption-model-install').hidden=cloud||captionSpeechReady;$('caption-model-install').disabled=busy||captionSpeechInstalling;}
+function renderCaptionModel(){const cloud=$('caption-engine').value==='cloud';$('caption-language-field').hidden=cloud;$('caption-model-details').hidden=cloud;$('caption-model-label').textContent=captionSpeechInstalling?'Baixando modelo…':captionSpeechReady?'Modelo preciso':'Modelo básico';$('caption-local-hint').hidden=cloud;$('caption-local-hint').textContent=captionSpeechInstalling?'Baixando reconhecimento preciso…':captionSpeechReady?'Modelo preciso · processamento local.':'Modelo básico · revise o reconhecimento.';$('caption-model-install').hidden=cloud||captionSpeechReady;$('caption-model-install').disabled=busy||captionSpeechInstalling;}
 async function refreshSpeechModel(){const r=await bridge.speechModel();captionSpeechReady=r.installed;captionSpeechInstalling=r.installing;renderCaptionModel();$('speech-model-status').textContent=r.installed?'Reconhecimento preciso instalado.':r.installing?'Baixando reconhecimento preciso…':'Usando o reconhecimento básico incluído.';$('speech-model-install').hidden=r.installed;$('speech-model-install').disabled=r.installing;$('ai-speech-hint').hidden=r.installed||$('ai-engine').value!=='hybrid';$('ai-speech-install').disabled=r.installing;}
 let searchModelReady=false;
 async function refreshSearchModel(){if(!bridge?.searchModel)return;const r=await bridge.searchModel();searchModelReady=r.installed;$('search-model-status').textContent=r.installed?'Busca visual instalada.':r.installing?'Baixando busca visual…':'Busca por conteúdo visual não instalada.';$('search-model-install').hidden=r.installed;$('search-model-install').disabled=r.installing;}

@@ -1,3 +1,4 @@
+import {speechLanguage} from '../src/speech-language.mjs';
 import {applyPlan,simulatePlan,validatePlan} from '../src/project.mjs';
 import {captionTracks,assertCaptionProviderPlan} from '../src/caption-plan.mjs';
 import {captionEntries} from '../src/captions.mjs';
@@ -6,7 +7,7 @@ import {groupCaptionTokens} from '../src/caption-timing.mjs';
 function reusableSpeech(project,source,evidence){
  if(source!=='original'||!Array.isArray(evidence))return null;
  const used=new Set(captionTracks(project,source).map(c=>c.assetId)),assets=project.assets.filter(a=>a.hasAudio&&used.has(a.id));
- try{return assets.map(a=>{const t=evidence.find(t=>t.assetId===a.id);if(!t||typeof t.recognizer!=='string'||!Array.isArray(t.gaps)||t.gaps.length)throw Error();return {assetId:a.id,provider:'local',model:t.recognizer,words:groupCaptionTokens(t.words,a.duration)};});}catch{return null;}
+ try{return assets.map(a=>{const t=evidence.find(t=>t.assetId===a.id);if(!t||speechLanguage({speechLanguage:t.language})!==speechLanguage(project)||typeof t.recognizer!=='string'||!Array.isArray(t.gaps)||t.gaps.length)throw Error();return {assetId:a.id,provider:'local',language:speechLanguage(project),model:t.recognizer,words:groupCaptionTokens(t.words,a.duration)};});}catch{return null;}
 }
 // Recognition happens locally before review. Only measured transcripts enter an executable plan.
 export async function prepareCaptionProposal(options,result,{generate=generateLocalCaptions}={}){
@@ -20,7 +21,7 @@ export async function prepareCaptionProposal(options,result,{generate=generateLo
   signal?.throwIfAborted();
   if(op.type!=='generate_captions'){indexes.set(index,operations.length);operations.push(op);continue;}
   try{
-   const context=simulatePlan(project,{...result.plan,operations});context.captionSource=op.source;
+   const context=simulatePlan(project,{...result.plan,operations:[...operations,op]});
    onProgress({stage:'hybrid',message:'Preparando legendas neste computador para revisão…'});
    const reused=reusableSpeech(context,op.source,localCaptionEvidence),all=reused??await generate({...options,project:context}),used=new Set(captionTracks(context,op.source).map(c=>c.assetId));signal?.throwIfAborted();
    const prepared={...op,transcripts:all.filter(t=>used.has(t.assetId)&&context.assets.some(a=>a.id===t.assetId&&a.hasAudio))};

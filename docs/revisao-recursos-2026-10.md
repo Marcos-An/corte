@@ -17,7 +17,7 @@ Referências oficiais consultadas:
 | Cortes de fala e pausas | Existem transcrição, âncoras e detector de pausas | Uma revisão visual da transcrição, com seleção para cortar, e controles claros de tolerância | Alta |
 | Vários Shorts de um vídeo longo | Há recorte e formato vertical; não há fluxo completo de várias versões | Propor candidatos com início/fim e justificativa, permitir revisar cada um e exportar em lote | Alta |
 | Reenquadramento automático | Crop manual, zoom e ajustes por intervalo existem | Rastrear pessoa/objeto com confiança, prévia da trajetória e correção manual; não confundir CLIP com tracking | Alta |
-| Legendas | Edição, estilos, karaokê e posição por fala existem; geração local implementada nesta revisão | Revisão de palavras incertas, seleção do idioma local e tradução opcional | Alta |
+| Legendas | Edição, estilos, karaokê e posição por fala existem; geração local implementada nesta revisão | Revisão de palavras incertas e tradução opcional; seleção do idioma local implementada após 0.6.4 | Alta |
 | Legendas SRT/WebVTT | Publicado na 0.6.4 | Importação local e exportação dos tempos atuais; validado também nos pacotes Windows/macOS da 0.6.4 | Alta |
 | Volume em parte da música/narração | Publicado na 0.6.4 | Controle manual e operação de IA `adjust_audio_range`; preservar fades, narração e histórico | Alta |
 | Tratamento de voz | Volume/fades existem; sem redução de ruído/EQ/compressor na interface | Controles opt-in com comparação antes/depois, intensidade e coerência entre prévia/MP4 | Alta |
@@ -64,3 +64,7 @@ Esta lista é um plano de evolução, não uma declaração de paridade com os c
 ## Revisão após a publicação 0.6.4
 
 Correção em desenvolvimento: legendas de narração respeitam o fim da montagem ao encurtar ou acelerar o vídeo. Palavras fora desse intervalo não entram na prévia nem no SRT/MP4. A trilha de áudio e a transcrição continuam intactas e voltam a fornecer legendas quando o vídeo é ampliado. Projetos somente de áudio preservam a exportação de legendas sem exigir clipe visual. Essa correção ainda não faz parte do download 0.6.4.
+
+Idioma da análise local (em desenvolvimento após 0.6.4): seletor compacto em Legendas → Transcrição, salvo no projeto com desfazer/refazer. Português continua padrão para projetos antigos; há detecção automática e português/inglês/espanhol/francês/italiano/alemão/japonês. A configuração é compartilhada pela análise local de fala e pela geração local de legendas. Trocar a seleção não reescreve legendas existentes nem envia áudio; exige uma nova geração para substituir o resultado. Pedidos por prompt podem informar o idioma da fala, com preparação antes de aplicar. Tradução permanece não suportada.
+
+A chave do cache separa idiomas e preserva os caches anteriores de português. Evidências de fala só são reaproveitadas para legendas quando o idioma solicitado é o mesmo. A escolha fica oculta no modo nuvem, cujo comportamento não foi alterado. Inglês explícito e detecção automática foram verificados com voz sintética en-US; as demais opções passam por validação de configuração e ainda exigem avaliação de qualidade com gravações nos respectivos idiomas. Nenhum modelo adicional é necessário.

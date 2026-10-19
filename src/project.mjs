@@ -1,3 +1,4 @@
+import {speechLanguage} from './speech-language.mjs';
 import {KEYFRAME_FIELDS,keyframeAt,retimeKeyframes,validateKeyframes,validateMotion} from './keyframes.mjs';
 import {clipSpeed,clipDuration,sourceTime,zoomAt} from './clip-time.mjs';
 import {DEFAULT_ADJUSTMENTS} from './color-adjustments.mjs';
@@ -20,6 +21,7 @@ export function validateProject(p) {
     if(!a || typeof a.id!=='string' || !a.id || ids.has(a.id) || typeof a.name!=='string' || !finite(a.duration) || a.duration<=0 || a.duration>21600 || !Number.isInteger(a.width) || a.width<(a.kind==='audio'?0:2) || a.width>16384 || !Number.isInteger(a.height) || a.height<(a.kind==='audio'?0:2) || a.height>16384 || (a.kind!==undefined&&!['audio','video','image'].includes(a.kind)) || (a.kind==='audio'&&(a.width!==0||a.height!==0||!a.hasAudio)) || typeof a.hasAudio!=='boolean') fail('Mídia inválida.');
     ids.add(a.id);
   }
+  speechLanguage(p);
   if(p.captionSource!==undefined&&!['original','narration'].includes(p.captionSource))fail('Fonte de legenda inválida.');
   if(p.music!==undefined){if(!Array.isArray(p.music)||p.music.length>100)fail('Trilhas de música inválidas.');const musicIds=new Set();for(const c of p.music){const a=p.assets.find(a=>a.id===c?.assetId);if((c.role!==undefined&&!['music','narration'].includes(c.role))||!a||a.kind!=='audio'||typeof c.id!=='string'||!c.id||musicIds.has(c.id)||![c.in,c.out,c.start,c.volume].every(finite)||c.in<0||c.out-c.in<.02||c.out>a.duration+.000001||c.start<0||c.start>21600||c.volume<0||c.volume>2)fail('Trecho de música inválido.');if(c.captionWords!==undefined)validateTranscript({assetId:c.assetId,words:c.captionWords},a.duration);if(c.speed!==undefined)fail('Velocidade somente em trechos principais.');validateAudioFades(c);if(c.ducking!==undefined&&(!finite(c.ducking)||c.ducking<0||c.ducking>1||c.role==='narration'))fail('Volume de fundo inválido. Use de 0 a 100% em uma trilha de música.');musicIds.add(c.id);}}
   if(p.transcripts!==undefined){
@@ -149,7 +151,7 @@ export class History {
     const h=new History(data.entries[0].state);h.entries=clone(data.entries);h.cursor=data.cursor;return h;
   }
 }
-const keys={edit_caption_style:['style'],generate_captions:['source','style','transcripts'],adjust_audio_range:['audioId','start','end','volume'],adjust_timeline:['clipId','start','end','patch'],insert_clip:['index','clip'],move_range:['clipId','sourceStart','sourceEnd','index'],add_audio:['track'],split:['clipId','time'],trim:['clipId','in','out'],delete:['clipId'],move:['clipId','index'],update:['clipId','volume','crop','speed','background','backgroundColor','adjustments','fadeIn','fadeOut','zoom','freeze'],set_aspect:['aspect'],remove_ranges:['clipId','ranges'],keep_ranges:['clipId','ranges'],freeze_frame:['clipId','time','duration'],adjust_ranges:['clipId','ranges','patch'],set_transition:['leftId','rightId','effect','duration'],set_transition_at:['index','effect','duration','makeRoom'],edit_audio:['audioId','patch'],add_text:['layer'],add_image:['layer'],add_video:['layer'],add_shape:['layer'],edit_component:['layerId','patch'],remove_component:['layerId'],move_component:['layerId','direction'],set_keyframe:['layerId','time','pose'],remove_keyframe:['layerId','time'],set_motion:['layerId','enter','exit']};
+const keys={edit_caption_style:['style'],generate_captions:['source','style','transcripts','language'],adjust_audio_range:['audioId','start','end','volume'],adjust_timeline:['clipId','start','end','patch'],insert_clip:['index','clip'],move_range:['clipId','sourceStart','sourceEnd','index'],add_audio:['track'],split:['clipId','time'],trim:['clipId','in','out'],delete:['clipId'],move:['clipId','index'],update:['clipId','volume','crop','speed','background','backgroundColor','adjustments','fadeIn','fadeOut','zoom','freeze'],set_aspect:['aspect'],remove_ranges:['clipId','ranges'],keep_ranges:['clipId','ranges'],freeze_frame:['clipId','time','duration'],adjust_ranges:['clipId','ranges','patch'],set_transition:['leftId','rightId','effect','duration'],set_transition_at:['index','effect','duration','makeRoom'],edit_audio:['audioId','patch'],add_text:['layer'],add_image:['layer'],add_video:['layer'],add_shape:['layer'],edit_component:['layerId','patch'],remove_component:['layerId'],move_component:['layerId','direction'],set_keyframe:['layerId','time','pose'],remove_keyframe:['layerId','time'],set_motion:['layerId','enter','exit']};
 const visualPlanFields=['start','end','x','y','width','rotation','opacity'];
 const textPlanFields=['text','start','end','style'];
 const stylePlanFields=['font','size','color','position','preset','positionX','positionY','width','accent','strokeColor','strokeWidth','shadow','shadowColor','spacing','boxColor','boxOpacity','bold','italic','uppercase','hollow','accentLast','glowColor','glow','enter','exit'];
@@ -212,7 +214,7 @@ export function validatePlan(p,plan) {
   if(plan.questions.length || plan.unsupported.length) fail('O pedido precisa de esclarecimento ou contém recursos ainda não suportados.');
   if(plan.operations.filter(op=>op?.type==='generate_captions').length>1)fail('Escolha uma única voz para gerar legendas nesta proposta.');
   for(const op of plan.operations) {
-    const allowed=keys[op?.type];if(!allowed || (op.type==='update'? !('clipId' in op):allowed.some(k=>!['makeRoom','transcripts'].includes(k)&&!(k in op))) || Object.keys(op).some(k=>k!=='type' && !allowed.includes(k))) fail('Operação da IA inválida.');
+    const allowed=keys[op?.type];if(!allowed || (op.type==='update'? !('clipId' in op):allowed.some(k=>!['makeRoom','transcripts','language'].includes(k)&&!(k in op))) || Object.keys(op).some(k=>k!=='type' && !allowed.includes(k))) fail('Operação da IA inválida.');
     if(op.type==='update'&&op.crop)planFields(op.crop,['x','y','w','h']);
     if(op.type==='update' && !keys.update.slice(1).some(k=>k in op)) fail('Ajuste vazio.');
     if(['adjust_ranges','adjust_timeline'].includes(op.type)){planFields(op.patch,['speed','crop','adjustments','volume','zoom']);if(op.patch.crop)planFields(op.patch.crop,['x','y','w','h']);if(op.patch.adjustments)planFields(op.patch.adjustments,Object.keys(DEFAULT_ADJUSTMENTS));}

@@ -1,9 +1,11 @@
+import {speechLanguage} from './speech-language.mjs';
 import {clipDuration,montageTime,sourceTime} from './clip-time.mjs';
 import {FONT_FAMILIES} from './fonts.mjs';
 import {ANIMATION_IDS,animationSpan,motionOf,animationAt} from './text-style.mjs';
 import {applyKeyframes,keyframeSamples} from './keyframes.mjs';
 // Transcripts stay in source time: timeline edits never rewrite recognition results.
 export function validateTranscript(t,duration,allowInstant=false){
+ if(t?.language!==undefined)speechLanguage({speechLanguage:t.language});
  if(!t||typeof t.assetId!=='string'||!Array.isArray(t.words)||t.words.length>100000)throw new Error('Transcrição inválida.');
  let previous=0;
  for(const w of t.words){if(!w||!Number.isFinite(w.start)||!Number.isFinite(w.end)||w.start<previous||w.end<w.start||(!allowInstant&&w.end===w.start)||w.end>duration+.000001||typeof w.text!=='string'||!w.text.trim()||w.text.length>500||/[\u0000-\u0008\u000b-\u001f]/.test(w.text))throw new Error('Palavra ou tempo de legenda inválido.');if(w.place!==undefined&&(!w.place||!Number.isFinite(w.place.positionX)||w.place.positionX<5||w.place.positionX>95||!Number.isFinite(w.place.positionY)||w.place.positionY<15||w.place.positionY>85||Object.keys(w.place).length!==2))throw new Error('Posição de legenda inválida.');if(w.tokens!==undefined){if(!Array.isArray(w.tokens)||w.tokens.length>500||w.tokens.some(t=>t.tokens!==undefined))throw Error('Tempos por palavra inválidos.');validateTranscript({assetId:t.assetId,words:w.tokens},duration,true);}previous=w.start;}

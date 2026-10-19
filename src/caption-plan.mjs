@@ -1,3 +1,4 @@
+import {speechLanguage} from './speech-language.mjs';
 import {captionStyle,validateTranscript} from './captions.mjs';
 export const CAPTION_PATCH_FIELDS=['font','size','color','accent','position','preset','positionX','positionY','width'];
 export const captionTracks=(p,source)=>source==='narration'?(p.music||[]).filter(c=>c.role==='narration'):p.clips.filter(c=>!c.freeze);
@@ -9,13 +10,13 @@ export function applyCaptionAppearance(p,style,{allowNull=false}={}){
 }
 export function applyCaptionRequest(p,op,{allowUnprepared=false}={}){
  if(!['original','narration'].includes(op.source))throw Error('Fonte de legenda inválida.');
- const q=applyCaptionAppearance(p,op.style,{allowNull:true});q.captionSource=op.source;
+ const q=applyCaptionAppearance(p,op.style,{allowNull:true});q.captionSource=op.source;if(op.language!==undefined&&op.language!==null)q.speechLanguage=op.language;speechLanguage(q);
  const used=new Set(captionTracks(q,op.source).map(c=>c.assetId)),assets=q.assets.filter(a=>used.has(a.id)&&a.hasAudio);
  if(op.transcripts===undefined&&allowUnprepared)return q;
  if(!assets.length)throw Error('A voz escolhida não tem áudio para gerar legendas.');
  if(op.transcripts===undefined)throw Error('Prepare as legendas localmente antes de aplicar a proposta.');
  if(!Array.isArray(op.transcripts)||op.transcripts.length!==assets.length||new Set(op.transcripts.map(t=>t?.assetId)).size!==assets.length)throw Error('Legendas preparadas incompletas.');
- for(const t of op.transcripts){const a=assets.find(a=>a.id===t?.assetId);if(!a||t.provider!=='local')throw Error('As legendas preparadas devem vir do reconhecimento local da voz escolhida.');validateTranscript(t,a.duration);}
+ for(const t of op.transcripts){const a=assets.find(a=>a.id===t?.assetId);if(!a||t.provider!=='local'||speechLanguage({speechLanguage:t.language})!==speechLanguage(q))throw Error('As legendas preparadas devem vir do reconhecimento local da voz escolhida.');validateTranscript(t,a.duration);}
  q.transcripts=[...(q.transcripts||[]).filter(t=>!assets.some(a=>a.id===t.assetId)),...structuredClone(op.transcripts)];
  for(const track of captionTracks(q,op.source))delete track.captionWords;
  return q;

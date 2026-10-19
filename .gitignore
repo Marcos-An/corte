@@ -50,6 +50,8 @@ credentials/
 !/tests/fixtures/speech-pt.json
 !/tests/fixtures/captions-pt-BR.m4a
 !/tests/fixtures/captions-pt-BR.json
+!/tests/fixtures/captions-en-US.m4a
+!/tests/fixtures/captions-en-US.json
 
 # Keep app icon outputs; exclude design experiments and large duplicate exports.
 /build-resources/*
@@ -114,6 +116,7 @@ credentials/
 !/scripts/release-bootstrap.json
 !/scripts/make-speech-fixture.mjs
 !/scripts/make-caption-fixture.ps1
+!/scripts/make-english-caption-fixture.ps1
 !/scripts/bench-analysis.mjs
 !/.github/workflows/release.yml
 

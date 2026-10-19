@@ -1,3 +1,4 @@
+import {speechLanguage} from '../src/speech-language.mjs';
 import {validateProject} from '../src/project.mjs';
 import {modelPath,accurateSpeechModel} from './local.mjs';import {runIsolated} from './visual-process.mjs';import {verify} from './models-store.mjs';
 import {cachedEvidence} from './analysis-cache.mjs';
@@ -18,11 +19,12 @@ export async function transcribeLocally({project,registry,cache,signal,onProgres
  for(const a of assets)if(!registry.get(a.id)?.path)throw new Error('Mídia ausente.');
  const accurate=await readyAccurateSpeechModel();
  const sources=assets.map(a=>({...a,file:registry.get(a.id).path}));
- const configuration={version:purpose==='captions'?2:1,purpose,model:accurate?.manifest||(cache?await readFile(path.join(modelPath(),'manifest.json'),'utf8'):null)};
+ const language=speechLanguage(project);
+ const configuration={...(language==='pt'?{}:{language}),version:purpose==='captions'?2:1,purpose,model:accurate?.manifest||(cache?await readFile(path.join(modelPath(),'manifest.json'),'utf8'):null)};
  return cachedEvidence({root:cache&&path.join(cache,'local-evidence'),kind:'speech',assets:sources,configuration,signal,
   onHit:()=>onProgress({stage:'captions',completed:assets.length,total:assets.length,cached:true}),compute:async()=>{
  const temporaryDirectory=await mkdtemp(path.join(tmpdir(),'corte-speech-job-'));try{return (await runIsolated({entry:new URL('./speech-child.mjs',import.meta.url),worker:'speech',backend:accurate&&process.platform==='win32'?'dml':'cpu',signal,onProgress,
   startError:'Não foi possível iniciar a transcrição local.',crashError:'A transcrição local foi interrompida. O editor continua aberto; tente novamente.',
-  data:{models:accurate?.path||modelPath(),manifest:null,...(accurate?{speechModel:accurate.manifest.model}:{}),purpose,assets:sources,temporaryDirectory}})).transcripts;}finally{await rm(temporaryDirectory,{recursive:true,force:true});}
+  data:{models:accurate?.path||modelPath(),manifest:null,...(accurate?{speechModel:accurate.manifest.model}:{}),purpose,language,assets:sources,temporaryDirectory}})).transcripts;}finally{await rm(temporaryDirectory,{recursive:true,force:true});}
  }});
 }

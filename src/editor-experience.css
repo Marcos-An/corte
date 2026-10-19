@@ -658,3 +658,7 @@ body>.busy-message button{flex-shrink:0}
 .proposal-caption-preview textarea{display:block;width:100%;max-width:100%;min-height:90px;resize:vertical;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px;font:inherit}
 
 .caption-preview-pages{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px;font-size:10px}.caption-preview-pages button{font-size:10px;padding:6px 8px;border:1px solid var(--line);border-radius:5px}#ai-panel{scroll-padding-bottom:60px}
+
+#caption-generate-view .caption-source-card{padding:0;border:0;border-radius:0;margin:8px 0}#caption-generate-view .caption-engine-field{margin:8px 0}#caption-model-details{margin-top:10px;font-size:11px;color:var(--muted)}#caption-model-details summary{cursor:pointer}#caption-model-details .hint{margin:8px 0}#caption-model-details button{margin:4px 0 0}
+
+@media(max-height:800px){.library:has(#captions-panel:not([hidden]))>.context-heading{padding:6px 20px}#captions-panel{padding-top:6px}#captions-panel .caption-tabs{margin-bottom:10px}#captions-panel .subtitle-files{margin-bottom:8px}#caption-generate-view .caption-engine-field{margin:6px 0}}
