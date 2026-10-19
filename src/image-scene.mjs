@@ -26,7 +26,7 @@ export function createImageScene(stage,canvas,{pause,select,preview,commit,error
    let node=nodes.get(t.id);
    if(!node){
     node=document.createElement('div');node.className='image-layer';node.tabIndex=0;node.setAttribute('role','button');
-    const img=t.kind==='blur'?null:document.createElement(t.kind==='video'?'video':'img');if(img){img.draggable=false;img.alt='';if(t.kind==='video'){img.muted=true;img.preload='auto';img.playsInline=true;img.crossOrigin='anonymous';}img.onerror=()=>error('Mídia ausente ou inválida. Relocalize o arquivo pela timeline.');}
+    const img=t.kind==='blur'?null:document.createElement(t.kind==='video'?'video':'img');if(img){img.draggable=false;img.alt='';if(t.kind==='video'){img.muted=true;img.preload='auto';img.playsInline=true;img.crossOrigin='anonymous';}img.onerror=()=>error('Mídia ausente ou inválida. Relocalize o arquivo pela timeline.',img.getAttribute('src'));}
     const handle=document.createElement('span');handle.className='image-resize';handle.title='Arraste para redimensionar';
     node.append(...(img?[img]:[]),handle);node.addEventListener('pointerdown',e=>gesture(node,e));node.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();select(node.entry.id);}});
     surface.append(node);nodes.set(t.id,node);

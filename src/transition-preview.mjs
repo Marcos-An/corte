@@ -17,7 +17,7 @@ export function paintClip(ctx,source,clip,crop=clip.crop){
  ctx.drawImage(drawable,sx,sy,sampleWidth,sampleHeight,(width-dw)/2,(height-dh)/2,dw,dh);
 }
 export function createTransitionPreview(canvas,{media,image,playing,onFrame,error,loading}){
- const videos=[0,1].map(()=>{const v=document.createElement('video');v.hidden=true;v.className='transition-source';v.crossOrigin='anonymous';v.preload='auto';v.muted=true;v.playsInline=true;document.body.append(v);for(const event of ['loadedmetadata','loadeddata','seeked'])v.addEventListener(event,onFrame);v.addEventListener('error',()=>error('Não foi possível decodificar a mídia da transição. Relocalize o arquivo.'));return v;});
+ const videos=[0,1].map(()=>{const v=document.createElement('video');v.hidden=true;v.className='transition-source';v.crossOrigin='anonymous';v.preload='auto';v.muted=true;v.playsInline=true;document.body.append(v);for(const event of ['loadedmetadata','loadeddata','seeked'])v.addEventListener(event,onFrame);v.addEventListener('error',()=>error('Não foi possível decodificar a mídia da transição. Relocalize o arquivo.',v.getAttribute('src')));return v;});
  const frames=videos.map(()=>document.createElement('canvas')),missing=new Set();
  function pause(){videos.forEach(v=>v.pause());}
  function source(p,clip,time,i,play,report=true){

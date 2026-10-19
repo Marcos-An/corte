@@ -44,7 +44,8 @@ if(primary)app.whenReady().then(async()=>{
  const diagnostics=createDiagnostics(path.join(app.getPath('userData'),'diagnostics','performance.jsonl'));let hydration=null,ensureModels=async()=>{};
  async function timed(stage,fn){const started=performance.now();try{const value=await fn();diagnostics.record({stage,elapsedMs:performance.now()-started,outcome:'ok'});return value;}catch(error){diagnostics.record({stage,elapsedMs:performance.now()-started,outcome:'error'});throw error;}}
  function notify(p){if(p.stage==='worker-diagnostic')return;if(window && !window.isDestroyed())window.webContents.send('editor:progress',p);}
- function expose(a,entry=registry.get(a.id)){return {...a,url:entry?`corte-media://local/${entry.token}/video`:null,thumbnail:entry?.thumbnail?`corte-media://local/${entry.token}/thumb`:null,missing:!entry};}
+ const {createPreviewProxy}=await import('./preview-proxy.mjs'),previewProxy=createPreviewProxy({cache});
+ function expose(a,entry=registry.get(a.id)){return {...a,previewUrl:entry?.previewProxy?`corte-media://local/${entry.token}/preview`:null,url:entry?`corte-media://local/${entry.token}/video`:null,thumbnail:entry?.thumbnail?`corte-media://local/${entry.token}/thumb`:null,missing:!entry};}
  function authorized(p){core.validateProject(p);for(const a of p.assets){const r=registry.get(a.id);if(!r){if(hydration?.state.assets.some(s=>s.id===a.id&&s.pending))throw Error(`Ainda validando ${a.name}. Aguarde a validação da mídia.`);throw new Error(`Mídia ausente: ${a.name}. Relocalize o arquivo.`);}for(const key of ['duration','width','height','hasAudio','kind'])if((key==='kind'?(a[key]||'video'):a[key])!==(key==='kind'?(r.asset[key]||'video'):r.asset[key]))throw new Error('Os dados da mídia não correspondem ao arquivo importado.');}return p;}
  function handler(name,fn){ipcMain.handle(`editor:${name}`,async(event,...args)=>{
    if(event.sender!==window?.webContents || event.senderFrame!==window.webContents.mainFrame)return {ok:false,error:'Origem não autorizada.'};
@@ -60,13 +61,13 @@ if(primary)app.whenReady().then(async()=>{
   try{return await fn(controller.signal);}finally{if(abort===controller)abort=null;}
  }
  async function register(file,assetId,expected,{signal,target=registry}={}){
-  const entry=await registration.register(file,{assetId,expected,signal});signal?.throwIfAborted();target.set(entry.asset.id,entry);return expose(entry.asset,entry);
+  const entry=await registration.register(file,{assetId,expected,signal});signal?.throwIfAborted();entry.previewProxy=await previewProxy.cached(entry,{signal});signal?.throwIfAborted();target.set(entry.asset.id,entry);return expose(entry.asset,entry);
  }
  protocol.handle('corte-media',async request=>{
    const url=new URL(request.url),parts=url.pathname.split('/').filter(Boolean);
    if(url.hostname==='fonts'){const name=url.pathname.slice(1);if(!/^[A-Za-z0-9]+-Regular\.ttf$/.test(name))return new Response('Not found',{status:404});const font=app.isPackaged?path.join(process.resourcesPath,'fonts',name):path.join(__dirname,'../vendor/fonts',name);try{return await stream.fileResponse(font,request);}catch{return new Response('Not found',{status:404});}}
-   const entry=[...registry.values()].find(r=>r.token===parts[0]);if(url.hostname!=='local' || !entry || !['video','thumb'].includes(parts[1]) || parts.length!==2)return new Response('Not found',{status:404});
-   try{if(parts[1]==='thumb'&&entry.thumbnailReady&&!await entry.thumbnailReady)return new Response('Thumbnail unavailable',{status:404});return await stream.fileResponse(parts[1]==='video'?entry.path:entry.thumbnail,request);}catch{return new Response('Media unavailable',{status:404});}
+   const entry=[...registry.values()].find(r=>r.token===parts[0]);if(url.hostname!=='local' || !entry || !['video','thumb','preview'].includes(parts[1]) || parts.length!==2)return new Response('Not found',{status:404});
+   try{if(parts[1]==='thumb'&&entry.thumbnailReady&&!await entry.thumbnailReady)return new Response('Thumbnail unavailable',{status:404});return await stream.fileResponse(parts[1]==='video'?entry.path:parts[1]==='preview'?entry.previewProxy:entry.thumbnail,request);}catch{return new Response('Media unavailable',{status:404});}
  });
  const musicProvider=await import('./music.mjs');let musicAbort=null;
  handler('music-search',(query,kind)=>musicProvider.searchMusic(query,kind));
@@ -125,6 +126,8 @@ if(primary)app.whenReady().then(async()=>{
  }));
  handler('media-state',id=>hydration?.state.id===id?hydration.state:null);
  handler('cancel-media',id=>{if(hydration?.state.id!==id)throw Error('Validação de outro projeto.');hydration.cancel();return true;});
+ handler('clear-preview',async()=>{if(abort)throw Error('Aguarde a operação atual.');const controller=new AbortController();abort=controller;try{const result=await previewProxy.clear();for(const entry of registry.values())delete entry.previewProxy;return {...result,assets:[...registry.values()].map(e=>expose(e.asset))};}finally{if(abort===controller)abort=null;}});
+ handler('prepare-preview',async p=>{authorized(p);if(abort)throw Error('Aguarde a operação atual.');const controller=new AbortController();abort=controller;try{const result=await timed('preview-proxy',()=>previewProxy.prepare(p.assets.map(a=>registry.get(a.id)),{signal:controller.signal,onProgress:notify}));return {...result,assets:p.assets.map(a=>expose(a))};}finally{if(abort===controller)abort=null;}});
  handler('preview-timing',elapsedMs=>{if(Number.isFinite(elapsedMs)&&elapsedMs>=0&&elapsedMs<=180000)diagnostics.record({stage:'preview-load',elapsedMs,outcome:'ok'});return true;});
  handler('diagnostic-status',()=>sessionLog.status());
  handler('diagnostic-error',error=>{sessionLog.record({event:'renderer-error',stage:'renderer',...diagnosticError(error)});return true;});

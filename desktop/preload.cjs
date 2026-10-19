@@ -21,6 +21,8 @@ contextBridge.exposeInMainWorld('editor',{
   openProject:token=>invoke('editor:open',token),
   mediaState:id=>invoke('editor:media-state',id),
   cancelMediaValidation:id=>invoke('editor:cancel-media',id),
+  clearPreview:()=>invoke('editor:clear-preview'),
+  preparePreview:project=>invoke('editor:prepare-preview',project),
   previewTiming:elapsedMs=>invoke('editor:preview-timing',elapsedMs),
   diagnosticStatus:()=>invoke('editor:diagnostic-status'),
   exportDiagnostics:()=>invoke('editor:diagnostic-export'),

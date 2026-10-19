@@ -219,6 +219,8 @@ jobs:
           CORTE_TEST_EASING=ease-in-out node tests/keyframes-preview.e2e.mjs
           node tests/freeze-frame.e2e.mjs
           node tests/session-diagnostics.e2e.mjs
+          node tests/preview-proxy.e2e.mjs
+          node --test tests/preview-proxy-render.test.mjs
           node tests/visual-process.e2e.mjs
           node tests/edit-quality.integration.mjs
           node tests/speech-timing.integration.mjs
