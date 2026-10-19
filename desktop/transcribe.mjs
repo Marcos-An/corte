@@ -1,3 +1,4 @@
+import {correctedSpeech} from './speech-corrections.mjs';
 import {speechLanguage} from '../src/speech-language.mjs';
 import {validateProject} from '../src/project.mjs';
 import {modelPath,accurateSpeechModel} from './local.mjs';import {runIsolated} from './visual-process.mjs';import {verify} from './models-store.mjs';
@@ -11,7 +12,7 @@ export async function readyAccurateSpeechModel(){
  if(!checked.has(found.path))checked.set(found.path,verify(found.path,found.manifest).then(()=>true,()=>false));
  return await checked.get(found.path)?found:null;
 }
-export async function transcribeLocally({project,registry,cache,signal,onProgress=()=>{},purpose='captions'}){
+export async function transcribeLocally({project,registry,cache,signal,onProgress=()=>{},purpose='captions',applyCorrections=true}){
  if(!['captions','edit'].includes(purpose))throw Error('Finalidade da transcrição inválida.');if(signal?.aborted)throw new Error('Transcrição cancelada.');validateProject(project);
  const tracks=purpose==='captions'?captionTracks(project,project.captionSource||'original'):project.clips;
  const used=new Set(tracks.map(c=>c.assetId));const assets=project.assets.filter(a=>used.has(a.id)&&a.hasAudio);
@@ -21,10 +22,11 @@ export async function transcribeLocally({project,registry,cache,signal,onProgres
  const sources=assets.map(a=>({...a,file:registry.get(a.id).path}));
  const language=speechLanguage(project);
  const configuration={...(language==='pt'?{}:{language}),version:purpose==='captions'?2:1,purpose,model:accurate?.manifest||(cache?await readFile(path.join(modelPath(),'manifest.json'),'utf8'):null)};
- return cachedEvidence({root:cache&&path.join(cache,'local-evidence'),kind:'speech',assets:sources,configuration,signal,
+ const raw=await cachedEvidence({root:cache&&path.join(cache,'local-evidence'),kind:'speech',assets:sources,configuration,signal,
   onHit:()=>onProgress({stage:'captions',completed:assets.length,total:assets.length,cached:true}),compute:async()=>{
  const temporaryDirectory=await mkdtemp(path.join(tmpdir(),'corte-speech-job-'));try{return (await runIsolated({entry:new URL('./speech-child.mjs',import.meta.url),worker:'speech',backend:accurate&&process.platform==='win32'?'dml':'cpu',signal,onProgress,
   startError:'Não foi possível iniciar a transcrição local.',crashError:'A transcrição local foi interrompida. O editor continua aberto; tente novamente.',
   data:{models:accurate?.path||modelPath(),manifest:null,...(accurate?{speechModel:accurate.manifest.model}:{}),purpose,language,assets:sources,temporaryDirectory}})).transcripts;}finally{await rm(temporaryDirectory,{recursive:true,force:true});}
  }});
+ return purpose==='edit'&&applyCorrections?correctedSpeech(project,raw,registry,{signal,onProgress}):raw;
 }

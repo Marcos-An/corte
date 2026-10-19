@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('editor',{
   mediaState:id=>invoke('editor:media-state',id),
   cancelMediaValidation:id=>invoke('editor:cancel-media',id),
   clearPreview:()=>invoke('editor:clear-preview'),
+  speechSourceHash:assetId=>invoke('editor:speech-source-hash',assetId),
   reviewSpeech:project=>invoke('editor:speech-review',project),
   preparePreview:project=>invoke('editor:prepare-preview',project),
   previewTiming:elapsedMs=>invoke('editor:preview-timing',elapsedMs),

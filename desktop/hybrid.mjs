@@ -80,7 +80,7 @@ export async function requestHybridEdit({project,prompt,shareEvidence,signal,onP
   if(t.context!==undefined&&(!Array.isArray(t.context)||t.context.length>10000||t.context.some(c=>typeof c.text!=='string'||c.text.length>12000||!Number.isFinite(c.start)||!Number.isFinite(c.end)||c.start<0||c.end<=c.start||c.end>asset.duration+.000001)))throw Error('Contexto de fala inválido.');
   if(t.pauses!==undefined&&(!Array.isArray(t.pauses)||t.pauses.length>20000||t.pauses.some(p=>!Number.isFinite(p.start)||!Number.isFinite(p.end)||p.start<0||p.end<=p.start||p.end>asset.duration+.000001)))throw Error('Pausas de fala inválidas.');
   const included=w=>project.clips.some(c=>c.assetId===t.assetId&&w.start>=c.in&&w.end<=c.out);
-  const words=t.words.filter(included).map(({start,end,text},i)=>({i,start,end,text})),hints=speechHints(words);
+  const words=t.words.filter(included).map(({start,end,text,correctionId},i)=>({i,start,end,text,...(correctionId?{confirmed:true}:{})})),hints=speechHints(words);
   const pauses=[...new Map((t.pauses||[]).flatMap(p=>project.clips.filter(c=>c.assetId===t.assetId).map(c=>({start:Math.max(p.start,c.in),end:Math.min(p.end,c.out)}))).filter(p=>p.end-p.start>=.2).map(p=>[p.start+':'+p.end,p])).values()].sort((a,b)=>a.start-b.start);
   transcripts.push({assetId:t.assetId,words,...(t.pauses?{pauses}:{}),...(hints.length?{hints}:{}),...(t.context?{context:t.context.filter(included).map(({start,end,text})=>({start,end,text}))}:{})});
  }
@@ -94,6 +94,7 @@ export async function requestHybridEdit({project,prompt,shareEvidence,signal,onP
   if(candidate){try{const {parseReviewPayload}=await import('./ai.mjs');const validated=parseReviewPayload(project,JSON.stringify(candidate),{transcripts,speechGaps,stage:options.stage});result={...result,...validated};recovered=true;}catch{}}
  }
  const safe=preservesUncertainSpeech(project,result.plan,speechGaps),searchWarning=result.visualSearch==='unavailable'?['A busca visual por conteúdo não está instalada nesta versão; as cenas foram escolhidas pelas amostras gerais.']:[],analysisWarnings=speechGaps.length?[`A transcrição interna encontrou ${speechGaps.length} trecho(s) sem tempos confiáveis. A transcrição interna não cria legendas automaticamente. Cortes nesses trechos precisam de revisão.${safe?'':' A proposta contém remoções nesses trechos e não será aplicada, inclusive operações dependentes; prepare outra proposta preservando-os.'}`]:[];
+ if(raw.some(t=>t.correctionWarnings?.length))analysisWarnings.push('Há correções manuais não aplicadas porque a mídia mudou ou não foi conferida. Revise as falas antes de depender dessas correções.');
  if(recovered)analysisWarnings.push('Cortes incertos e operações dependentes foram retirados. As alterações independentes foram preservadas e as âncoras recalculadas; revise a proposta parcial.');
  const plan=safe?result.plan:{...result.plan,operations:[],summary:'Proposta preservada para revisão: não foi possível garantir os cortes nos trechos sem tempos de fala confiáveis.'};
  const coverage=safe?result.coverage:result.coverage?.map(item=>['planned','partial'].includes(item.status)?{...item,status:'pending',operationIndexes:[],reason:'Plano não aplicável: os cortes atingem fala sem tempos confiáveis; operações dependentes também foram preservadas.'}:item);

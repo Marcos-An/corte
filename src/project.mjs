@@ -1,3 +1,4 @@
+import {validateSpeechCorrections} from './speech-corrections.mjs';
 import {MAX_BLUR_LAYERS,BLUR_FIELDS,validateBlurLayer,blurLayer} from './blur.mjs';
 import {validateAudioEQ,patchAudioEQ} from './audio-eq.mjs';
 import {validateExportSelection,saveExportSelection} from './export-selection.mjs';
@@ -24,7 +25,7 @@ export function validateProject(p) {
     if(!a || typeof a.id!=='string' || !a.id || ids.has(a.id) || typeof a.name!=='string' || !finite(a.duration) || a.duration<=0 || a.duration>21600 || !Number.isInteger(a.width) || a.width<(a.kind==='audio'?0:2) || a.width>16384 || !Number.isInteger(a.height) || a.height<(a.kind==='audio'?0:2) || a.height>16384 || (a.kind!==undefined&&!['audio','video','image'].includes(a.kind)) || (a.kind==='audio'&&(a.width!==0||a.height!==0||!a.hasAudio)) || typeof a.hasAudio!=='boolean') fail('Mídia inválida.');
     ids.add(a.id);
   }
-  speechLanguage(p);
+  speechLanguage(p);validateSpeechCorrections(p);
   if(p.captionSource!==undefined&&!['original','narration'].includes(p.captionSource))fail('Fonte de legenda inválida.');
   if(p.music!==undefined){if(!Array.isArray(p.music)||p.music.length>100)fail('Trilhas de música inválidas.');const musicIds=new Set();for(const c of p.music){const a=p.assets.find(a=>a.id===c?.assetId);if((c.role!==undefined&&!['music','narration'].includes(c.role))||!a||a.kind!=='audio'||typeof c.id!=='string'||!c.id||musicIds.has(c.id)||![c.in,c.out,c.start,c.volume].every(finite)||c.in<0||c.out-c.in<.02||c.out>a.duration+.000001||c.start<0||c.start>21600||c.volume<0||c.volume>2)fail('Trecho de música inválido.');if(c.captionWords!==undefined)validateTranscript({assetId:c.assetId,words:c.captionWords},a.duration);if(c.speed!==undefined)fail('Velocidade somente em trechos principais.');validateAudioFades(c);if(c.ducking!==undefined&&(!finite(c.ducking)||c.ducking<0||c.ducking>1||c.role==='narration'))fail('Volume de fundo inválido. Use de 0 a 100% em uma trilha de música.');musicIds.add(c.id);}}
   if(p.transcripts!==undefined){
