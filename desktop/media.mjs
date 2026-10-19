@@ -1,3 +1,4 @@
+import {audioEQFilter} from '../src/audio-eq.mjs';
 import {prepareExportWindow} from '../src/export-range.mjs';
 import {sliceClip} from '../src/clip-slicing.mjs';
 import {clipSpeed,clipDuration,zoomAt} from '../src/clip-time.mjs';
@@ -91,7 +92,7 @@ export function buildSegmentArgs(c,a,input,out,aspect,height=720) {
     const layers=c.background==='blur'?`${source},split=2[bg][fg];[bg]scale=${size.width}:${size.height}:force_original_aspect_ratio=increase,crop=${size.width}:${size.height},gblur=sigma=${size.width*.015}[blur];${canvas};[base][blur]overlay=format=auto[canvas];[fg]${front}`:`${source},${front};${canvas};[base]null[canvas]`;
     vf=['-filter_complex',`${layers};[canvas][front]overlay=(W-w)/2:(H-h)/2:format=auto,setsar=1,fps=30,format=yuv420p[v]`];
   }
-  args.push('-t',String(clipDuration(c)),'-map',a.kind==='image'||c.background==='blur'?'[v]':'0:v:0','-map',silent?'1:a:0':'0:a:0',...vf,'-af',`${audioTiming}volume=${c.volume}${audioFadeFilter(c,clipDuration(c))},aresample=48000,apad`,'-c:v','libx264','-preset','fast','-crf','20','-c:a','aac','-ar','48000','-ac','2','-movflags','+faststart',out);
+  args.push('-t',String(clipDuration(c)),'-map',a.kind==='image'||c.background==='blur'?'[v]':'0:v:0','-map',silent?'1:a:0':'0:a:0',...vf,'-af',`${audioTiming}${audioEQFilter(c)}volume=${c.volume}${audioFadeFilter(c,clipDuration(c))},aresample=48000,apad`,'-c:v','libx264','-preset','fast','-crf','20','-c:a','aac','-ar','48000','-ac','2','-movflags','+faststart',out);
   return args;
 }
 export async function renderProject(project,registry,destination,{height=720,signal,onProgress=()=>{},range=null}={}) {
@@ -133,7 +134,7 @@ export async function renderProject(project,registry,destination,{height=720,sig
       await run(binaries().ffmpeg,args,{signal,timeout:1800000});await rename(transitioned,partial);
     }
     const music=(window.range?window.music:project.music||[]).filter(c=>c.start<duration(project));
-    if(music.length){const mixed=path.join(temp,'mixed.mp4'),args=['-hide_banner','-loglevel','error','-y','-i',partial];for(const c of music)args.push('-ss',String(c.in),'-t',String(c.out-c.in),'-i',registry.get(c.assetId).path);const filters=music.map((c,i)=>`[${i+1}:a]aresample=48000,aformat=channel_layouts=stereo,asetpts=PTS-STARTPTS,volume=${c.volume}${audioFadeFilter(c,c.out-c.in)},adelay=${Math.round(c.start*1000)}:all=1[m${i}]`);filters.push(`[0:a]${music.map((_,i)=>`[m${i}]`).join('')}amix=inputs=${music.length+1}:duration=first:normalize=0,alimiter=limit=0.95:latency=1[a]`);args.push('-filter_complex',filters.join(';'),'-map','0:v:0','-map','[a]','-c:v','copy','-c:a','aac','-movflags','+faststart',mixed);await run(binaries().ffmpeg,args,{signal,timeout:1800000});await rename(mixed,partial);}
+    if(music.length){const mixed=path.join(temp,'mixed.mp4'),args=['-hide_banner','-loglevel','error','-y','-i',partial];for(const c of music)args.push('-ss',String(c.in),'-t',String(c.out-c.in),'-i',registry.get(c.assetId).path);const filters=music.map((c,i)=>`[${i+1}:a]aresample=48000,aformat=channel_layouts=stereo,asetpts=PTS-STARTPTS,${audioEQFilter(c)}volume=${c.volume}${audioFadeFilter(c,c.out-c.in)},adelay=${Math.round(c.start*1000)}:all=1[m${i}]`);filters.push(`[0:a]${music.map((_,i)=>`[m${i}]`).join('')}amix=inputs=${music.length+1}:duration=first:normalize=0,alimiter=limit=0.95:latency=1[a]`);args.push('-filter_complex',filters.join(';'),'-map','0:v:0','-map','[a]','-c:v','copy','-c:a','aac','-movflags','+faststart',mixed);await run(binaries().ffmpeg,args,{signal,timeout:1800000});await rename(mixed,partial);}
     const captions=projectCaptions(scene).filter(c=>!sceneWindow||c.end>sceneWindow.start&&c.start<sceneWindow.end),size=dimensions(project.aspect,height),output=path.join(temp,'composition.mp4');
     const packed=process.resourcesPath&&path.join(process.resourcesPath,'fonts'),fonts=packed&&existsSync(packed)?packed:path.resolve(import.meta.dirname,'../vendor/fonts');
     const escape=v=>v.replace(/\\/g,'/').replace(/:/g,'\\:').replace(/'/g,"\\'");

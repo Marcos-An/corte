@@ -1,3 +1,4 @@
+import {validateAudioEQ,patchAudioEQ} from './audio-eq.mjs';
 import {validateExportSelection,saveExportSelection} from './export-selection.mjs';
 import {speechLanguage} from './speech-language.mjs';
 import {KEYFRAME_PATCH_FIELDS,updateKeyframePoints,retimeKeyframes,validateKeyframes,validateMotion} from './keyframes.mjs';
@@ -11,7 +12,7 @@ const clone = value => structuredClone(value);
 const id = () => globalThis.crypto.randomUUID();
 const fail = message => { throw new Error(message); };
 const finite = value => typeof value === 'number' && Number.isFinite(value);
-function validateAudioFades(c){for(const k of ['fadeIn','fadeOut'])if(c[k]!==undefined&&(!finite(c[k])||c[k]<0||c[k]>10))fail('Fade de áudio inválido. Use de 0 a 10 segundos.');if(c.fadeWindow!==undefined){const w=c.fadeWindow;if(!w||Object.keys(w).some(k=>!['offset','duration','scale'].includes(k))||![w.offset,w.duration,w.scale].every(finite)||w.offset<0||w.duration<=0||w.duration>21600||w.scale<=0||w.scale>64||w.offset+clipDuration(c)*w.scale>w.duration+1e-5)fail('Continuidade dos fades inválida.');}}
+function validateAudioFades(c){if(c.audioEQ!==undefined)validateAudioEQ(c.audioEQ);for(const k of ['fadeIn','fadeOut'])if(c[k]!==undefined&&(!finite(c[k])||c[k]<0||c[k]>10))fail('Fade de áudio inválido. Use de 0 a 10 segundos.');if(c.fadeWindow!==undefined){const w=c.fadeWindow;if(!w||Object.keys(w).some(k=>!['offset','duration','scale'].includes(k))||![w.offset,w.duration,w.scale].every(finite)||w.offset<0||w.duration<=0||w.duration>21600||w.scale<=0||w.scale>64||w.offset+clipDuration(c)*w.scale>w.duration+1e-5)fail('Continuidade dos fades inválida.');}}
 export const ASPECTS = ['9:16', '16:9', '1:1', '4:5'];
 export function createProject(name='Meu projeto') { return {version:1,name,aspect:'9:16',assets:[],clips:[],captionStyle:{font:'Anton',size:6.5,color:'#ffffff',accent:'#eac39b',position:'bottom',preset:'outline'}}; }
 export function validateProject(p) {
@@ -124,7 +125,7 @@ export function editProject(p,op) {
     case 'trim': Object.assign(c,sliceClip(c,op.in,op.out));break;
     case 'delete': q.clips.splice(index,1);break;
     case 'move': if(!Number.isInteger(op.index) || op.index<0 || op.index>=q.clips.length) fail('Posição inválida.');q.clips.splice(index,1);q.clips.splice(op.index,0,c);break;
-    case 'update': if('adjustments' in op)planFields(op.adjustments,Object.keys(DEFAULT_ADJUSTMENTS));if(('fadeIn' in op||'fadeOut' in op)&&c.fadeWindow)delete c.fadeWindow;if('speed' in op&&c.fadeWindow&&finite(op.speed)&&op.speed>0)c.fadeWindow.scale*=op.speed/clipSpeed(c);for(const key of ['volume','crop','background','backgroundColor','fadeIn','fadeOut','adjustments','speed','zoom','freeze']) if(key in op){if(key==='zoom'&&(op.zoom===null||op.zoom.from===1&&op.zoom.to===1))delete c.zoom;else c[key]=key==='adjustments'?{brightness:0,contrast:1,saturation:1,...c.adjustments,...clone(op[key])}:clone(op[key]);}break;
+    case 'update': if('adjustments' in op)planFields(op.adjustments,Object.keys(DEFAULT_ADJUSTMENTS));if(('fadeIn' in op||'fadeOut' in op)&&c.fadeWindow)delete c.fadeWindow;if('speed' in op&&c.fadeWindow&&finite(op.speed)&&op.speed>0)c.fadeWindow.scale*=op.speed/clipSpeed(c);for(const key of ['volume','crop','background','backgroundColor','fadeIn','fadeOut','adjustments','speed','zoom','freeze','audioEQ']) if(key in op){if(key==='audioEQ'){const value=patchAudioEQ(c.audioEQ,op.audioEQ);if(value)c.audioEQ=value;else delete c.audioEQ;}else if(key==='zoom'&&(op.zoom===null||op.zoom.from===1&&op.zoom.to===1))delete c.zoom;else c[key]=key==='adjustments'?{brightness:0,contrast:1,saturation:1,...c.adjustments,...clone(op[key])}:clone(op[key]);}break;
     default: fail('Operação ainda não suportada.');
   }
   return validateProject(reconcileTransitions(q));
@@ -153,7 +154,7 @@ export class History {
     const h=new History(data.entries[0].state);h.entries=clone(data.entries);h.cursor=data.cursor;return h;
   }
 }
-const keys={set_export_ranges:['ranges'],edit_caption_style:['style'],generate_captions:['source','style','transcripts','language'],adjust_audio_range:['audioId','start','end','volume'],adjust_timeline:['clipId','start','end','patch'],insert_clip:['index','clip'],move_range:['clipId','sourceStart','sourceEnd','index'],add_audio:['track'],split:['clipId','time'],trim:['clipId','in','out'],delete:['clipId'],move:['clipId','index'],update:['clipId','volume','crop','speed','background','backgroundColor','adjustments','fadeIn','fadeOut','zoom','freeze'],set_aspect:['aspect'],remove_ranges:['clipId','ranges'],keep_ranges:['clipId','ranges'],freeze_frame:['clipId','time','duration'],adjust_ranges:['clipId','ranges','patch'],set_transition:['leftId','rightId','effect','duration'],set_transition_at:['index','effect','duration','makeRoom'],edit_audio:['audioId','patch'],add_text:['layer'],add_image:['layer'],add_video:['layer'],add_shape:['layer'],edit_component:['layerId','patch'],remove_component:['layerId'],move_component:['layerId','direction'],set_keyframe:['layerId','time','pose'],remove_keyframe:['layerId','time'],set_motion:['layerId','enter','exit']};
+const keys={set_export_ranges:['ranges'],edit_caption_style:['style'],generate_captions:['source','style','transcripts','language'],adjust_audio_range:['audioId','start','end','volume'],adjust_audio_eq_range:['audioId','start','end','audioEQ'],adjust_timeline:['clipId','start','end','patch'],insert_clip:['index','clip'],move_range:['clipId','sourceStart','sourceEnd','index'],add_audio:['track'],split:['clipId','time'],trim:['clipId','in','out'],delete:['clipId'],move:['clipId','index'],update:['clipId','volume','crop','speed','background','backgroundColor','adjustments','fadeIn','fadeOut','zoom','freeze','audioEQ'],set_aspect:['aspect'],remove_ranges:['clipId','ranges'],keep_ranges:['clipId','ranges'],freeze_frame:['clipId','time','duration'],adjust_ranges:['clipId','ranges','patch'],set_transition:['leftId','rightId','effect','duration'],set_transition_at:['index','effect','duration','makeRoom'],edit_audio:['audioId','patch'],add_text:['layer'],add_image:['layer'],add_video:['layer'],add_shape:['layer'],edit_component:['layerId','patch'],remove_component:['layerId'],move_component:['layerId','direction'],set_keyframe:['layerId','time','pose'],remove_keyframe:['layerId','time'],set_motion:['layerId','enter','exit']};
 const visualPlanFields=['start','end','x','y','width','rotation','opacity'];
 const textPlanFields=['text','start','end','style'];
 const stylePlanFields=['font','size','color','position','preset','positionX','positionY','width','accent','strokeColor','strokeWidth','shadow','shadowColor','spacing','boxColor','boxOpacity','bold','italic','uppercase','hollow','accentLast','glowColor','glow','enter','exit'];
@@ -194,7 +195,8 @@ function applyPlanOperation(p,op){
   return setTransition(p,op.leftId,op.rightId,op.effect,op.duration);
  }
  if(op.type==='set_motion')return setMotion(p,op.layerId,{enter:op.enter,exit:op.exit});
- if(op.type==='edit_audio'){planFields(op.patch,['in','out','start','volume','fadeIn','fadeOut']);return editMusic(p,op.audioId,op.patch);}
+ if(op.type==='edit_audio'){planFields(op.patch,['in','out','start','volume','fadeIn','fadeOut','audioEQ']);return editMusic(p,op.audioId,op.patch);}
+ if(op.type==='adjust_audio_eq_range')return adjustAudioRangePatch(p,op.audioId,op.start,op.end,{audioEQ:op.audioEQ});
  if(op.type==='adjust_audio_range')return adjustAudioRange(p,op.audioId,op.start,op.end,op.volume);
  if(op.type.startsWith('add_')){
   const definitions={add_text:[addTextLayer,textPlanFields],add_image:[addImageLayer,[...visualPlanFields,'assetId']],add_video:[addVideoLayer,[...visualPlanFields,'assetId','in','freeze']],add_shape:[addShapeLayer,[...visualPlanFields,'type','height','fill','stroke','strokeWidth']]};
@@ -220,9 +222,10 @@ export function validatePlan(p,plan) {
   if(exportAt>=0&&(plan.operations.filter(o=>o?.type==='set_export_ranges').length>1||plan.operations.slice(exportAt+1).some(o=>['trim','split','delete','move','move_range','insert_clip','keep_ranges','remove_ranges','adjust_ranges','adjust_timeline','freeze_frame'].includes(o?.type)||o?.type==='update'&&'speed' in o||o?.type==='set_transition_at'&&o.makeRoom)))fail('Escolha os recortes depois dos cortes e mudanças de velocidade.');
   for(const op of plan.operations) {
     const allowed=keys[op?.type];if(!allowed || (op.type==='update'? !('clipId' in op):allowed.some(k=>!['makeRoom','transcripts','language'].includes(k)&&!(k in op))) || Object.keys(op).some(k=>k!=='type' && !allowed.includes(k))) fail('Operação da IA inválida.');
+    const eq=op.type==='update'||op.type==='adjust_audio_eq_range'?op.audioEQ:op.patch?.audioEQ;if(eq!==undefined&&eq!==null)validateAudioEQ(eq,{patch:true});
     if(op.type==='update'&&op.crop)planFields(op.crop,['x','y','w','h']);
     if(op.type==='update' && !keys.update.slice(1).some(k=>k in op)) fail('Ajuste vazio.');
-    if(['adjust_ranges','adjust_timeline'].includes(op.type)){planFields(op.patch,['speed','crop','adjustments','volume','zoom']);if(op.patch.crop)planFields(op.patch.crop,['x','y','w','h']);if(op.patch.adjustments)planFields(op.patch.adjustments,Object.keys(DEFAULT_ADJUSTMENTS));}
+    if(['adjust_ranges','adjust_timeline'].includes(op.type)){planFields(op.patch,['speed','crop','adjustments','volume','zoom','audioEQ']);if(op.patch.crop)planFields(op.patch.crop,['x','y','w','h']);if(op.patch.adjustments)planFields(op.patch.adjustments,Object.keys(DEFAULT_ADJUSTMENTS));}
     if(op.type==='update'&&op.adjustments)planFields(op.adjustments,Object.keys(DEFAULT_ADJUSTMENTS));
     if(op.type==='adjust_timeline'&&(![op.start,op.end].every(finite)||op.start<0||op.end-op.start<.02||op.clipId!==null&&(typeof op.clipId!=='string'||!p.clips.some(c=>c.id===op.clipId))))fail('Intervalo da montagem inválido.');
     if(['remove_ranges','keep_ranges','adjust_ranges'].includes(op.type)) {
@@ -248,10 +251,13 @@ export function planLineage(p,plan,{allowUnpreparedCaptions=false}={}) {
   const queue=[...plan.operations];for(let operationIndex=0;operationIndex<queue.length;operationIndex++){
     const op=queue[operationIndex];
     if(op.type==='generate_captions'){q=validateProject(applyCaptionRequest(q,op,{allowUnprepared:allowUnpreparedCaptions}));continue;}
-    if(op.type==='adjust_audio_range'){
+    if(op.type==='edit_audio'&&op.patch&&Object.keys(op.patch).length===1&&'audioEQ'in op.patch){
+      const members=(q.music||[]).filter(c=>c.id===op.audioId||audioRoot.get(c.id)===op.audioId);if(!members.length)fail('Trecho de áudio não encontrado para equalizar.');for(const c of members)q=editMusic(q,c.id,op.patch);continue;
+    }
+    if(['adjust_audio_range','adjust_audio_eq_range'].includes(op.type)){
       const members=(q.music||[]).filter(c=>c.id===op.audioId||audioRoot.get(c.id)===op.audioId),start=Math.min(...members.map(c=>c.start)),end=Math.max(...members.map(c=>c.start+clipDuration(c)));
       if(!members.length||!finite(op.start)||!finite(op.end)||op.start<start-1e-6||op.end>end+1e-6||op.end-op.start<.02)fail('Intervalo fora do áudio escolhido.');
-      for(const c of members){const from=Math.max(op.start,c.start),to=Math.min(op.end,c.start+clipDuration(c));if(to-from<1e-6)continue;const before=new Set((q.music||[]).map(c=>c.id));q=adjustAudioRange(q,c.id,from,to,op.volume);for(const piece of q.music)if(!before.has(piece.id))audioRoot.set(piece.id,audioRoot.get(c.id)||c.id);}
+      for(const c of members){const from=Math.max(op.start,c.start),to=Math.min(op.end,c.start+clipDuration(c));if(to-from<1e-6)continue;const before=new Set((q.music||[]).map(c=>c.id));q=adjustAudioRangePatch(q,c.id,from,to,op.type==='adjust_audio_eq_range'?{audioEQ:op.audioEQ}:{volume:op.volume});for(const piece of q.music)if(!before.has(piece.id))audioRoot.set(piece.id,audioRoot.get(c.id)||c.id);}
       continue;
     }
     if(op.type==='adjust_timeline'){
@@ -306,16 +312,19 @@ export function planLineage(p,plan,{allowUnpreparedCaptions=false}={}) {
   return {project:validateProject(q),origin:clipId=>root.get(clipId)};
 }
 
-export function addMusic(p,asset,clip){const q=clone(p);if(!q.assets.some(a=>a.id===asset.id))q.assets.push(clone(asset));q.music=[...(q.music||[]),{id:clip.id||id(),assetId:asset.id,in:clip.in,out:clip.out,start:clip.start??0,volume:clip.volume??1,...(clip.role?{role:clip.role}:{}),...(clip.fadeIn!==undefined?{fadeIn:clip.fadeIn}:{}),...(clip.fadeOut!==undefined?{fadeOut:clip.fadeOut}:{})}];return validateProject(q);}
-export function editMusic(p,clipId,patch){const q=clone(p),c=q.music?.find(c=>c.id===clipId);if(!c)fail('Trecho de música não encontrado.');if(patch===null)q.music=q.music.filter(c=>c.id!==clipId);else{if(c.fadeWindow){if('fadeIn'in patch||'fadeOut'in patch||patch.in!==undefined&&patch.in<c.in||patch.out!==undefined&&patch.out>c.out)delete c.fadeWindow;else if('in'in patch)c.fadeWindow.offset+=(patch.in-c.in)*c.fadeWindow.scale;}for(const k of ['in','out','start','volume','fadeIn','fadeOut'])if(k in patch)c[k]=patch[k];}return validateProject(q);}
-export function adjustAudioRange(p,audioId,start,end,volume){
+export function addMusic(p,asset,clip){const q=clone(p);if(!q.assets.some(a=>a.id===asset.id))q.assets.push(clone(asset));q.music=[...(q.music||[]),{id:clip.id||id(),assetId:asset.id,in:clip.in,out:clip.out,start:clip.start??0,volume:clip.volume??1,...(clip.audioEQ!==undefined?{audioEQ:patchAudioEQ(undefined,clip.audioEQ)}:{}),...(clip.role?{role:clip.role}:{}),...(clip.fadeIn!==undefined?{fadeIn:clip.fadeIn}:{}),...(clip.fadeOut!==undefined?{fadeOut:clip.fadeOut}:{})}];return validateProject(q);}
+export function editMusic(p,clipId,patch){const q=clone(p),c=q.music?.find(c=>c.id===clipId);if(!c)fail('Trecho de música não encontrado.');if(patch===null)q.music=q.music.filter(c=>c.id!==clipId);else{if(c.fadeWindow){if('fadeIn'in patch||'fadeOut'in patch||patch.in!==undefined&&patch.in<c.in||patch.out!==undefined&&patch.out>c.out)delete c.fadeWindow;else if('in'in patch)c.fadeWindow.offset+=(patch.in-c.in)*c.fadeWindow.scale;}for(const k of ['in','out','start','volume','fadeIn','fadeOut','audioEQ'])if(k in patch){if(k==='audioEQ'){const value=patchAudioEQ(c.audioEQ,patch.audioEQ);if(value)c.audioEQ=value;else delete c.audioEQ;}else c[k]=patch[k];}}return validateProject(q);}
+export function adjustAudioRange(p,audioId,start,end,volume){return adjustAudioRangePatch(p,audioId,start,end,{volume});}
+export function adjustAudioRangePatch(p,audioId,start,end,patch){
+ if(!patch||Object.keys(patch).some(k=>!['volume','audioEQ'].includes(k))||!Object.keys(patch).length)fail('Ajuste de áudio inválido.');
+ if('audioEQ'in patch&&patch.audioEQ!==null)validateAudioEQ(patch.audioEQ,{patch:true});
  const q=clone(p),index=q.music?.findIndex(c=>c.id===audioId),c=q.music?.[index];
- if(!c||![start,end,volume].every(finite)||start<c.start-1e-6||end>c.start+clipDuration(c)+1e-6||end-start<.02-1e-9||volume<0||volume>2)fail('Intervalo ou volume do áudio inválido.');
+ if(!c||![start,end].every(finite)||'volume'in patch&&(!finite(patch.volume)||patch.volume<0||patch.volume>2)||start<c.start-1e-6||end>c.start+clipDuration(c)+1e-6||end-start<.02-1e-9)fail('Intervalo ou volume do áudio inválido.');
  start=Math.max(start,c.start);end=Math.min(end,c.start+clipDuration(c));
  const from=c.in+start-c.start,to=c.in+end-c.start,pieces=[];
- for(const [a,b,level] of [[c.in,from,c.volume],[from,to,volume],[to,c.out,c.volume]]){
+ for(const [a,b,level] of [[c.in,from,c.volume],[from,to,patch.volume??c.volume],[to,c.out,c.volume]]){
   if(b-a<1e-8)continue;if(b-a<.02-1e-9)fail('Mantenha pelo menos 0,02 s em cada parte do áudio.');
-  const piece=sliceClip(c,a,b,pieces.length?id():c.id,{preserveFades:true});piece.start=c.start+a-c.in;piece.volume=level;pieces.push(piece);
+  const piece=sliceClip(c,a,b,pieces.length?id():c.id,{preserveFades:true});piece.start=c.start+a-c.in;piece.volume=level;if(a===from&&b===to&&'audioEQ'in patch){const eq=patchAudioEQ(c.audioEQ,patch.audioEQ);if(eq)piece.audioEQ=eq;else delete piece.audioEQ;}pieces.push(piece);
  }
  q.music.splice(index,1,...pieces);return validateProject(q);
 }
