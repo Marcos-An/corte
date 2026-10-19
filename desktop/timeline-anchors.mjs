@@ -1,6 +1,6 @@
 // Components anchored to what is said or shown, not to montage seconds the provider cannot know after its own cuts.
 // An anchor names words of a clip's transcript or a stretch of its source; it is placed where that material plays.
-import {planLineage} from '../src/project.mjs';
+import {planningLineage} from '../src/project.mjs';
 import {clipDuration} from '../src/clip-time.mjs';
 const ANCHORED=['place_overlay','place_still','place_text'],RESHAPING=['insert_clip','move_range','trim','split','delete','move','remove_ranges','keep_ranges','adjust_ranges','adjust_timeline','freeze_frame'];
 const fail=message=>{throw Error(message);};
@@ -27,7 +27,7 @@ export function resolveAnchoredOperations(project,result,transcripts=[]){
  const ops=result?.plan?.operations;if(!Array.isArray(ops))return result;
  const first=ops.findIndex(o=>ANCHORED.includes(o?.type));if(first<0)return result;
  if(ops.slice(first).some(o=>RESHAPING.includes(o?.type)||o?.type==='set_transition_at'&&o.makeRoom||o?.type==='update'&&'speed' in o))fail('place_overlay/place_text devem vir depois de todos os cortes, movimentos e mudanças de velocidade.');
- const run=planLineage(project,{...result.plan,operations:ops.slice(0,first)});
+ const run=planningLineage(project,{...result.plan,operations:ops.slice(0,first)});
  const operations=ops.map(op=>{
   if(!ANCHORED.includes(op?.type))return op;
   const {start,end}=timelineSpan(run,sourceSpan(project,op.anchor,transcripts)),{id,x,y,width,rotation,opacity}=op.layer||{};

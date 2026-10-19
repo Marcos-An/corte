@@ -1,6 +1,7 @@
 import {validateProject} from '../src/project.mjs';
 import {modelPath,accurateSpeechModel} from './local.mjs';import {runIsolated} from './visual-process.mjs';import {verify} from './models-store.mjs';
 import {cachedEvidence} from './analysis-cache.mjs';
+import {captionTracks} from '../src/caption-plan.mjs';
 import {readFile,mkdtemp,rm} from 'node:fs/promises';import path from 'node:path';import {tmpdir} from 'node:os';
 // The accurate model (~1.1 GB) is hashed once per session; a corrupted copy is skipped in favour of the bundled model.
 const checked=new Map();
@@ -11,7 +12,7 @@ export async function readyAccurateSpeechModel(){
 }
 export async function transcribeLocally({project,registry,cache,signal,onProgress=()=>{},purpose='captions'}){
  if(!['captions','edit'].includes(purpose))throw Error('Finalidade da transcrição inválida.');if(signal?.aborted)throw new Error('Transcrição cancelada.');validateProject(project);
- const tracks=purpose==='captions'&&project.captionSource==='narration'?(project.music||[]).filter(c=>c.role==='narration'):project.clips;
+ const tracks=purpose==='captions'?captionTracks(project,project.captionSource||'original'):project.clips;
  const used=new Set(tracks.map(c=>c.assetId));const assets=project.assets.filter(a=>used.has(a.id)&&a.hasAudio);
  if(!assets.length)throw new Error('Não há áudio na timeline para legendar.');
  for(const a of assets)if(!registry.get(a.id)?.path)throw new Error('Mídia ausente.');

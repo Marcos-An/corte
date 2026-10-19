@@ -1,9 +1,10 @@
 import {validateProject} from '../src/project.mjs';
 import {validateTranscript} from '../src/captions.mjs';
 import {transcribeLocally} from './transcribe.mjs';
+import {captionTracks} from '../src/caption-plan.mjs';
 export async function generateLocalCaptions(options,{transcribe=transcribeLocally}={}){
  const {project,signal}=options;validateProject(project);signal?.throwIfAborted();
- const tracks=project.captionSource==='narration'?(project.music||[]).filter(c=>c.role==='narration'):project.clips;
+ const tracks=captionTracks(project,project.captionSource||'original');
  const used=new Set(tracks.map(c=>c.assetId)),assets=project.assets.filter(a=>used.has(a.id)&&a.hasAudio);
  if(!assets.length)throw Error('Não há áudio na voz escolhida para legendar.');
  const generated=await transcribe({...options,purpose:'captions'});signal?.throwIfAborted();

@@ -82,4 +82,4 @@ export function analysisSamplingStep(project,clipId=null){
 export const EDIT_STAGES=[
  {name:'Cortes e ordem',kinds:['cut','order','speed','framing'],does:'cortes de fala e de cenas, pausas, ordem, velocidade e formato'},
  {name:'Imagens e sobreposições',kinds:['image','composition','framing','motion'],does:'sobreposições de imagem e vídeo, b-roll sobre a fala, zoom e enquadramento'},
- {name:'Textos e acabamento',kinds:['text','color','transition','audio','motion'],does:'textos na tela, correção de cor e nitidez, transições e áudio'}];
+ {name:'Textos e acabamento',kinds:['text','captions','color','transition','audio','motion'],does:'textos e legendas, correção de cor e nitidez, transições e áudio'}];

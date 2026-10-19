@@ -4,10 +4,10 @@ Editor desktop de vídeo com Electron, edição não destrutiva e assistência p
 
 ## Download
 
-Windows x64 e macOS Apple Silicon **0.6.3**: [downloads e notas da versão](https://github.com/Marcos-An/corte/releases/tag/v0.6.3).
+Windows x64 e macOS Apple Silicon **0.6.4**: [downloads e notas da versão](https://github.com/Marcos-An/corte/releases/tag/v0.6.4).
 
 - **macOS Apple Silicon (arm64):** arquivo `.dmg` ou `.zip`. Não há pacote Intel nesta versão.
-- **Windows x64:** instalador `Corte.Setup.0.6.3.exe`.
+- **Windows x64:** instalador `Corte.Setup.0.6.4.exe`.
 - Pacotes **sem assinatura digital/notarização**; macOS/Windows podem mostrar avisos de segurança. Não desative a proteção do sistema inteiro.
 
 O aplicativo empacotado foi validado no Mac com mídia sintética, salvar/reabrir e exportação real. A interface Windows foi validada nesta máquina com edição complexa, salvar/reabrir, desfazer, exportação MP4 e atualização; o instalador e o feed passaram por auditoria de integridade. Esta versão é beta, não uma certificação de estabilidade.
@@ -16,11 +16,15 @@ A Release inclui fontes correspondentes das ferramentas GPL e `SHA256SUMS`. O ZI
 
 ## Editor
 
-Em desenvolvimento após a 0.6.3: **Arquivos de legenda** importa SRT/VTT e exporta os tempos atuais da montagem, sem serviço externo. Em música/narração, **Volume por intervalo** permite definir início/fim e volume manual; a IA usa `adjust_audio_range` para a mesma edição. Esses recursos ainda não estão no instalador publicado. Veja o [inventário e as próximas prioridades](docs/revisao-recursos-2026-10.md).
+Na versão 0.6.4: **Arquivos de legenda** importa SRT/VTT e exporta os tempos atuais da montagem, sem serviço externo. Em música/narração, **Volume por intervalo** permite definir início/fim e volume manual; a IA usa `adjust_audio_range` para a mesma edição. Veja o [inventário e as próximas prioridades](docs/revisao-recursos-2026-10.md).
 
-Também em desenvolvimento: **Legendas → Transcrição → Neste computador** gera legendas de áudio original ou narração com os modelos locais, sem chave de API nem envio de áudio. Usa o reconhecimento preciso quando instalado, ou o básico incluído, e reutiliza análises compatíveis. A transcrição roda num processo isolado, inclusive no modo básico; cancelar pode encerrar esse processo sem fechar o editor. A opção **OpenAI · nuvem** continua exigindo chave, envio do áudio e cobrança separada. O reconhecimento local pode errar; revise os textos. Karaokê usa os tempos medidos por palavra, sem inventar tempos para trechos incertos.
+Também na versão 0.6.4: **Legendas → Transcrição → Neste computador** gera legendas de áudio original ou narração com os modelos locais, sem chave de API nem envio de áudio. Usa o reconhecimento preciso quando instalado, ou o básico incluído, e reutiliza análises compatíveis. A transcrição roda num processo isolado, inclusive no modo básico; cancelar pode encerrar esse processo sem fechar o editor. A opção **OpenAI · nuvem** continua exigindo chave, envio do áudio e cobrança separada. O reconhecimento local pode errar; revise os textos. Karaokê usa os tempos medidos por palavra, sem inventar tempos para trechos incertos.
 
 A tela mostra qual reconhecimento está disponível. **Instalar preciso · 1,1 GB** é opcional; o aplicativo não faz esse download automaticamente ao gerar legendas. `tests/local-captions.e2e.mjs` usa fala sintética pt-BR, testa a transcrição real, o cache, o karaokê no vídeo e o cancelamento. A fixture curta pode ser regenerada no Windows por `scripts/make-caption-fixture.ps1`, que verifica a cultura da voz; não é necessária para executar os testes em outros sistemas.
+
+Legendas locais também podem ser solicitadas por prompt, em **Montagem inteira**, tanto no motor por texto quanto no híbrido. Exemplo: “Corte o primeiro segundo e gere legendas do áudio original, brancas, embaixo, com karaokê”. O planejador solicita `generate_captions`; o aplicativo prepara o reconhecimento local antes de mostrar a proposta, sem aceitar texto/tempos inventados pelo planejador. A prévia paginada permite conferir todas as legendas antes de aplicar; cortes e legendas entram no mesmo desfazer. Uma falha de reconhecimento deixa essa parte pendente e preserva os ajustes independentes; cancelar não aplica nada. Uma única voz (original ou narração) fica ativa por projeto. Quando há evidência local completa e confiável da análise híbrida, ela é reutilizada sem uma segunda inferência. Pedidos só por metadados não enviam a nova transcrição ao ChatGPT.
+
+Para alterar somente a aparência, a IA usa `edit_caption_style`: muda fonte/tamanho/cor/posição/estilo sem reconhecer novamente nem substituir correções manuais. O contrato recebe apenas fonte/quantidade de legendas, sem os textos salvos. `tests/caption-prompt.live.mjs` é opt-in com a conexão ChatGPT existente: envia metadados sintéticos, enquanto a fala sintética é reconhecida localmente; requer `CORTE_TEST_CODEX_HOME` e `CORTE_PROMPT_REPORT` e aceita `CORTE_PROMPT_FILTER` para selecionar casos.
 
 - Importação de vídeos/fotos diretamente na timeline, sem biblioteca de arquivos usados.
 - Cortes, aparo, reordenação, enquadramento, formatos, volume, histórico e desfazer/refazer.

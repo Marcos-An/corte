@@ -4,6 +4,7 @@ import {DEFAULT_ADJUSTMENTS} from './color-adjustments.mjs';
 import {sliceClip} from './clip-slicing.mjs';
 import {FONT_FAMILIES} from './fonts.mjs';
 import {validateTranscript,captionStyle} from './captions.mjs';
+import {applyCaptionRequest,applyCaptionAppearance,assertCaptionProviderPlan} from './caption-plan.mjs';
 const clone = value => structuredClone(value);
 const id = () => globalThis.crypto.randomUUID();
 const fail = message => { throw new Error(message); };
@@ -148,7 +149,7 @@ export class History {
     const h=new History(data.entries[0].state);h.entries=clone(data.entries);h.cursor=data.cursor;return h;
   }
 }
-const keys={adjust_audio_range:['audioId','start','end','volume'],adjust_timeline:['clipId','start','end','patch'],insert_clip:['index','clip'],move_range:['clipId','sourceStart','sourceEnd','index'],add_audio:['track'],split:['clipId','time'],trim:['clipId','in','out'],delete:['clipId'],move:['clipId','index'],update:['clipId','volume','crop','speed','background','backgroundColor','adjustments','fadeIn','fadeOut','zoom','freeze'],set_aspect:['aspect'],remove_ranges:['clipId','ranges'],keep_ranges:['clipId','ranges'],freeze_frame:['clipId','time','duration'],adjust_ranges:['clipId','ranges','patch'],set_transition:['leftId','rightId','effect','duration'],set_transition_at:['index','effect','duration','makeRoom'],edit_audio:['audioId','patch'],add_text:['layer'],add_image:['layer'],add_video:['layer'],add_shape:['layer'],edit_component:['layerId','patch'],remove_component:['layerId'],move_component:['layerId','direction'],set_keyframe:['layerId','time','pose'],remove_keyframe:['layerId','time'],set_motion:['layerId','enter','exit']};
+const keys={edit_caption_style:['style'],generate_captions:['source','style','transcripts'],adjust_audio_range:['audioId','start','end','volume'],adjust_timeline:['clipId','start','end','patch'],insert_clip:['index','clip'],move_range:['clipId','sourceStart','sourceEnd','index'],add_audio:['track'],split:['clipId','time'],trim:['clipId','in','out'],delete:['clipId'],move:['clipId','index'],update:['clipId','volume','crop','speed','background','backgroundColor','adjustments','fadeIn','fadeOut','zoom','freeze'],set_aspect:['aspect'],remove_ranges:['clipId','ranges'],keep_ranges:['clipId','ranges'],freeze_frame:['clipId','time','duration'],adjust_ranges:['clipId','ranges','patch'],set_transition:['leftId','rightId','effect','duration'],set_transition_at:['index','effect','duration','makeRoom'],edit_audio:['audioId','patch'],add_text:['layer'],add_image:['layer'],add_video:['layer'],add_shape:['layer'],edit_component:['layerId','patch'],remove_component:['layerId'],move_component:['layerId','direction'],set_keyframe:['layerId','time','pose'],remove_keyframe:['layerId','time'],set_motion:['layerId','enter','exit']};
 const visualPlanFields=['start','end','x','y','width','rotation','opacity'];
 const textPlanFields=['text','start','end','style'];
 const stylePlanFields=['font','size','color','position','preset','positionX','positionY','width','accent','strokeColor','strokeWidth','shadow','shadowColor','spacing','boxColor','boxOpacity','bold','italic','uppercase','hollow','accentLast','glowColor','glow','enter','exit'];
@@ -159,6 +160,7 @@ function componentEditor(p,layerId){
  }fail('Componente da IA não encontrado.');
 }
 function applyPlanOperation(p,op){
+ if(op.type==='edit_caption_style')return validateProject(applyCaptionAppearance(p,op.style));
  if(op.type==='insert_clip'){
   planFields(op.clip,['id','assetId','in','out','volume','crop']);
   planFields(op.clip.crop,['x','y','w','h']);
@@ -203,13 +205,14 @@ function applyPlanOperation(p,op){
  if(op.type==='remove_keyframe')return setKeyframe(p,op.layerId,op.time,null);
  return editProject(p,op);
 }
-export function parsePlan(text) { const p=JSON.parse(text);if(!p || typeof p!=='object' || Array.isArray(p)) fail('Resposta da IA inválida.');return p; }
+export function parsePlan(text) { const p=JSON.parse(text);if(!p || typeof p!=='object' || Array.isArray(p)) fail('Resposta da IA inválida.');assertCaptionProviderPlan(p.plan||p);return p; }
 export function validatePlan(p,plan) {
   validateProject(p);
   if(!plan || Object.keys(plan).some(k=>!['summary','operations','questions','unsupported'].includes(k)) || typeof plan.summary!=='string' || plan.summary.length>4000 || !Array.isArray(plan.operations) || plan.operations.length>100 || !Array.isArray(plan.questions) || !Array.isArray(plan.unsupported) || ![...plan.questions,...plan.unsupported].every(s=>typeof s==='string' && s.length<=2000)) fail('Plano da IA inválido.');
   if(plan.questions.length || plan.unsupported.length) fail('O pedido precisa de esclarecimento ou contém recursos ainda não suportados.');
+  if(plan.operations.filter(op=>op?.type==='generate_captions').length>1)fail('Escolha uma única voz para gerar legendas nesta proposta.');
   for(const op of plan.operations) {
-    const allowed=keys[op?.type];if(!allowed || (op.type==='update'? !('clipId' in op):allowed.some(k=>k!=='makeRoom'&&!(k in op))) || Object.keys(op).some(k=>k!=='type' && !allowed.includes(k))) fail('Operação da IA inválida.');
+    const allowed=keys[op?.type];if(!allowed || (op.type==='update'? !('clipId' in op):allowed.some(k=>!['makeRoom','transcripts'].includes(k)&&!(k in op))) || Object.keys(op).some(k=>k!=='type' && !allowed.includes(k))) fail('Operação da IA inválida.');
     if(op.type==='update'&&op.crop)planFields(op.crop,['x','y','w','h']);
     if(op.type==='update' && !keys.update.slice(1).some(k=>k in op)) fail('Ajuste vazio.');
     if(['adjust_ranges','adjust_timeline'].includes(op.type)){planFields(op.patch,['speed','crop','adjustments','volume','zoom']);if(op.patch.crop)planFields(op.patch.crop,['x','y','w','h']);if(op.patch.adjustments)planFields(op.patch.adjustments,Object.keys(DEFAULT_ADJUSTMENTS));}
@@ -225,15 +228,19 @@ export function validatePlan(p,plan) {
 // Range operations split a clip into pieces with new ids the plan cannot know. Each piece keeps its original clip as
 // lineage, so later range operations and updates naming that clip reach every piece.
 export function applyPlan(p,plan) { return planLineage(p,plan).project; }
+// Structural validation is not execution: recognition requests remain unprepared until the native async step.
+export function simulatePlan(p,plan){return planningLineage(p,plan).project;}
+export function planningLineage(p,plan){return planLineage(p,plan,{allowUnpreparedCaptions:true});}
 // Same as applyPlan, plus the original clip of every resulting piece. Piece ids are random per run, so callers that
 // apply a plan more than once must compare pieces by origin and source time, never by id.
-export function planLineage(p,plan) {
+export function planLineage(p,plan,{allowUnpreparedCaptions=false}={}) {
   validatePlan(p,plan);let q=clone(p);
   // A frozen frame belongs to its clip's lineage but holds one instant: updates and range edits of the clip skip it.
   const root=new Map(q.clips.map(c=>[c.id,c.id])),family=clipId=>q.clips.filter(c=>root.get(c.id)===clipId&&!c.freeze);
   const audioRoot=new Map((q.music||[]).map(c=>[c.id,c.id]));
   const queue=[...plan.operations];for(let operationIndex=0;operationIndex<queue.length;operationIndex++){
     const op=queue[operationIndex];
+    if(op.type==='generate_captions'){q=validateProject(applyCaptionRequest(q,op,{allowUnprepared:allowUnpreparedCaptions}));continue;}
     if(op.type==='adjust_audio_range'){
       const members=(q.music||[]).filter(c=>c.id===op.audioId||audioRoot.get(c.id)===op.audioId),start=Math.min(...members.map(c=>c.start)),end=Math.max(...members.map(c=>c.start+clipDuration(c)));
       if(!members.length||!finite(op.start)||!finite(op.end)||op.start<start-1e-6||op.end>end+1e-6||op.end-op.start<.02)fail('Intervalo fora do áudio escolhido.');

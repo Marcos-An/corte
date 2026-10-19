@@ -1,8 +1,9 @@
 import {spawn} from 'node:child_process';
 import {mkdir,mkdtemp,writeFile,readFile,rm} from 'node:fs/promises';import path from 'node:path';
 import {planSchema,buildPrompt,codexArgs,codexExecutable,codexEnv,loginStatus,codexFailure} from './ai.mjs';
-import {validateProject,validatePlan,applyPlan} from '../src/project.mjs';
+import {validateProject,validatePlan,simulatePlan} from '../src/project.mjs';
 import {requestQualityPlan} from './quality.mjs';
+import {assertCaptionProviderPlan} from '../src/caption-plan.mjs';
 const schema={type:'object',properties:{route:{type:'string',enum:['local_quality','edit_plan','unsupported_visual']},plan:{anyOf:[planSchema,{type:'null'}]}},required:['route','plan'],additionalProperties:false};
 export async function interpretIntent({home,cache,project,prompt,signal,scopeClipId=null}){
  if(!(await loginStatus(home)).connected)throw new Error('Conecte sua conta ChatGPT para interpretar o pedido. Nenhuma imagem será enviada.');
@@ -19,7 +20,7 @@ edit_plan: somente operações determináveis pelo texto/metadados, sem ver víd
  });
  const events=output.trim().split('\n').map(s=>{try{return JSON.parse(s)}catch{return {}}});
  if(!events.some(e=>e.type==='turn.completed')||events.some(e=>['command_execution','mcp_tool_call'].includes(e.item?.type)))throw new Error('Interpretação incompleta ou uso de ferramenta não permitido.');
- return JSON.parse(await readFile(result,'utf8'));
+ const parsed=JSON.parse(await readFile(result,'utf8'));assertCaptionProviderPlan(parsed.plan);return parsed;
  }finally{await rm(temp,{recursive:true,force:true});}
 }
 export async function requestPromptPlan(options){
@@ -29,6 +30,6 @@ export async function requestPromptPlan(options){
  if(!['local_quality','edit_plan','unsupported_visual'].includes(intent?.route)||(intent.route!=='edit_plan'&&intent.plan!==null))throw new Error('Interpretação inválida.');
  if(intent.route==='local_quality')return {...await local(options),frames:0};
  if(intent.route==='unsupported_visual')return {frames:0,plan:{summary:'O pedido exige reconhecimento visual que o motor local atual ainda não consegue executar.',operations:[],questions:[],unsupported:['Nenhum corte aplicado. O detector de nitidez não substitui esse critério visual.']}};
- const plan=intent.plan;if(!plan||!Array.isArray(plan.questions)||!Array.isArray(plan.unsupported)||!Array.isArray(plan.operations))throw new Error('Plano inválido.');
- if(plan.questions.length||plan.unsupported.length){if(plan.operations.length)throw new Error('Plano parcial não permitido.');}else{validatePlan(project,plan);applyPlan(project,plan);}return {plan,frames:0};
+ const plan=assertCaptionProviderPlan(intent.plan);if(!plan||!Array.isArray(plan.questions)||!Array.isArray(plan.unsupported)||!Array.isArray(plan.operations))throw new Error('Plano inválido.');
+ if(plan.questions.length||plan.unsupported.length){if(plan.operations.length)throw new Error('Plano parcial não permitido.');}else{validatePlan(project,plan);simulatePlan(project,plan);}return {plan,frames:0};
 }

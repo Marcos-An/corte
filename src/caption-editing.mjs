@@ -1,15 +1,21 @@
-import {clipSpeed,montageTime,sourceTime} from './clip-time.mjs';
+import {clipSpeed,clipDuration,sourceTime} from './clip-time.mjs';
 import {splitCaptionWords} from './captions.mjs';
 import {validateProject,clipAt} from './project.mjs';
 function wordsFor(p,c){return splitCaptionWords(c.captionWords??p.transcripts?.find(t=>t.assetId===c.assetId)?.words??[]);}
 export function editCaption(p,entry,patch){
- const q=structuredClone(p),c=[...q.clips,...q.music||[]].find(c=>c.id===entry.clipId);
+ const q=structuredClone(p),tracks=q.captionSource==='narration'?(q.music||[]).filter(c=>c.role==='narration'):q.clips,c=tracks.find(c=>c.id===entry.clipId);
  if(!c)throw Error('Trecho da legenda não encontrado.');
- c.captionWords=structuredClone(wordsFor(q,c));const w=c.captionWords[entry.wordIndex];
+ c.captionWords=structuredClone(wordsFor(q,c));let w=c.captionWords[entry.wordIndex];
  if(!w)throw Error('Legenda não encontrada.');
  if(patch===null)c.captionWords.splice(entry.wordIndex,1);
  else{
-  const offset=entry.start-montageTime(c,Math.max(w.start,c.in));
+  const offset=q.captionSource==='narration'?c.start:tracks.slice(0,tracks.indexOf(c)).reduce((sum,c)=>sum+clipDuration(c),0),retiming='start'in patch||'end'in patch;
+  // Editing a cropped phrase must use its visible words, not hidden source words with coincident word counts.
+  if(retiming||'text'in patch&&entry.tokens?.length&&w.tokens?.length!==entry.tokens.length){
+   const source=time=>Math.max(c.in,Math.min(c.out,sourceTime(c,time-offset)));
+   w={...w,start:source(entry.start),end:source(entry.end),text:entry.text};
+   if(entry.tokens?.length)w.tokens=entry.tokens.map(t=>({...t,start:source(t.start),end:source(t.end)}));else delete w.tokens;
+  }
   const next={...w,...patch};if(patch.place===null)delete next.place;
   if('start' in patch)next.start=sourceTime(c,patch.start-offset);
   if('end' in patch)next.end=sourceTime(c,patch.end-offset);

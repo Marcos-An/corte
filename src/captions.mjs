@@ -24,8 +24,11 @@ export function splitCaptionWords(words){
 }
 export function captionEntries(p){
  let offset=0;const result=[];
- for(const c of (p.captionSource==='narration'?(p.music||[]).filter(c=>c.role==='narration'):p.clips)){if(p.captionSource==='narration')offset=c.start;const t=p.transcripts?.find(t=>t.assetId===c.assetId);
-  for(const [wordIndex,w] of splitCaptionWords(c.captionWords??t?.words??[]).entries()){const start=Math.max(w.start,c.in),end=Math.min(w.end,c.out);if(end>start)result.push({start:offset+montageTime(c,start),end:offset+montageTime(c,end),text:w.text,assetId:c.assetId,clipId:c.id,wordIndex,...(w.place?{place:w.place}:{}),...(w.tokens?{tokens:w.tokens.map(t=>({...t,start:offset+montageTime(c,t.start),end:offset+montageTime(c,t.end)}))}:{})});}offset+=clipDuration(c);
+ for(const c of (p.captionSource==='narration'?(p.music||[]).filter(c=>c.role==='narration'):p.clips)){if(c.freeze){offset+=clipDuration(c);continue;}if(p.captionSource==='narration')offset=c.start;const t=p.transcripts?.find(t=>t.assetId===c.assetId);
+  for(const [wordIndex,w] of splitCaptionWords(c.captionWords??t?.words??[]).entries()){
+   const parts=w.text.trim().split(/\s+/),tokens=w.tokens?.length===parts.length?w.tokens.map((t,i)=>({...t,text:parts[i]})).filter(t=>t.end>c.in&&t.start<c.out||t.start===t.end&&t.start>=c.in&&t.start<=c.out):undefined,cropped=tokens&&tokens.length!==w.tokens.length,start=Math.max(w.start,c.in,cropped?tokens[0]?.start??w.start:w.start),end=Math.min(w.end,c.out,cropped&&tokens.length?Math.max(...tokens.map(t=>t.end)):w.end);
+   if(end>start&&(!tokens||tokens.length))result.push({start:offset+montageTime(c,start),end:offset+montageTime(c,end),text:tokens?tokens.map(t=>t.text).join(' '):w.text,assetId:c.assetId,clipId:c.id,wordIndex,...(w.place?{place:w.place}:{}),...(tokens?{tokens:tokens.map(t=>({...t,start:offset+montageTime(c,Math.max(c.in,t.start)),end:offset+montageTime(c,Math.min(c.out,t.end))}))}:{})});
+  }offset+=clipDuration(c);
  }return result;
 }
 // A caption with its own position exports with its own style; the rest follow the shared style.

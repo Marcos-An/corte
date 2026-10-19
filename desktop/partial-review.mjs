@@ -1,4 +1,4 @@
-import {resolveSpeechOperations} from './speech-edit.mjs';import {resolveAnchoredOperations} from './timeline-anchors.mjs';import {validatePlan,applyPlan} from '../src/project.mjs';
+import {resolveSpeechOperations} from './speech-edit.mjs';import {resolveAnchoredOperations} from './timeline-anchors.mjs';import {validatePlan,simulatePlan} from '../src/project.mjs';
 const reshapes=op=>['trim','delete','move','move_range','insert_clip','keep_ranges','remove_ranges','remove_words','tighten_pauses','freeze_frame','adjust_ranges','adjust_timeline'].includes(op.type)||op.type==='update'&&'speed' in op;
 const absolute=op=>['adjust_audio_range','adjust_timeline','add_text','add_image','add_video','add_shape','set_keyframe','remove_keyframe','set_transition_at'].includes(op.type)||op.type==='edit_component'&&['start','end','in'].some(k=>k in op.patch)||op.type==='edit_audio'&&'start' in op.patch||op.type==='add_audio'&&op.track.start!==0||['move','move_range','insert_clip'].includes(op.type)&&op.index!==0;
 // Only a proposal that already passed provider and executable-plan validation reaches this recovery path.
@@ -6,7 +6,7 @@ const absolute=op=>['adjust_audio_range','adjust_timeline','add_text','add_image
 export function recoverIndependentReview({project,result,transcripts,gaps,isSafe}){
  if(!result.sourceReview)return null;
  const raw=structuredClone(result.sourceReview),kept=[],changed=new Map();let changedTimeline=false;
- const normalize=operations=>{let r={plan:{...raw.plan,operations}};r=resolveSpeechOperations(project,r,transcripts,gaps);r=resolveAnchoredOperations(project,r,transcripts);validatePlan(project,r.plan);applyPlan(project,r.plan);return r.plan;};
+ const normalize=operations=>{let r={plan:{...raw.plan,operations}};r=resolveSpeechOperations(project,r,transcripts,gaps);r=resolveAnchoredOperations(project,r,transcripts);validatePlan(project,r.plan);simulatePlan(project,r.plan);return r.plan;};
  const acceptable=op=>{try{return isSafe(normalize([...kept.map(k=>k.op),op]));}catch{return false;}};
  for(const [i,original]of raw.plan.operations.entries()){
   let op=original,partial=false;

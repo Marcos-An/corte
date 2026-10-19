@@ -199,6 +199,8 @@ jobs:
           node tests/clean-editing.e2e.mjs
           node tests/subtitle-files.e2e.mjs
           node tests/local-captions.e2e.mjs
+          node tests/caption-proposal.e2e.mjs
+          node tests/caption-reuse.integration.mjs
           node tests/caption-feedback.e2e.mjs
           node tests/audio-ranges.e2e.mjs
           node tests/freeze-frame.e2e.mjs
@@ -248,7 +250,7 @@ jobs:
       - name: Create draft only after all gates pass
         if: ${{ github.event_name == 'push' || !inputs.dry_run }}
         run: |
-          printf 'Ajustes refinados e uma interface mais simples:\n- Volume, brilho, contraste, saturação, temperatura, nitidez, velocidade e zoom por intervalo.\n- Ajustes de cor preservam as outras propriedades; divisões mantêm zoom e fades contínuos.\n- Pedidos por tempos e metadados usam uma rota rápida, sem transcrever ou extrair quadros desnecessariamente.\n- Correção do escopo de edição do trecho selecionado.\n- Visuais rápidos Natural, Comida, Quente e P&B.\n- Timeline se encaixa à janela e o cursor não bloqueia cliques nos controles.\n- Propostas da IA com menos texto, pendências visíveis e detalhes recolhidos.\n- Música e narração com volumes independentes e manuais, sem redução automática.\n\nMac arm64 e Windows x64, sem assinatura/notarização. Fontes GPL e SHA256SUMS incluídos. Testes e auditorias dos pacotes executados nos runners.\n\nSource commit: %s. Build version: %s (stamped in CI).\n' "$EXPECTED_SHA" "$VERSION" > release/notes.md
+          printf 'Legendas locais e mais controle na edição:\n- Gere legendas do áudio original ou da narração neste computador, com prévia antes de aplicar por prompt.\n- Ajuste aparência das legendas por prompt preservando correções e tempos.\n- Importação SRT/VTT e exportação das legendas da montagem.\n- Volume manual por intervalo em música e narração, sem redução automática.\n- Reconhecimento de fala em processo isolado, cancelamento e reutilização de análises compatíveis.\n- Controle do modelo preciso opcional e correções de áudio e legendas após cortes.\n\nWindows: atualização automática sem baixar novamente os modelos básicos. Reconhecimento local pode errar; revise os textos.\nMac arm64 e Windows x64, sem assinatura/notarização. Fontes GPL e SHA256SUMS incluídos. Testes e auditorias dos pacotes executados nos runners.\n\nSource commit: %s. Build version: %s (stamped in CI).\n' "$EXPECTED_SHA" "$VERSION" > release/notes.md
           gh release create "v$VERSION" --repo Marcos-An/corte --target "$EXPECTED_SHA" --draft --prerelease --title "Corte $VERSION — beta" --notes-file release/notes.md release/assets/*
       - name: Publish explicitly requested version tag after all validations
         if: github.event_name == 'push'

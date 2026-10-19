@@ -44,6 +44,8 @@ function describeChange(before,after){
  return {label:after.assets.length>before.assets.length?'Importar mídia':after.clips.length>before.clips.length?'Adicionar trechos':after.clips.length<before.clips.length?'Remover trechos':before.aspect!==after.aspect?'Formato':before.name!==after.name?'Nome do projeto':'Editar projeto',affected:changed,details:changed.slice(0,100).map(id=>{const c=after.clips.find(x=>x.id===id)||before.clips.find(x=>x.id===id),a=after.assets.find(x=>x.id===c.assetId)||before.assets.find(x=>x.id===c.assetId);return `${a?.name||'Trecho'} · ${c.in.toFixed(2)}–${c.out.toFixed(2)}s · volume ${Math.round(c.volume*100)}%`;})};
 }
 function describeOperation(p,op){
+ if(op.type==='generate_captions')return `Legendas locais · ${op.source==='narration'?'narração':'áudio original'}`;
+ if(op.type==='edit_caption_style')return 'Aparência das legendas';
  const c=p.clips.find(c=>c.id===op.clipId),name=p.assets.find(a=>a.id===c?.assetId)?.name||'Projeto';
  const seconds=v=>`${Number(v).toFixed(2)}s`;
  if(op.type==='move_range')return `Mover intervalo · ${name} · ${seconds(op.sourceStart)}–${seconds(op.sourceEnd)} · posição ${op.index+1}`;
@@ -1110,14 +1112,14 @@ $('analyze').addEventListener('click',guard(async()=>{
  try{
   const scope=$('ai-scope').value==='selected'?selected:null;if($('ai-scope').value==='selected'&&!snapshot.clips.some(c=>c.id===scope))throw Error('Selecione um trecho válido.');if(stage===1)editSession=newEditSession(prompt,scope);if(stage>1&&(!editSession||editSession.prompt!==prompt||editSession.scope!==scope))throw Error('O pedido ou o escopo mudou. Inicie novamente pela etapa 1.');const result=await bridge.analyze(snapshot,prompt,analysisSamplingStep(snapshot,scope),scope,engine,engine==='hybrid',stage);validateScopedPlan(snapshot,result.plan,scope);if(cancelRequested)throw Error('Edição cancelada.');
   if(JSON.stringify(snapshot)!==JSON.stringify(project()))throw new Error('O projeto mudou durante a análise. Resultado descartado.');
-  if(engine==='hybrid'){
+  if(engine==='hybrid'||result.reviewRequired===true){
    if(result.mode!=='hybrid'||result.reviewRequired!==true)throw Error('Resposta do fluxo híbrido inválida.');
-   const box=$('proposal'),proposalActions=renderProposal(box,result,{stageLabel:stage?`Etapa ${stage} de ${EDIT_STAGES.length} · ${EDIT_STAGES[stage-1].name}`:'',describe:op=>describeOperation(snapshot,op)});
+   const box=$('proposal'),proposalActions=renderProposal(box,result,{stageLabel:stage?`Etapa ${stage} de ${EDIT_STAGES.length} · ${EDIT_STAGES[stage-1].name}`:'',describe:op=>describeOperation(snapshot,op),captionPreview:()=>captionEntries(applyPlan(snapshot,result.plan))});
    requestAnimationFrame(()=>{if(!box.hidden){const panel=$('ai-panel');panel.scrollTop+=box.getBoundingClientRect().top-panel.getBoundingClientRect().top-12;}});
    pending={snapshot:JSON.stringify(snapshot),plan:result.plan,scope,notes:[...(result.pendingRequests||[]),...(result.analysisWarnings||[])]};
    const discard=document.createElement('button');discard.id='discard-hybrid-plan';discard.textContent='Descartar';discard.onclick=()=>{pending=null;box.hidden=true;if(stage){recordEditStage(editSession,stage,'skipped',result);offerNextStage(stage);}};proposalActions.append(discard);
    if(result.plan.operations.length){const apply=document.createElement('button');apply.id='apply-hybrid-plan';apply.className='primary';apply.textContent='Aplicar alterações';apply.onclick=guard(()=>{
-    if(busy||!pending)return;const draft=pending;if(draft.snapshot!==JSON.stringify(project()))throw Error('O projeto mudou. Prepare uma nova proposta.');validateScopedPlan(project(),draft.plan,draft.scope);const before=project(),next=applyPlan(before,draft.plan);commit(next,{...describeChange(before,next),label:`IA híbrida: ${draft.plan.summary}`.slice(0,4000),details:[...draft.plan.operations.map(op=>describeOperation(before,op)),...draft.notes.map(n=>'Pendente: '+n)]});toast('Alterações revisadas aplicadas. Pendências não foram executadas.');if(stage){recordEditStage(editSession,stage,'applied',result);offerNextStage(stage);}
+    if(busy||!pending)return;const draft=pending;if(draft.snapshot!==JSON.stringify(project()))throw Error('O projeto mudou. Prepare uma nova proposta.');validateScopedPlan(project(),draft.plan,draft.scope);const before=project(),next=applyPlan(before,draft.plan);commit(next,{...describeChange(before,next),label:`IA: ${draft.plan.summary}`.slice(0,4000),details:[...draft.plan.operations.map(op=>describeOperation(before,op)),...draft.notes.map(n=>'Pendente: '+n)]});toast('Alterações revisadas aplicadas. Pendências não foram executadas.');if(stage){recordEditStage(editSession,stage,'applied',result);offerNextStage(stage);}
    });proposalActions.append(apply);}return;
   }
   const {plan}=result,issues=[...(plan.questions||[]),...(plan.unsupported||[])];
