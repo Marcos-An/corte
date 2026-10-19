@@ -11,7 +11,7 @@ const root=path.resolve(import.meta.dirname,'..');
 await run(binaries().ffmpeg,['-hide_banner','-loglevel','error','-y','-f','lavfi','-i','testsrc2=size=640x360:rate=30','-f','lavfi','-i','sine=frequency=440:sample_rate=48000','-t','4','-c:v','libx264','-pix_fmt','yuv420p','-c:a','aac',path.join(dir,'source.mp4')]);
 let app;
 try {
- app=await electron.launch({executablePath:process.env.CORTE_TEST_APP||require('electron'),args:[...(process.env.CORTE_TEST_APP?[]:[root]),`--user-data-dir=${path.join(dir,'appdata')}`],env:{...process.env,ELECTRON_RUN_AS_NODE:''}});
+ app=await electron.launch({executablePath:process.env.CORTE_TEST_APP||require('electron'),args:[...(process.env.CORTE_TEST_APP?[]:[root]),`--user-data-dir=${path.join(dir,'appdata')}`],env:Object.fromEntries(Object.entries(process.env).filter(([k])=>k!=='ELECTRON_RUN_AS_NODE'))});
  const page=await app.firstWindow();await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setBounds({width:1200,height:800}));await page.setViewportSize({width:1200,height:800});const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});},path.join(dir,'source.mp4'));
  await page.locator('#nav-media').click();

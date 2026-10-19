@@ -15,13 +15,13 @@ try{
  await page.locator('.transition-junction').nth(1).click();
  assert.equal(await page.locator('#transition-dialog').evaluate(e=>e.open),true,'visible transition remains editable');
  await page.locator('#transition-close').click();
- // The needle must remain draggable where its line crosses a transition.
+ // The ruler handle remains draggable while the line crosses a transition.
  await page.locator('#playhead-time').fill('4');await page.locator('#playhead-time').dispatchEvent('change');
  const cut=await page.locator('.transition-junction').first().boundingBox();
  const needleAtCut=await page.locator('#playhead').boundingBox();
  const edge=await page.locator('#timeline-scroll').boundingBox();
- await page.mouse.move(needleAtCut.x+needleAtCut.width/2,cut.y+cut.height/2);await page.mouse.down();
- await page.mouse.move(edge.x+edge.width-5,cut.y+cut.height/2);
+ await page.mouse.move(needleAtCut.x+needleAtCut.width/2,needleAtCut.y+6);await page.mouse.down();
+ await page.mouse.move(edge.x+edge.width-5,needleAtCut.y+6);
  await page.waitForFunction(()=>document.querySelector('#timeline-scroll').scrollLeft>100);
  await page.mouse.up();await page.evaluate(()=>document.querySelector('#timeline-scroll').scrollLeft=0);
  // Grab the centre of the visible needle, not the ruler beside its tip.

@@ -195,6 +195,8 @@ jobs:
           node tests/hybrid-edit.e2e.mjs
           node tests/ai-scope.e2e.mjs
           node tests/ai-stages.e2e.mjs
+          node tests/interval-controls.e2e.mjs
+          node tests/clean-editing.e2e.mjs
           node tests/freeze-frame.e2e.mjs
           node tests/session-diagnostics.e2e.mjs
           node tests/visual-process.e2e.mjs

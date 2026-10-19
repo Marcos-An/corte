@@ -20,7 +20,7 @@ export function validateProject(p) {
     ids.add(a.id);
   }
   if(p.captionSource!==undefined&&!['original','narration'].includes(p.captionSource))fail('Fonte de legenda inválida.');
-  if(p.music!==undefined){if(!Array.isArray(p.music)||p.music.length>100)fail('Trilhas de música inválidas.');const musicIds=new Set();for(const c of p.music){const a=p.assets.find(a=>a.id===c?.assetId);if((c.role!==undefined&&!['music','narration'].includes(c.role))||!a||a.kind!=='audio'||typeof c.id!=='string'||!c.id||musicIds.has(c.id)||![c.in,c.out,c.start,c.volume].every(finite)||c.in<0||c.out-c.in<.02||c.out>a.duration+.000001||c.start<0||c.start>21600||c.volume<0||c.volume>2)fail('Trecho de música inválido.');if(c.captionWords!==undefined)validateTranscript({assetId:c.assetId,words:c.captionWords},a.duration);if(c.speed!==undefined)fail('Velocidade somente em trechos principais.');validateAudioFades(c);musicIds.add(c.id);}}
+  if(p.music!==undefined){if(!Array.isArray(p.music)||p.music.length>100)fail('Trilhas de música inválidas.');const musicIds=new Set();for(const c of p.music){const a=p.assets.find(a=>a.id===c?.assetId);if((c.role!==undefined&&!['music','narration'].includes(c.role))||!a||a.kind!=='audio'||typeof c.id!=='string'||!c.id||musicIds.has(c.id)||![c.in,c.out,c.start,c.volume].every(finite)||c.in<0||c.out-c.in<.02||c.out>a.duration+.000001||c.start<0||c.start>21600||c.volume<0||c.volume>2)fail('Trecho de música inválido.');if(c.captionWords!==undefined)validateTranscript({assetId:c.assetId,words:c.captionWords},a.duration);if(c.speed!==undefined)fail('Velocidade somente em trechos principais.');validateAudioFades(c);if(c.ducking!==undefined&&(!finite(c.ducking)||c.ducking<0||c.ducking>1||c.role==='narration'))fail('Volume de fundo inválido. Use de 0 a 100% em uma trilha de música.');musicIds.add(c.id);}}
   if(p.transcripts!==undefined){
     if(!Array.isArray(p.transcripts)||p.transcripts.length>100)fail('Transcrições inválidas.');
     const seen=new Set();for(const t of p.transcripts){const a=p.assets.find(a=>a.id===t?.assetId);if(!a||seen.has(t.assetId))fail('Mídia de legenda inválida.');validateTranscript(t,a.duration);seen.add(t.assetId);}
@@ -187,7 +187,7 @@ function applyPlanOperation(p,op){
   return setTransition(p,op.leftId,op.rightId,op.effect,op.duration);
  }
  if(op.type==='set_motion')return setMotion(p,op.layerId,{enter:op.enter,exit:op.exit});
- if(op.type==='edit_audio'){planFields(op.patch,['in','out','start','volume','fadeIn','fadeOut']);return editMusic(p,op.audioId,op.patch);}
+ if(op.type==='edit_audio'){planFields(op.patch,['in','out','start','volume','fadeIn','fadeOut','ducking']);return editMusic(p,op.audioId,op.patch);}
  if(op.type.startsWith('add_')){
   const definitions={add_text:[addTextLayer,textPlanFields],add_image:[addImageLayer,[...visualPlanFields,'assetId']],add_video:[addVideoLayer,[...visualPlanFields,'assetId','in','freeze']],add_shape:[addShapeLayer,[...visualPlanFields,'type','height','fill','stroke','strokeWidth']]};
   const [add,fields]=definitions[op.type];planFields(op.layer,['id',...fields]);if(typeof op.layer.id!=='string'||!op.layer.id)fail('Identidade de componente inválida.');
@@ -284,8 +284,8 @@ export function planLineage(p,plan) {
   return {project:validateProject(q),origin:clipId=>root.get(clipId)};
 }
 
-export function addMusic(p,asset,clip){const q=clone(p);if(!q.assets.some(a=>a.id===asset.id))q.assets.push(clone(asset));q.music=[...(q.music||[]),{id:clip.id||id(),assetId:asset.id,in:clip.in,out:clip.out,start:clip.start??0,volume:clip.volume??1,...(clip.role?{role:clip.role}:{}),...(clip.fadeIn!==undefined?{fadeIn:clip.fadeIn}:{}),...(clip.fadeOut!==undefined?{fadeOut:clip.fadeOut}:{})}];return validateProject(q);}
-export function editMusic(p,clipId,patch){const q=clone(p),c=q.music?.find(c=>c.id===clipId);if(!c)fail('Trecho de música não encontrado.');if(patch===null)q.music=q.music.filter(c=>c.id!==clipId);else for(const k of ['in','out','start','volume','fadeIn','fadeOut'])if(k in patch)c[k]=patch[k];return validateProject(q);}
+export function addMusic(p,asset,clip){const q=clone(p);if(!q.assets.some(a=>a.id===asset.id))q.assets.push(clone(asset));q.music=[...(q.music||[]),{id:clip.id||id(),assetId:asset.id,in:clip.in,out:clip.out,start:clip.start??0,volume:clip.volume??1,...(clip.role?{role:clip.role}:{}),...(clip.fadeIn!==undefined?{fadeIn:clip.fadeIn}:{}),...(clip.fadeOut!==undefined?{fadeOut:clip.fadeOut}:{}),...(clip.ducking!==undefined?{ducking:clip.ducking}:{})}];return validateProject(q);}
+export function editMusic(p,clipId,patch){const q=clone(p),c=q.music?.find(c=>c.id===clipId);if(!c)fail('Trecho de música não encontrado.');if(patch===null)q.music=q.music.filter(c=>c.id!==clipId);else for(const k of ['in','out','start','volume','fadeIn','fadeOut','ducking'])if(k in patch)c[k]=patch[k];return validateProject(q);}
 
 export function addTextLayer(p,layer){const q=clone(p);q.textLayers=[...(q.textLayers||[]),{...clone(layer),id:layer.id||id()}];return validateProject(syncLayerOrder(q));}
 const words=text=>text.split(/\s+/).filter(Boolean);

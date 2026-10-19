@@ -3,6 +3,7 @@ import {clipSpeed,clipDuration,zoomAt} from '../src/clip-time.mjs';
 import {adjustmentFilter} from '../src/color-adjustments.mjs';
 // Smooth zoom: zoompan keeps the framed size and recentres every frame (a per-frame scale + crop drifted to a corner).
 function zoomFilter(c,a){if(!c.zoom)return '';const {from,to}=c.zoom,d=clipDuration(c),r=c.crop,even=v=>Math.max(2,Math.round(v/2)*2);return `zoompan=z='${from}+${Number((to-from).toFixed(6))}*min(1,it/${Number(d.toFixed(6))})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${even(a.width*r.w)}x${even(a.height*r.h)}:fps=30,`;}
+import {duckingFilter,narrationWindows} from '../src/audio-ducking.mjs';
 import {audioFadeFilter} from '../src/audio-envelope.mjs';
 import {shapeAss} from '../src/shapes.mjs';
 import {keyframeExpression,pointsOf,animated} from '../src/keyframes.mjs';
@@ -126,7 +127,7 @@ export async function renderProject(project,registry,destination,{height=720,sig
       await run(binaries().ffmpeg,args,{signal,timeout:1800000});await rename(transitioned,partial);
     }
     const music=(project.music||[]).filter(c=>c.start<duration(project));
-    if(music.length){const mixed=path.join(temp,'mixed.mp4'),args=['-hide_banner','-loglevel','error','-y','-i',partial];for(const c of music)args.push('-ss',String(c.in),'-t',String(c.out-c.in),'-i',registry.get(c.assetId).path);const filters=music.map((c,i)=>`[${i+1}:a]aresample=48000,volume=${c.volume}${audioFadeFilter(c,c.out-c.in)},adelay=${Math.round(c.start*1000)}:all=1[m${i}]`);filters.push(`[0:a]${music.map((_,i)=>`[m${i}]`).join('')}amix=inputs=${music.length+1}:duration=first:normalize=0,alimiter=limit=0.95:latency=1[a]`);args.push('-filter_complex',filters.join(';'),'-map','0:v:0','-map','[a]','-c:v','copy','-c:a','aac','-movflags','+faststart',mixed);await run(binaries().ffmpeg,args,{signal,timeout:1800000});await rename(mixed,partial);}
+    if(music.length){const mixed=path.join(temp,'mixed.mp4'),args=['-hide_banner','-loglevel','error','-y','-i',partial];for(const c of music)args.push('-ss',String(c.in),'-t',String(c.out-c.in),'-i',registry.get(c.assetId).path);const filters=music.map((c,i)=>`[${i+1}:a]aresample=48000,asetpts=PTS-STARTPTS,volume=${c.volume}${audioFadeFilter(c,c.out-c.in)}${duckingFilter(c,narrationWindows(project,duration(project)))},adelay=${Math.round(c.start*1000)}:all=1[m${i}]`);filters.push(`[0:a]${music.map((_,i)=>`[m${i}]`).join('')}amix=inputs=${music.length+1}:duration=first:normalize=0,alimiter=limit=0.95:latency=1[a]`);args.push('-filter_complex',filters.join(';'),'-map','0:v:0','-map','[a]','-c:v','copy','-c:a','aac','-movflags','+faststart',mixed);await run(binaries().ffmpeg,args,{signal,timeout:1800000});await rename(mixed,partial);}
     const captions=projectCaptions(project),size=dimensions(project.aspect,height),output=path.join(temp,'composition.mp4');
     const packed=process.resourcesPath&&path.join(process.resourcesPath,'fonts'),fonts=packed&&existsSync(packed)?packed:path.resolve(import.meta.dirname,'../vendor/fonts');
     const escape=v=>v.replace(/\\/g,'/').replace(/:/g,'\\:').replace(/'/g,"\\'");
