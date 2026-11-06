@@ -15,7 +15,7 @@ export function normalizeEditRecognition(result,duration){
   if(typeof chunk?.text!=='string')return uncertain();const text=chunk.text.trim();if(!text)continue;
   if(text.length>500||unsafe.test(text))return uncertain();
   const [start,end]=Array.isArray(chunk.timestamp)&&chunk.timestamp.length===2?chunk.timestamp:[NaN,NaN];
-  const ok=Number.isFinite(start)&&Number.isFinite(end)&&start>=previous&&end>start&&end<=duration+.000001;
+  const ok=/[\p{L}\p{N}]/u.test(text)&&Number.isFinite(start)&&Number.isFinite(end)&&start>=previous&&end>start&&end<=duration+.000001;
   items.push({text,start,end,ok});if(ok)previous=start;
  }
  const bad=items.filter(i=>!i.ok).length;
@@ -42,6 +42,17 @@ export function speechWindows(duration,size=30,overlap=5){
   windows.push({offset,length:Math.min(size,duration-offset),from:offset?offset+overlap/2:0,to:last?duration:offset+size-overlap/2});
   if(last)return windows;
  }
+}
+export function preferSpeechRetry(original,retry){
+ // Keep all recognized lexical content, including uncertain negations.
+ const tokens=r=>[...r.words,...(r.context||[])].sort((a,b)=>a.start-b.start).flatMap(w=>w.text.toLowerCase().match(/[\p{L}\p{N}]+/gu)||[]);
+ const before=tokens(original),after=tokens(retry);let cursor=0;
+ for(const token of before){while(cursor<after.length&&after[cursor]!==token)cursor++;if(cursor===after.length)return original;cursor++;}
+ const lexical=text=>(text.toLowerCase().match(/[\p{L}\p{N}]+/gu)||[]).join(' ');
+ if(original.words.some(w=>lexical(w.text)&&!retry.words.some(r=>lexical(r.text)===lexical(w.text)&&Math.abs(r.start-w.start)<=.5&&Math.abs(r.end-w.end)<=.5)))return original;
+ const uncertainty=r=>r.gaps.reduce((n,g)=>n+g.end-g.start,0);
+ if(uncertainty(retry)>=uncertainty(original)||!after.length)return original;
+ return retry;
 }
 // Two decodes of the overlap time the same word differently, so a fixed midpoint can keep it twice or drop it.
 // Continue after the last kept word instead, and skip a re-timed copy of a word already kept.

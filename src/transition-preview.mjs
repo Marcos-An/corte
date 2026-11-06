@@ -26,7 +26,7 @@ export function createTransitionPreview(canvas,{media,image,playing,onFrame,erro
   if(a.kind==='image')return image(a);const v=videos[i];v.playbackRate=clipSpeed(clip);if(v.getAttribute('src')!==url){v.src=url;v.load();}
   if(!play)v.pause();
   if(v.readyState>=1&&!v.seeking&&Math.abs(v.currentTime-time)>(play ? .12 : .012)){v.currentTime=time;return null;}
-  if(play&&v.readyState>=2&&v.paused)v.play().catch(e=>error('Não foi possível reproduzir a transição: '+e.message));
+  if(play&&v.readyState>=2&&v.paused)v.play().catch(e=>{if(e.name!=='AbortError')error('Não foi possível reproduzir a transição: '+e.message);});
   return v.readyState>=2&&!v.seeking&&Math.abs(v.currentTime-time)<(play ? .16 : .04)?v:null;
  }
  function draw(p,time){
@@ -37,7 +37,7 @@ export function createTransitionPreview(canvas,{media,image,playing,onFrame,erro
    let cut=0;for(let i=0;i<p.clips.length-1;i++){cut+=clipDuration(p.clips[i]);const next=transitionAt(p,cut);if(next&&next.start>=time&&next.start-time<1){source(p,next.left,next.leftTime-next.duration/2*clipSpeed(next.left),0,false,false);source(p,next.right,next.rightTime-next.duration/2*clipSpeed(next.right),1,false,false);break;}}
    return null;
   }
-  const a=source(p,at.left,at.leftTime,0,play),b=source(p,at.right,at.rightTime,1,play);if(!a||!b){loading(!missing.has(at.left.assetId)&&!missing.has(at.right.assetId));return false;}loading(false);
+  const a=source(p,at.left,at.leftTime,0,play),b=source(p,at.right,at.rightTime,1,play);if(!a||!b){pause();loading(!missing.has(at.left.assetId)&&!missing.has(at.right.assetId));return false;}loading(false);
   for(const [i,s,c] of [[0,a,at.left],[1,b,at.right]]){if(frames[i].width!==canvas.width||frames[i].height!==canvas.height){frames[i].width=canvas.width;frames[i].height=canvas.height;}paintClip(frames[i].getContext('2d'),s,c,zoomedCrop(c.crop,zoomAt(c,((i?at.rightTime:at.leftTime)-c.in)/clipSpeed(c))));}
   const ctx=canvas.getContext('2d'),progress=at.progress;ctx.save();ctx.fillStyle='#000';ctx.fillRect(0,0,canvas.width,canvas.height);
   if(at.type==='dissolve'){ctx.drawImage(frames[0],0,0);ctx.globalAlpha=progress;ctx.drawImage(frames[1],0,0);}

@@ -96,3 +96,11 @@ test('planner accepts more than ten videos and passes every source to local anal
  for(let i=0;i<11;i++)project=addClip(addAsset(project,{id:`a${i}`,name:`Video ${i}`,duration:2,width:160,height:160,hasAudio:false}),`a${i}`,`c${i}`);
  try{await assert.rejects(requestPlan({home:cache,cache,project,prompt:'Vertical',registry:new Map(),checkConnection:async()=>({connected:true}),scan:async({project:p})=>{seen=p.assets.length;throw Error('STOP_AT_LOCAL_BOUNDARY');}}),/STOP_AT_LOCAL_BOUNDARY/);assert.equal(seen,11);}finally{await rm(cache,{recursive:true,force:true});}
 });
+
+
+test('transition decisions refer to distinct junctions of the final montage and require reasons',async()=>{
+ const {parseReviewPayload}=await import('../desktop/ai.mjs');const project=addClip(p,'a','second');
+ const raw={plan:{summary:'Acabamento',operations:[],questions:[],unsupported:[]},pendingRequests:[],coverage:[{request:'Acabamento',kind:'transition',status:'pending',operationIndexes:[],reason:'Conferir junção'}],transitionDecisions:[{index:0,status:'cut',reason:'Preservar continuidade'}]};
+ assert.equal(parseReviewPayload(project,JSON.stringify(raw)).transitionDecisions.length,1);
+ for(const d of [[{index:1,status:'cut',reason:'x'}],[{index:0,status:'cut',reason:''}],[raw.transitionDecisions[0],raw.transitionDecisions[0]],[{index:0,status:'done',reason:'x'}]])assert.throws(()=>parseReviewPayload(project,JSON.stringify({...raw,transitionDecisions:d})),/acabamento/i);
+});

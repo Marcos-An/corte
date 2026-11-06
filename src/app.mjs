@@ -734,7 +734,12 @@ function stillImage(asset){
  let img=stills.get(url);if(!img){img=new Image();img.crossOrigin='anonymous';img.onload=draw;img.onerror=()=>toast('Não foi possível carregar a imagem. Relocalize pela timeline.',true);img.src=url;stills.set(url,img);}
  return img.complete&&img.naturalWidth?img:null;
 }
-const transitionPreview=createTransitionPreview(canvas,{media:id=>previewMedia(media.get(id)),image:stillImage,playing:()=>playing,onFrame:()=>draw(),error:(message,url)=>{if(restoreOriginalPreview(url))return;stop();toast(message,true);},loading:value=>$('transition-preview-status').hidden=!value});
+let transitionBuffering=false;
+const transitionPreview=createTransitionPreview(canvas,{media:id=>previewMedia(media.get(id)),image:stillImage,playing:()=>playing,onFrame:()=>draw(),error:(message,url)=>{if(restoreOriginalPreview(url))return;stop();toast(message,true);},loading:value=>{
+ const resume=transitionBuffering&&!value;transitionBuffering=value;$('transition-preview-status').hidden=!value;
+ if(value&&playing){video.pause();for(const m of musicPlayers.values())m.el.pause();}
+ else if(resume&&playing){const found=clipAt(project(),position);if(found&&!found.clip.freeze&&project().assets.find(a=>a.id===found.clip.assetId)?.kind!=='image')video.play().catch(e=>{if(e.name==='AbortError')return;stop();toast('Não foi possível reproduzir: '+e.message,true);});syncMusic();}
+}});
 function draw(){
  renderTextScene();
  const p=project();if(adjustmentPreview){const c=p.clips.find(c=>c.id===adjustmentPreview.id);if(c)c.adjustments=adjustmentPreview.adjustments;}if(transitionPreview.draw(p,position)!==null)return;const found=clipAt(p,Math.min(position,Math.max(0,duration(p)-.001)));
@@ -759,7 +764,7 @@ function seek(time){
  // A frozen frame keeps the video paused on its instant while the timeline clock advances, like a photo.
  if(found.clip.freeze){video.pause();activeClip=found.clip.id;const show=()=>{video.currentTime=Math.max(0,Math.min(found.clip.in,video.duration-.001));};if(activeSource!==m.url){activeSource=m.url;video.src=m.url;video.addEventListener('loadedmetadata',show,{once:true});video.load();}else if(video.readyState>=1)show();draw();return;}
  activeClip=found.clip.id;syncOriginalAudio();
- const setTime=()=>{const latest=clipAt(project(),Math.min(position,Math.max(0,duration(project())-.001)));if(!latest || previewMedia(media.get(latest.clip.assetId))?.url!==m.url)return;video.playbackRate=clipSpeed(latest.clip);video.preservesPitch=true;video.currentTime=Math.max(0,Math.min(latest.sourceTime,video.duration-.001));if(playing)video.play().catch(e=>{stop();toast(`Não foi possível reproduzir: ${e.message}`,true);});};
+ const setTime=()=>{const latest=clipAt(project(),Math.min(position,Math.max(0,duration(project())-.001)));if(!latest || previewMedia(media.get(latest.clip.assetId))?.url!==m.url)return;video.playbackRate=clipSpeed(latest.clip);video.preservesPitch=true;video.currentTime=Math.max(0,Math.min(latest.sourceTime,video.duration-.001));if(playing)video.play().catch(e=>{if(e.name==='AbortError')return;stop();toast(`Não foi possível reproduzir: ${e.message}`,true);});};
  if(activeSource!==m.url){activeSource=m.url;video.src=m.url;video.addEventListener('loadedmetadata',setTime,{once:true});video.load();}else if(video.readyState>=1){setTime();}
  draw();
 }
@@ -773,6 +778,7 @@ async function togglePlay(){
 let lastFrame=performance.now();
 function animate(now=performance.now()){
  const elapsed=Math.max(0,(now-lastFrame)/1000);lastFrame=now;
+ if(playing&&transitionBuffering){draw();requestAnimationFrame(animate);return;}
  const current=clipAt(project(),Math.min(position,Math.max(0,duration(project())-.001))),isStill=current&&(!!current.clip.freeze||project().assets.find(a=>a.id===current.clip.assetId)?.kind==='image');
  if(playing&&isStill){
  position=Math.min(timelineDuration(),position+elapsed);const next=clipAt(project(),position);if(position>=timelineDuration())stop();else if(next?.clip.id!==current.clip.id)seek(position);updatePlayhead();syncMusic();draw();

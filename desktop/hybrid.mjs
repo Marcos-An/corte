@@ -2,6 +2,7 @@ import {transcribeLocally} from './transcribe.mjs';import {speechHints} from './
 import {validateProject,simulatePlan,validatePlan,planningLineage,duration} from '../src/project.mjs';
 import {refinementTimes} from './local.mjs';
 import {recoverIndependentReview} from './partial-review.mjs';
+const withPendingWarning=(items=[],warning)=>[...new Set(items.filter(s=>s!==warning))].slice(0,39).concat(warning);
 // A visual query from the overview is answered by local search before the final round, even without cut borders to inspect.
 export async function refineVisualPlan({project,prompt,frames,request,signal,search=null,allowPreliminary=false,speechGaps=[]}){
  const check=()=>{if(signal?.aborted)throw new Error('Análise cancelada.');};check();
@@ -10,19 +11,31 @@ export async function refineVisualPlan({project,prompt,frames,request,signal,sea
  validatePlan(project,first.plan);simulatePlan(project,first.plan);
  const matched=search&&first.visualQueries?.length?balancedSearchEvidence(await search(first.visualQueries),30):[];check();
  const borders=refinementTimes(project,first.plan,frames,60);
- const inspections=first.inspectionRequests||[];
  const contextFrames=[...new Set(frames.map(f=>f.assetId))].slice(0,12).map(id=>{const candidates=frames.filter(f=>f.assetId===id),middle=(Math.min(...candidates.map(f=>f.time))+Math.max(...candidates.map(f=>f.time)))/2;return candidates.sort((a,b)=>Math.abs(a.time-middle)-Math.abs(b.time-middle))[0];});
  const batches=[];
  // Finish each explicitly requested sequence. Sharing 48 slots across requests
  // and search hits reduced eight-second inspections to one-second fragments.
  const batchSize=Math.max(1,Math.floor((60-contextFrames.length)/17));
- for(let i=0;i<inspections.length;i+=batchSize)batches.push(inspectionEvidence(project,inspections.slice(i,i+batchSize),[],60-contextFrames.length));
+ const inspected=new Set(),searched=new Set((first.visualQueries||[]).map(q=>q.query.trim().toLowerCase()));
+ const observed=new Map(),reviews=[];
+ function remember(samples){for(const f of samples){const times=observed.get(f.assetId)||new Set();times.add(f.time);observed.set(f.assetId,times);}}
+ remember(first.reviewFrames||frames);
+ const alreadySeen=r=>{const samples=inspectionEvidence(project,[r],[],17);return samples.length>0&&samples.every(f=>[...(observed.get(f.assetId)||[])].some(t=>Math.abs(t-f.time)<=.125));};
+ const maxBatches=12,maxFinishingBatches=4;let limited=false,finishingPasses=0;
+ function enqueueInspections(requests=[]){
+  const fresh=requests.filter(r=>{const key=JSON.stringify([r.clipId,r.start,r.end]);if(inspected.has(key)||alreadySeen(r))return false;inspected.add(key);return true;});
+  for(let i=0;i<fresh.length;i+=batchSize){if(batches.length>=maxBatches){limited=true;break;}batches.push(inspectionEvidence(project,fresh.slice(i,i+batchSize),[],60-contextFrames.length));}
+ }
+ enqueueInspections(first.inspectionRequests);
  if(!batches.length){const candidates=inspectionEvidence(project,[],balancedSearchEvidence(matched,6),48);if(candidates.length||borders.length)batches.push(candidates.length?candidates:borders);}
  if(!batches.length&&first.durationTarget&&duration(simulatePlan(project,first.plan))>first.durationTarget+.01)batches.push(frames);
+ const wantsTransitions=result=>result.coverage?.some(c=>c.kind==='transition'&&c.status!=='not_needed');
+ if(!batches.length&&wantsTransitions(first))batches.push([]);
  if(!batches.length)return {...first,rounds:1};
  let current=first,totalFrames=0,rounds=1;
  const usage={};const addUsage=r=>{for(const [k,v]of Object.entries(r.usage||{}))if(typeof v==='number')usage[k]=(usage[k]||0)+v;};addUsage(first);
- let retries=first.validationRetries||0,durationRepair=false,finishing=false;
+ let retries=first.validationRetries||0,durationRepair=false;
+ const finished=new Set();let finishingCandidates=[];
  for(const [i,batch]of batches.entries()){
   const dense=[],seen=new Set();
   for(const f of [...contextFrames,...batch,...balancedSearchEvidence(matched,6),...borders,...frames]){
@@ -30,19 +43,32 @@ export async function refineVisualPlan({project,prompt,frames,request,signal,sea
   }
   try{
    const scene=simulatePlan(project,current.plan);
-   const refined=await request(dense,{phase:'refinement',inspectionContinues:i<batches.length-1,inspectionBatch:i+1,inspectionBatches:batches.length,preliminary:current.plan,preliminaryPending:current.pendingRequests||[],durationRepair,finishing,shortShots:scene.clips.filter(c=>(c.out-c.in)/(c.speed||1)<.4).map(c=>({assetId:c.assetId,start:c.in,end:c.out})),transitionCandidates:finishing?finishingEvidence(project,current.plan,speechGaps).junctions:[],durationTarget:first.durationTarget??null,previousDuration:duration(scene)});check();
+   const refined=await request(dense,{phase:'refinement',inspectionContinues:i<batches.length-1,inspectionBatch:i+1,inspectionBatches:batches.length,remainingInspectionRounds:Math.max(0,maxBatches-i-1),inspectionHistory:[...observed].map(([assetId,times])=>({assetId,times:[...times].sort((a,b)=>a-b)})),previousReviews:reviews.slice(-4),preliminary:current.plan,preliminaryPending:current.pendingRequests||[],preliminaryTransitionDecisions:current.transitionDecisions||[],durationRepair,finishing:finishingCandidates.length>0,shortShots:scene.clips.filter(c=>(c.out-c.in)/(c.speed||1)<.4).map(c=>({assetId:c.assetId,start:c.in,end:c.out})),transitionCandidates:finishingCandidates,durationTarget:first.durationTarget??null,previousDuration:duration(scene)});check();
    if(!refined.plan.questions?.length&&!refined.plan.unsupported?.length){validatePlan(project,refined.plan);simulatePlan(project,refined.plan);}
    current=refined;rounds++;totalFrames+=dense.length;addUsage(refined);retries+=refined.validationRetries||0;
-   if(i===batches.length-1&&!finishing&&current.plan.operations.length&&current.coverage?.some(c=>c.kind==='transition'&&['partial','pending'].includes(c.status))){finishing=true;batches.push(finishingEvidence(project,current.plan,speechGaps).frames);}
-   else if(i===batches.length-1&&!durationRepair&&first.durationTarget&&duration(simulatePlan(project,current.plan))>first.durationTarget+.01){durationRepair=true;batches.push(dense);}
+   remember(refined.reviewFrames||dense);reviews.push(refined.plan.summary);
+   finishingCandidates=[];
+   enqueueInspections(current.inspectionRequests);
+   const queries=(current.visualQueries||[]).filter(q=>!searched.has(q.query.trim().toLowerCase()));
+   if(search&&queries.length){
+    if(batches.length<maxBatches){queries.forEach(q=>searched.add(q.query.trim().toLowerCase()));const hits=balancedSearchEvidence(await search(queries),30);check();matched.push(...hits);const evidence=inspectionEvidence(project,[],balancedSearchEvidence(hits,6),48);if(evidence.length)batches.push(evidence);}else limited=true;
+   }
+   if(i===batches.length-1&&wantsTransitions(first)){
+    const evidence=finishingEvidence(project,current.plan,speechGaps,(current.transitionDecisions||[]).filter(d=>d.status==='pending').map(d=>d.index));
+    const pending=evidence.junctions.filter(j=>!current.transitionDecisions?.some(d=>d.index===j.index&&d.status==='cut')&&!finished.has(JSON.stringify([j.index,j.left,j.right])));
+    if(pending.length&&finishingPasses<maxFinishingBatches){finishingPasses++;finishingCandidates=pending.slice(0,Math.max(1,Math.floor((60-contextFrames.length)/6)));finishingCandidates.forEach(j=>finished.add(JSON.stringify([j.index,j.left,j.right])));batches.push(finishingCandidates.flatMap(j=>j.frames));}else if(pending.length)limited=true;
+   }
+   if(i===batches.length-1&&!durationRepair&&first.durationTarget&&duration(simulatePlan(project,current.plan))>first.durationTarget+.01){if(batches.length<maxBatches){durationRepair=true;batches.push(dense);}else limited=true;}
   }catch(error){
    check();if(!allowPreliminary||!['AI_TIMEOUT','AI_PROVIDER','AI_RATE_LIMIT','AI_REVIEW_INVALID'].includes(error.code))throw error;
    const warning='A conferência adicional de cenas e bordas não foi concluída. Esta é a proposta preliminar validada; revise os cortes antes de aplicar.';
    const pendingRequests=[...new Set(current.pendingRequests||[])];if(pendingRequests.length<40)pendingRequests.push(warning);
-   return {...current,pendingRequests,analysisWarnings:[warning],verification:'preliminary',rounds,refinementFailed:true,refinementFailure:{code:error.code,message:error.message.slice(0,1000)},usage};
+   return auditTransitions(project,{...current,pendingRequests,analysisWarnings:[warning],verification:'preliminary',rounds,refinementFailed:true,refinementFailure:{code:error.code,message:error.message.slice(0,1000)},usage},wantsTransitions(first));
   }
  }
  const measured=duration(simulatePlan(project,current.plan));
+ if(limited){const warning='O limite de rodadas de inspeção foi atingido; ainda há verificações de cenas ou junções pendentes.';current={...current,pendingRequests:withPendingWarning(current.pendingRequests,warning),analysisWarnings:[...(current.analysisWarnings||[]),warning]};}
+ current=auditTransitions(project,current,wantsTransitions(first));
  if(first.durationTarget&&measured>first.durationTarget+.01){
   const warning=`A montagem proposta tem ${measured.toFixed(2)} s e ainda excede a meta de ${first.durationTarget} s.`;
   current={...current,analysisWarnings:[...(current.analysisWarnings||[]),warning]};
@@ -50,17 +76,33 @@ export async function refineVisualPlan({project,prompt,frames,request,signal,sea
  return {...current,...(first.durationTarget?{durationTarget:first.durationTarget,durationCheck:{target:first.durationTarget,actual:measured,met:measured<=first.durationTarget+.01}}:{}),rounds,usage,validationRetries:retries,refinementFrames:totalFrames,...(matched.length?{searchMatches:matched.length}:{})};
 
 }
-export function finishingEvidence(project,plan,gaps=[]){
+export function finishingEvidence(project,plan,gaps=[],pendingIndexes=[]){
  const scene=simulatePlan(project,plan),junctions=[],frames=[];
- for(let i=0;i<scene.clips.length-1&&junctions.length<6;i++){
-  const left=scene.clips[i],right=scene.clips[i+1],duration=.2;
+ for(let i=0;i<scene.clips.length-1;i++){
+  const left=scene.clips[i],right=scene.clips[i+1],existing=scene.transitions?.find(t=>t.leftId===left.id&&t.rightId===right.id),duration=existing?.duration||.4;
+  if(existing&&!pendingIndexes.includes(i))continue;
   if([left,right].some(c=>(c.out-c.in)/(c.speed||1)<1))continue;
   const edges=[{clip:left,time:left.out,from:left.out-.2*(left.speed||1),to:left.out},{clip:right,time:right.in,from:right.in,to:right.in+.2*(right.speed||1)}];
-  if(edges.some(e=>gaps.some(g=>g.assetId===e.clip.assetId&&g.start<e.to&&g.end>e.from)))continue;
-  junctions.push({index:i,duration,left:{assetId:left.assetId,out:left.out},right:{assetId:right.assetId,in:right.in}});
-  for(const e of edges)for(const offset of [-.5,0,.5]){const time=Number((e.time+offset).toFixed(3));if(project.clips.some(c=>c.assetId===e.clip.assetId&&time>=c.in&&time<c.out))frames.push({assetId:e.clip.assetId,time});}
+  const uncertainSpeech=edges.some(e=>gaps.some(g=>g.assetId===e.clip.assetId&&g.start<e.to&&g.end>e.from));
+  if(uncertainSpeech&&!existing)continue;
+  const samples=[];
+  for(const e of edges)for(const offset of [-.5,0,.5]){const time=Number((e.time+offset).toFixed(3));if(project.clips.some(c=>c.assetId===e.clip.assetId&&time>=c.in&&time<c.out))samples.push({assetId:e.clip.assetId,time});}
+  junctions.push({index:i,duration,left:{assetId:left.assetId,out:left.out},right:{assetId:right.assetId,in:right.in},...(uncertainSpeech?{uncertainSpeech:true}:{}),frames:samples});frames.push(...samples);
  }
  return {junctions,frames};
+}
+export function auditTransitions(project,result,requested=result.coverage?.some(c=>c.kind==='transition'&&c.status!=='not_needed')){
+ if(!requested)return result;
+ const scene=simulatePlan(project,result.plan),total=Math.max(0,scene.clips.length-1),applied=scene.transitions?.length||0;
+ const cleanCuts=(result.transitionDecisions||[]).filter(d=>d.status==='cut'&&!scene.transitions?.some(t=>t.leftId===scene.clips[d.index]?.id)).length;
+ const pending=scene.clips.slice(0,-1).filter((c,index)=>{
+  const decision=result.transitionDecisions?.find(d=>d.index===index);
+  return decision?.status==='pending'||!scene.transitions?.some(t=>t.leftId===c.id)&&decision?.status!=='cut';
+ }).length,transitionCheck={total,applied,cleanCuts,pending};
+ if(!pending)return {...result,transitionCheck};
+ const warning=`Acabamento parcial: ${applied} de ${total} junções têm transição; ${cleanCuts} têm corte direto justificado e ${pending} ainda precisam de decisão.`;
+ const coverage=result.coverage?.map(c=>c.kind==='transition'?{...c,status:c.operationIndexes?.length?'partial':'pending',reason:warning}:c);
+ return {...result,transitionCheck,coverage,pendingRequests:withPendingWarning(result.pendingRequests,warning)};
 }
 export function inspectionEvidence(project,requests,matches=[],max=48){
  const windows=requests.map(r=>({assetId:project.clips.find(c=>c.id===r.clipId)?.assetId,start:r.start,end:r.end}));
@@ -166,7 +208,7 @@ export async function requestHybridEdit({project,prompt,shareEvidence,signal,onP
   result.durationCheck={target,actual,met:actual<=target+.01};
   if(actual>target+.01&&Math.abs(actual-previousActual)>.01)analysisWarnings.push(`A montagem após a validação tem ${actual.toFixed(2)} s; a meta de ${target} s continua pendente.`);
  }
- return {...result,...(coverage?{coverage}:{}),pendingRequests,plan,analysisWarnings:[...(result.analysisWarnings||[]),...analysisWarnings,...searchWarning],reviewRequired:true,mode:'hybrid',...(plan.operations.some(op=>op.type==='generate_captions')?{localCaptionEvidence:raw.map(({assetId,recognizer,words,gaps,language})=>({assetId,recognizer,words,gaps,language}))}:{}),shared:{transcriptWords:transcripts.reduce((n,t)=>n+t.words.length,0),frames:result.frames}};
+ return auditTransitions(project,{...result,...(coverage?{coverage}:{}),...(!safe?{transitionDecisions:[]}:{}),pendingRequests,plan,analysisWarnings:[...(result.analysisWarnings||[]),...analysisWarnings,...searchWarning],reviewRequired:true,mode:'hybrid',...(plan.operations.some(op=>op.type==='generate_captions')?{localCaptionEvidence:raw.map(({assetId,recognizer,words,gaps,language})=>({assetId,recognizer,words,gaps,language}))}:{}),shared:{transcriptWords:transcripts.reduce((n,t)=>n+t.words.length,0),frames:result.frames}});
 }
 export function selectOverview(project,candidates,max=60){
  if(!Number.isInteger(max)||max<1)throw Error('Orçamento de imagens inválido.');

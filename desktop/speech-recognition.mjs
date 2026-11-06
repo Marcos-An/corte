@@ -2,7 +2,7 @@
 // Audio runs in overlapping windows; edit transcripts also carry measured pauses.
 import {mkdtemp,readFile,rm} from 'node:fs/promises';import path from 'node:path';import {tmpdir} from 'node:os';import {createHash} from 'node:crypto';
 import {env,pipeline} from '@huggingface/transformers';import {run,binaries} from './media.mjs';import {normalizeRecognition} from '../src/captions.mjs';
-import {normalizeEditRecognition,speechWindows,mergeSpeechWindow} from './edit-transcript.mjs';import {detectPauses} from './speech-edit.mjs';
+import {normalizeEditRecognition,speechWindows,mergeSpeechWindow,preferSpeechRetry} from './edit-transcript.mjs';import {detectPauses} from './speech-edit.mjs';
 import {inferenceOptions} from './inference-profile.mjs';
 import {speechOptions} from '../src/speech-language.mjs';
 import {groupCaptionTokens} from '../src/caption-timing.mjs';
@@ -12,7 +12,7 @@ export async function recognizeSpeech({models,assets,purpose='captions',speechMo
  env.allowRemoteModels=false;env.localModelPath=models;env.useFSCache=false;env.useBrowserCache=false;
  for(const entry of manifest?.files||[]){const h=createHash('sha256');h.update(await readFile(path.join(models,entry.path)));if(h.digest('hex')!==entry.sha256)throw Error('Modelo de fala corrompido. Baixe novamente nas configurações.');}
  onProgress({stage:'captions',completed:0,total:assets.length});
- let device=backend,fallback=false,pipe,temp;const load=d=>pipeline('automatic-speech-recognition',speechModel,inferenceOptions(d));
+ let device=backend,fallback=false,pipe,retryPipe,retryUnavailable=false,temp;const load=d=>pipeline('automatic-speech-recognition',speechModel,inferenceOptions(d));
  const reportBackend=()=>onProgress({stage:'worker-diagnostic',event:'worker-start',worker:'speech',processType:'speech',backend:device});
  const toCpu=async()=>{await pipe?.dispose();device='cpu';fallback=true;reportBackend();pipe=await load('cpu');};
  try{
@@ -26,12 +26,20 @@ export async function recognizeSpeech({models,assets,purpose='captions',speechMo
     if(samples.length&&Math.sqrt(power/samples.length)>.001){
      let result;
      try{result=await pipe(samples,options);}catch(error){if(device==='cpu'||signal?.aborted)throw error;await toCpu();result=await pipe(samples,options);}
-     mergeSpeechWindow(merged,purpose==='edit'?{...normalizeEditRecognition(result,length),pauses:detectPauses(samples,16000)}:{words:normalizeRecognition(result,length),gaps:[]},window);
+     let recognized=purpose==='edit'?normalizeEditRecognition(result,length):null;
+     if(recognized?.gaps.length&&device!=='cpu'&&!retryUnavailable){
+      // Acceleration can return broken word times without a native error.
+      // Retry only this uncertain window. Changing all later windows to CPU
+      // can regress previously reliable speech, so compare before accepting.
+      signal?.throwIfAborted();
+      try{retryPipe??=await load('cpu');const retry=normalizeEditRecognition(await retryPipe(samples,options),length);recognized=preferSpeechRetry(recognized,retry);}catch(error){if(signal?.aborted)throw error;retryUnavailable=true;}
+     }
+     mergeSpeechWindow(merged,purpose==='edit'?{...recognized,pauses:detectPauses(samples,16000)}:{words:normalizeRecognition(result,length),gaps:[]},window);
     }else if(purpose==='edit')mergeSpeechWindow(merged,{words:[],gaps:[],pauses:[{start:0,end:length}]},window);
     onProgress({stage:'captions',completed:Math.min(window.to,asset.duration),total:asset.duration,asset:asset.name});
    }
    transcripts.push({assetId:asset.id,language,words:purpose==='captions'?groupCaptionTokens(merged.words,asset.duration):merged.words,recognizer:speechModel,...(purpose==='edit'?{gaps:merged.gaps,pauses:merged.pauses,...(merged.context.length?{context:merged.context}:{})}:{provider:'local',model:speechModel})});
   }
   return {transcripts,report:{model:speechModel,backend:device,fallback}};
- }finally{await pipe?.dispose();if(temp)await rm(temp,{recursive:true,force:true});}
+ }finally{await pipe?.dispose();await retryPipe?.dispose();if(temp)await rm(temp,{recursive:true,force:true});}
 }

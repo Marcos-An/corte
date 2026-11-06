@@ -21,7 +21,7 @@ export async function transcribeLocally({project,registry,cache,signal,onProgres
  const accurate=await readyAccurateSpeechModel();
  const sources=assets.map(a=>({...a,file:registry.get(a.id).path}));
  const language=speechLanguage(project);
- const configuration={...(language==='pt'?{}:{language}),version:purpose==='captions'?2:1,purpose,model:accurate?.manifest||(cache?await readFile(path.join(modelPath(),'manifest.json'),'utf8'):null)};
+ const configuration={...(language==='pt'?{}:{language}),version:purpose==='captions'?2:3,purpose,model:accurate?.manifest||(cache?await readFile(path.join(modelPath(),'manifest.json'),'utf8'):null)};
  const raw=await cachedEvidence({root:cache&&path.join(cache,'local-evidence'),kind:'speech',assets:sources,configuration,signal,
   onHit:()=>onProgress({stage:'captions',completed:assets.length,total:assets.length,cached:true}),compute:async()=>{
  const temporaryDirectory=await mkdtemp(path.join(tmpdir(),'corte-speech-job-'));try{return (await runIsolated({entry:new URL('./speech-child.mjs',import.meta.url),worker:'speech',backend:accurate&&process.platform==='win32'?'dml':'cpu',signal,onProgress,

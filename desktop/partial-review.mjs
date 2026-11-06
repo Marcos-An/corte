@@ -29,5 +29,5 @@ export function recoverIndependentReview({project,result,transcripts,gaps,isSafe
   return {...item,operationIndexes,status:operationIndexes.length?'partial':'pending',reason};
  });
  const visualSelections=raw.visualSelections?.filter(s=>indexes.has(s.operationIndex)).map(s=>({...s,operationIndex:indexes.get(s.operationIndex)}));
- return {...raw,...(visualSelections?{visualSelections}:{}),plan:{...raw.plan,operations:final.map(k=>k.op),summary:('Proposta parcial segura. '+raw.plan.summary).slice(0,4000)},coverage};
+ return {...raw,...(changedTimeline?{transitionDecisions:[]}:{}),...(visualSelections?{visualSelections}:{}),plan:{...raw.plan,operations:final.map(k=>k.op),summary:('Proposta parcial segura. '+raw.plan.summary).slice(0,4000)},coverage};
 }

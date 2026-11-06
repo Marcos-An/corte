@@ -52,3 +52,13 @@ test('pauses travel with the window merge and a pause split by the boundary is j
  mergeSpeechWindow(m,{words:[],gaps:[],pauses:[{start:1,end:2},{start:26.5,end:30}]},a);mergeSpeechWindow(m,{words:[],gaps:[],pauses:[{start:1.5,end:3.2},{start:8,end:9}]},b);
  assert.deepEqual(m.pauses,[{start:1,end:2},{start:26.5,end:28.2},{start:33,end:34}]);
 });
+
+
+test('punctuation-only recognition is uncertain and CPU retry cannot erase a negation',async()=>{
+ const {preferSpeechRetry}=await import('../desktop/edit-transcript.mjs');
+ const bad=normalizeEditRecognition({chunks:[{text:'..',timestamp:[1,1.1]}]},12);assert.equal(bad.words.length,0);assert.ok(bad.gaps.length);
+ const repaired=normalizeEditRecognition({chunks:[{text:'Olá',timestamp:[1,1.5]}]},12);assert.equal(preferSpeechRetry(bad,repaired),repaired);
+ const uncertain=normalizeEditRecognition({chunks:[{text:'não',timestamp:[0,0]},{text:'cortar',timestamp:[.2,.6]}]},1);
+ const missing=normalizeEditRecognition({chunks:[{text:'cortar',timestamp:[.2,.6]}]},1);assert.equal(preferSpeechRetry(uncertain,missing),uncertain);
+ const complete=normalizeEditRecognition({chunks:[{text:'não',timestamp:[0,.15]},{text:'cortar',timestamp:[.2,.6]}]},1);assert.equal(preferSpeechRetry(uncertain,complete),complete);
+});

@@ -210,3 +210,54 @@ test('visual queries from the overview bring matching frames, labelled, into the
  assert.ok(calls[1].frames.some(f=>f.time===42&&f.match==='restaurant facade sign'&&f.path));
  const none=[];await refineVisualPlan({project:p,prompt:'x',frames:[],search:async()=>{none.push(1);return [];},request:async()=>({plan:structuredClone(plan),pendingRequests:[],visualQueries:[]})});assert.equal(none.length,0,'no queries, no search');
 });
+
+
+test('refinement executes new inspections and searches, but never loops on identical requests',async()=>{
+ const calls=[],queries=[];const empty={...base,operations:[]};
+ const result=await refineVisualPlan({project:p,prompt:'Inspect',frames:[],search:async q=>{queries.push(...q);return [{assetId:'a',time:60,match:q[0].query}];},request:async(frames,context)=>{
+  calls.push({frames,context});return {plan:empty,inspectionRequests:[{clipId:'c',start:context.phase==='overview'?30:40,end:context.phase==='overview'?32:42,reason:'edge'}],visualQueries:context.phase==='overview'?[]:[{query:'new action',purpose:'find event'}]};
+ }});
+ assert.equal(queries.length,1);assert.ok(calls.some(c=>[40,40.5,41,41.5,42].every(t=>c.frames.some(f=>f.time===t))));assert.ok(calls.some(c=>c.frames.some(f=>f.time===60)));assert.ok(result.rounds<=5);
+});
+test('continuously new inspection requests stop at the budget with an explicit pending warning',async()=>{
+ let calls=0;const result=await refineVisualPlan({project:p,prompt:'Inspect',frames:[],request:async()=>({plan:{...base,operations:[]},inspectionRequests:[{clipId:'c',start:calls++,end:calls+1,reason:'next'}]})});
+ assert.equal(calls,13);assert.match(result.pendingRequests.join(' '),/limite de rodadas/i);
+});
+test('finishing inspects late junctions even when the model claims transitions are planned',async()=>{
+ const {auditTransitions}=await import('../desktop/hybrid.mjs');let project=structuredClone(p);project.clips[0].in=10;project.clips[0].out=20;
+ for(let i=1;i<15;i++)project.clips.push({...project.clips[0],id:'c'+i});
+ const plan={...base,operations:[{type:'set_transition_at',index:0,effect:'dissolve',duration:.4}]};const seen=[];
+ const result=await refineVisualPlan({project,prompt:'Transições suaves',frames:[],request:async(frames,context)=>{assert.ok(frames.length<=60);seen.push(...(context.transitionCandidates||[]).map(j=>j.index));return {plan,coverage:[{kind:'transition',status:'planned',operationIndexes:[0]}]};}});
+ assert.ok(seen.includes(13),'last junction was inspected');assert.equal(new Set(seen).size,13);assert.equal(result.transitionCheck.pending,13);assert.equal(result.coverage[0].status,'partial');
+ const justified=auditTransitions(project,{...result,transitionDecisions:Array.from({length:13},(_,i)=>({index:i+1,status:'cut',reason:'Preservar continuidade da ação'}))});assert.equal(justified.transitionCheck.pending,0);
+ const stillPending=auditTransitions(project,{...justified,transitionDecisions:[...justified.transitionDecisions,{index:0,status:'pending',reason:'Conferir margens'}]});assert.equal(stillPending.transitionCheck.pending,1);
+});
+
+
+test('explicit clean-cut decisions do not consume finishing rounds again',async()=>{
+ const project=addClip(p,'a','second');let calls=0;const result=await refineVisualPlan({project,prompt:'Acabamento',frames:[],request:async(frames,context)=>{calls++;if(context.phase==='refinement')assert.equal(context.preliminaryTransitionDecisions[0].reason,'Preservar ação contínua');return {plan:{...base,operations:[]},coverage:[{kind:'transition',status:'pending',operationIndexes:[]}],transitionDecisions:[{index:0,status:'cut',reason:'Preservar ação contínua'}]};}});
+ assert.equal(calls,2);assert.equal(result.transitionCheck.pending,0);assert.ok(!result.analysisWarnings?.length);
+});
+
+
+test('already delivered subintervals are not re-inspected and observations survive later rounds',async()=>{
+ const calls=[];const out=await refineVisualPlan({project:p,prompt:'Inspecionar',frames:[],request:async(frames,context)=>{calls.push(context);return {plan:{...base,summary:'Ação confirmada em 30–34',operations:[]},inspectionRequests:context.phase==='overview'?[{clipId:'c',start:30,end:34,reason:'ação'}]:[{clipId:'c',start:30.5,end:33.5,reason:'repetição'},{clipId:'c',start:40,end:42,reason:'outra ação'}]};}});
+ assert.equal(out.rounds,3);assert.ok(calls[2].inspectionHistory[0].times.includes(34));assert.ok(calls[2].previousReviews.includes('Ação confirmada em 30–34'));
+});
+
+
+test('a proposed transition with pending margins receives inspection instead of being silently skipped',async()=>{
+ const project=addClip(p,'a','second'),plan={...base,operations:[{type:'trim',clipId:'c',in:10,out:20},{type:'trim',clipId:'second',in:30,out:40},{type:'set_transition_at',index:0,effect:'dissolve',duration:.2}]};let inspected=false;
+ const result=await refineVisualPlan({project,prompt:'Suavizar',frames:[],request:async(frames,context)=>{if(context.finishing){assert.equal(context.transitionCandidates[0].index,0);assert.equal(context.transitionCandidates[0].duration,.2);inspected=true;}return {plan,coverage:[{kind:'transition',status:'planned',operationIndexes:[2]}],transitionDecisions:inspected?[]:[{index:0,status:'pending',reason:'Conferir margens'}]};}});
+ assert.equal(inspected,true);assert.equal(result.transitionCheck.pending,0);
+});
+
+
+test('inspection budget cannot starve the reserved transition finishing pass',async()=>{
+ const project=addClip(p,'a','second');let calls=0,finished=false;
+ const result=await refineVisualPlan({project,prompt:'Editar com transições',frames:[],request:async(frames,context)=>{
+  calls++;if(context.finishing){finished=true;assert.equal(context.remainingInspectionRounds,0);}
+  return {plan:{...base,operations:[{type:'trim',clipId:'c',in:10,out:20},{type:'trim',clipId:'second',in:30,out:40},...(finished?[{type:'set_transition_at',index:0,effect:'dissolve',duration:.4}]:[])]},inspectionRequests:finished?[]:[{clipId:'c',start:50+calls*2,end:51+calls*2,reason:'continuar'}],coverage:[{kind:'transition',status:finished?'planned':'pending',operationIndexes:finished?[2]:[]}]};
+ }});
+ assert.equal(finished,true);assert.equal(calls,14);assert.equal(result.transitionCheck.pending,0);assert.equal(result.transitionCheck.applied,1);
+});
