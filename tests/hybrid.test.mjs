@@ -5,6 +5,96 @@ import {createProject,addAsset,addClip} from '../src/project.mjs';
 const p=addClip(addAsset(createProject(),{id:'a',name:'a.mp4',duration:100,width:640,height:360,hasAudio:true}),'a','c');
 const base={summary:'Ajuste',questions:[],unsupported:[],operations:[{type:'remove_ranges',clipId:'c',ranges:[[35,37]]}]};
 
+test('a justified visual summary can omit uncertain audio scenes while unrelated temporal edits remain protected',async()=>{
+ const {parseReviewPayload}=await import('../desktop/ai.mjs');
+ const raw={plan:{...base,operations:[{type:'keep_ranges',clipId:'c',ranges:[[0,30]]}]},durationTarget:30,visualSelections:[{operationIndex:0,reason:'Selecionar demonstração visual; preparação periférica fora do resumo.'}],pendingRequests:[],coverage:[{request:'Resumo visual',kind:'cut',status:'planned',operationIndexes:[0],reason:'Demonstração observada'}]};
+ const request=async extra=>requestHybridEdit({project:p,prompt:'Resumo visual de 30 segundos',shareEvidence:true,registry,connected:async()=>true,transcribe:async()=>[{assetId:'a',words:[],gaps:[{start:50,end:60,reason:'unreliable-word-times'}]}],planRequest:async()=>({...parseReviewPayload(p,JSON.stringify(raw),{frames:[{assetId:'a',time:10}]}),...extra})});
+ const result=await request({});assert.equal(result.plan.operations.length,1);assert.ok(result.analysisWarnings.some(w=>w.includes('seleção editorial visual')));
+ const changed=await request({sourceReview:null,plan:{...base,operations:[{type:'keep_ranges',clipId:'c',ranges:[[0,20]]}]}});assert.deepEqual(changed.plan.operations,[],'an exemption for one exact selection cannot authorize a different cut');
+});
+
+test('partial recovery remaps visual-selection declarations without authorizing an unsafe trim',async()=>{
+ const {parseReviewPayload}=await import('../desktop/ai.mjs');const project=addClip(p,'a','second');
+ const raw={plan:{...base,operations:[{type:'trim',clipId:'second',in:0,out:30},{type:'keep_ranges',clipId:'c',ranges:[[0,30]]}]},durationTarget:60,visualSelections:[{operationIndex:1,reason:'Demonstração visual selecionada'}],pendingRequests:[],coverage:[{request:'Resumo',kind:'cut',status:'planned',operationIndexes:[0,1],reason:'Resumo visual'}]};
+ const result=await requestHybridEdit({project,prompt:'Resumo',shareEvidence:true,registry,connected:async()=>true,transcribe:async()=>[{assetId:'a',words:[],gaps:[{start:50,end:60,reason:'unreliable-word-times'}]}],planRequest:async()=>parseReviewPayload(project,JSON.stringify(raw),{frames:[{assetId:'a',time:10}]})});
+ assert.equal(result.plan.operations.length,1);assert.equal(result.plan.operations[0].type,'keep_ranges');assert.equal(result.visualSelections[0].operationIndex,0);assert.equal(result.coverage[0].status,'partial');
+});
+
+test('eight requested inspections receive complete half-second sequences despite competing search hits',async()=>{
+ const calls=[],requests=Array.from({length:8},(_,i)=>({clipId:'c',start:i*10,end:i*10+8,reason:'Inspect'}));
+ const result=await refineVisualPlan({project:p,prompt:'Resumir',frames:[],search:async()=>Array.from({length:30},(_,i)=>({assetId:'a',time:i,match:'search'+i})),request:async(frames,context)=>{
+  calls.push({frames,context});return {plan:{...base,operations:[]},inspectionRequests:context.phase==='overview'?requests:[],visualQueries:context.phase==='overview'?[{query:'action',purpose:'cut'}]:[]};
+ }});
+ assert.equal(result.rounds,4);assert.equal(calls[1].context.inspectionContinues,true);assert.equal(calls[3].context.inspectionContinues,false);
+ assert.ok(calls.every(c=>c.frames.length<=60));
+ for(const r of requests)assert.ok(calls.slice(1).some(c=>Array.from({length:17},(_,i)=>r.start+i*.5).every(time=>c.frames.some(f=>f.time===time))));
+});
+
+test('duration feedback measures the plan and retries once without silently changing the target',async()=>{
+ const calls=[];const result=await refineVisualPlan({project:p,prompt:'Até 30 segundos',frames:[],request:async(frames,context)=>{
+  calls.push(context);return {durationTarget:context.phase==='overview'?30:100,plan:{...base,operations:context.durationRepair?[{type:'trim',clipId:'c',in:0,out:30}]:[]}};
+ }});
+ assert.equal(calls.length,3);assert.equal(calls[2].durationRepair,true);assert.equal(calls[2].previousDuration,100);
+ assert.deepEqual(result.durationCheck,{target:30,actual:30,met:true});assert.equal(result.durationTarget,30);
+});
+
+test('unmet duration remains honest and cannot trigger an unbounded provider loop',async()=>{
+ let calls=0;const result=await refineVisualPlan({project:p,prompt:'Até 30 segundos',frames:[],request:async()=>{calls++;return {durationTarget:30,plan:{...base,operations:[]}};}});
+ assert.equal(calls,3);assert.equal(result.durationCheck.met,false);assert.match(result.analysisWarnings[0],/excede/);
+});
+
+test('duration is remeasured if uncertain speech protection discards a provider cut',async()=>{
+ const result=await requestHybridEdit({project:p,prompt:'Resumo',shareEvidence:true,registry,connected:async()=>true,
+  transcribe:async()=>[{assetId:'a',words:[],gaps:[{start:50,end:60,reason:'unreliable-word-times'}]}],
+  planRequest:async()=>({plan:{...base,operations:[{type:'trim',clipId:'c',in:0,out:30}]},pendingRequests:[],durationCheck:{target:30,actual:30,met:true}})});
+ assert.deepEqual(result.plan.operations,[]);assert.deepEqual(result.durationCheck,{target:30,actual:100,met:false});
+ assert.ok(result.analysisWarnings.some(w=>w.includes('100.00 s')));
+});
+
+test('pending transitions trigger a bounded finishing pass with actual source junctions',async()=>{
+ const {finishingEvidence}=await import('../desktop/hybrid.mjs');const project=addClip(p,'a','second');
+ const plan={...base,operations:[{type:'trim',clipId:'c',in:10,out:20},{type:'trim',clipId:'second',in:30,out:40}]};
+ const evidence=finishingEvidence(project,plan);assert.equal(evidence.junctions[0].index,0);assert.equal(evidence.junctions[0].left.out,20);assert.ok(evidence.frames.some(f=>f.time===29.5));
+ assert.equal(finishingEvidence(project,plan,[{assetId:'a',start:19.9,end:20}]).junctions.length,0);
+ const calls=[];await refineVisualPlan({project,prompt:'Transições',frames:[{assetId:'a',time:50}],request:async(frames,context)=>{calls.push(context);return {plan,coverage:[{kind:'transition',status:'pending'}]};}});
+ assert.equal(calls.length,3);assert.equal(calls[2].finishing,true);assert.equal(calls[2].transitionCandidates[0].left.out,20);
+});
+
+test('every refinement keeps visual context from all nine source assets alongside complete inspections',async()=>{
+ let project=createProject();const frames=[];
+ for(let i=0;i<9;i++){project=addClip(addAsset(project,{id:'a'+i,name:'Video',duration:100,width:640,height:360,hasAudio:false}),'a'+i,'c'+i);frames.push({assetId:'a'+i,time:50});}
+ const calls=[];await refineVisualPlan({project,prompt:'Resumo',frames,request:async(selected,context)=>{calls.push(selected);return {plan:{...base,operations:[]},inspectionRequests:context.phase==='overview'?[0,1,2].map(i=>({clipId:'c'+i,start:0,end:8,reason:'Inspect'})):[]};}});
+ assert.equal(calls[1].length,60);assert.equal(new Set(calls[1].map(f=>f.assetId)).size,9);
+ for(let i=0;i<3;i++)for(let time=0;time<=8;time+=.5)assert.ok(calls[1].some(f=>f.assetId==='a'+i&&f.time===time));
+});
+
+test('an empty proposal can inspect candidate boundaries without visual search or speculative cuts',async()=>{
+ const calls=[];
+ const result=await refineVisualPlan({project:p,prompt:'Remova esperas',frames:[{assetId:'a',time:35}],request:async(frames,context)=>{
+  calls.push({frames,context});return {plan:{...base,operations:[]},inspectionRequests:context.phase==='overview'?[{clipId:'c',start:33,end:37,reason:'Conferir candidato'}]:[]};
+ }});
+ assert.equal(result.rounds,2);assert.deepEqual(result.plan.operations,[]);
+ for(const time of [33,33.5,34,34.5,35,35.5,36,36.5,37])assert.ok(calls[1].frames.some(f=>f.time===time));
+ assert.equal(new Set(calls[1].frames.map(f=>f.assetId+':'+f.time)).size,calls[1].frames.length);
+});
+
+test('inspection sequences respect trimmed scope and the frame budget',async()=>{
+ const {inspectionEvidence}=await import('../desktop/hybrid.mjs');const scoped=structuredClone(p);scoped.clips[0].in=30;scoped.clips[0].out=40;
+ const frames=inspectionEvidence(scoped,[],[{assetId:'a',time:30},{assetId:'a',time:39}],10);
+ assert.equal(frames.length,10);assert.ok(frames.every(f=>f.time>=30&&f.time<40));
+ assert.ok(frames.some(f=>f.time===30.5));assert.ok(frames.some(f=>f.time===38.5));
+});
+
+test('limited search evidence retains candidate centers and nearby continuity across queries',async()=>{
+ const {inspectionEvidence}=await import('../desktop/hybrid.mjs');
+ const matches=Array.from({length:8},(_,i)=>({assetId:'a',time:5+i*10,match:'action-'+i,path:'/frame-'+i}));
+ const frames=inspectionEvidence(p,[],matches,24);
+ for(const match of matches){
+  assert.ok(frames.some(f=>f.time===match.time&&f.match===match.match&&f.path===match.path));
+  assert.ok(frames.some(f=>f.time===match.time-.5));assert.ok(frames.some(f=>f.time===match.time+.5));
+ }
+});
+
 test('a complex request keeps evidence for every visual query rather than truncating the last tasks',async()=>{
  const {balancedSearchEvidence}=await import('../desktop/hybrid.mjs');const matches=Array.from({length:12},(_,q)=>Array.from({length:3},(_,i)=>({match:'query-'+q,assetId:'a',time:q*3+i}))).flat();
  const selected=balancedSearchEvidence(matches,30);assert.equal(selected.length,30);assert.equal(new Set(selected.map(f=>f.match)).size,12);

@@ -28,5 +28,6 @@ export function recoverIndependentReview({project,result,transcripts,gaps,isSafe
   const reason=(item.reason.slice(0,700)+' '+[...new Set(original.map(i=>changed.get(i)).filter(Boolean))].join(' ')).slice(0,1000);
   return {...item,operationIndexes,status:operationIndexes.length?'partial':'pending',reason};
  });
- return {...raw,plan:{...raw.plan,operations:final.map(k=>k.op),summary:('Proposta parcial segura. '+raw.plan.summary).slice(0,4000)},coverage};
+ const visualSelections=raw.visualSelections?.filter(s=>indexes.has(s.operationIndex)).map(s=>({...s,operationIndex:indexes.get(s.operationIndex)}));
+ return {...raw,...(visualSelections?{visualSelections}:{}),plan:{...raw.plan,operations:final.map(k=>k.op),summary:('Proposta parcial segura. '+raw.plan.summary).slice(0,4000)},coverage};
 }

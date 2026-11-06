@@ -3,6 +3,31 @@ import assert from 'node:assert/strict';
 import { buildPrompt, codexEnv, codexArgs, planSchema, codexFailure } from '../desktop/ai.mjs';
 import { createProject, addAsset, addClip } from '../src/project.mjs';
 const p=addClip(addAsset(createProject(),{id:'a',name:'Clip',duration:8,width:640,height:360,hasAudio:false}),'a','c');
+test('visual summary exemptions require positive scene selections, a duration target and actual scoped images',async()=>{
+ const {parseReviewPayload}=await import('../desktop/ai.mjs');
+ const raw={plan:{summary:'Resumo visual',operations:[{type:'keep_ranges',clipId:'c',ranges:[[2,5]]}],questions:[],unsupported:[]},durationTarget:3,visualSelections:[{operationIndex:0,reason:'Demonstração visível da ação principal; omitir preparação periférica.'}],pendingRequests:[],coverage:[{request:'Resumo',kind:'cut',status:'planned',operationIndexes:[0],reason:'Cena selecionada por imagens'}]};
+ const parse=(r,frames=[{assetId:'a',time:3}])=>parseReviewPayload(p,JSON.stringify(r),{frames});
+ assert.deepEqual(parse(raw).visualSelectionsVerified,[{clipId:'c',ranges:[[2,5]]}]);
+ assert.throws(()=>parse(raw,[]),/imagens/);assert.throws(()=>parse(raw,[{assetId:'other',time:3}]),/imagens/);
+ assert.throws(()=>parse({...raw,durationTarget:null}),/meta/);
+ const complement=parse({...raw,plan:{...raw.plan,operations:[{type:'remove_ranges',clipId:'c',ranges:[[2,5]]}]}});
+ assert.deepEqual(complement.visualSelectionsVerified,[{clipId:'c',ranges:[[0,2],[5,8]]}]);assert.equal(complement.plan.operations[0].type,'keep_ranges');
+ assert.throws(()=>parse({...raw,plan:{...raw.plan,operations:[{type:'trim',clipId:'c',in:2,out:5}]}}),/keep_ranges/);
+ assert.throws(()=>parse({...raw,visualSelections:[{operationIndex:0,reason:''}]}),/justificativa/);
+});
+test('inspection requests are bounded source intervals and cannot escape the selected clip',async()=>{
+ const {parseReviewPayload,reviewPlanSchema}=await import('../desktop/ai.mjs');
+ const project=structuredClone(p);project.clips[0].in=2;project.clips[0].out=7;
+ const proposal={plan:{summary:'Inspecionar',operations:[],questions:[],unsupported:[]},pendingRequests:[],coverage:[{request:'Cortar',kind:'cut',status:'pending',operationIndexes:[],reason:'Inspecionar bordas'}]};
+ const valid={clipId:'c',start:2,end:6,reason:'Conferir ação'};
+ assert.equal(parseReviewPayload(project,JSON.stringify({...proposal,inspectionRequests:[valid]})).inspectionRequests.length,1);
+ for(const invalid of [null,{}, {...valid,clipId:'missing'}, {...valid,start:1}, {...valid,end:8}, {...valid,end:2}, {...valid,reason:''}, {...valid,path:'private'}]){
+  assert.throws(()=>parseReviewPayload(project,JSON.stringify({...proposal,inspectionRequests:[invalid]})),/inspeção/i);
+ }
+ assert.throws(()=>parseReviewPayload(project,JSON.stringify({...proposal,inspectionRequests:Array(9).fill(valid)})),/inspeção/i);
+ assert.ok(reviewPlanSchema.required.includes('inspectionRequests'));
+ const prompt=buildPrompt(project,'Resuma',[],{review:true});assert.match(prompt,/inspectionRequests/);assert.match(prompt,/seleção editorial/);
+});
 test('AI prompt is generic, constrains supported actions and labels source timestamps',()=>{
  const s=buildPrompt(p,'Mantenha só a pessoa sorrindo',[{assetId:'a',time:2,path:'/private/frame.jpg'}]);
  assert.match(s,/Mantenha só a pessoa sorrindo/);assert.match(s,/keep_ranges/);assert.match(s,/sourceTime/);assert.doesNotMatch(s,/\/private\/frame/);
