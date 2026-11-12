@@ -1,9 +1,11 @@
+import {validateAssembly,assembleVisual} from './visual-assembly.mjs';
 import {validateSpeechCorrections} from './speech-corrections.mjs';
 import {MAX_BLUR_LAYERS,BLUR_FIELDS,validateBlurLayer,blurLayer} from './blur.mjs';
 import {validateAudioEQ,patchAudioEQ} from './audio-eq.mjs';
 import {validateExportSelection,saveExportSelection} from './export-selection.mjs';
 import {speechLanguage} from './speech-language.mjs';
 import {KEYFRAME_PATCH_FIELDS,updateKeyframePoints,retimeKeyframes,validateKeyframes,validateMotion} from './keyframes.mjs';
+import {validateCropTrack,cropAt} from './tracked-crop.mjs';
 import {clipSpeed,clipDuration,sourceTime,zoomAt} from './clip-time.mjs';
 import {DEFAULT_ADJUSTMENTS} from './color-adjustments.mjs';
 import {sliceClip} from './clip-slicing.mjs';
@@ -77,6 +79,7 @@ export function validateProject(p) {
   const clips=new Set();
   for(const c of p.clips) {
     const a=p.assets.find(a=>a.id===c.assetId), r=c.crop;
+    if(a)validateCropTrack(c,a);
     if(!a || a.kind==='audio' || typeof c.id!=='string' || !c.id || clips.has(c.id) || !finite(c.in) || !finite(c.out) || c.in<0 || c.out-c.in<.02 || (a.kind==='image'?c.out>21600:c.out>a.duration+.000001) || !finite(c.volume) || c.volume<0 || c.volume>2 || !r || !['x','y','w','h'].every(k=>finite(r[k])) || r.x<0 || r.y<0 || r.w<.05 || r.h<.05 || r.x+r.w>1.000001 || r.y+r.h>1.000001) fail('Trecho, áudio ou enquadramento inválido.');
     if(c.background!==undefined&&!['black','blur','color'].includes(c.background))fail('Fundo inválido.');
     if((c.background==='color'||c.backgroundColor!==undefined)&&!(typeof c.backgroundColor==='string'&&/^#[0-9a-f]{6}$/i.test(c.backgroundColor)))fail('Cor de fundo inválida.');
@@ -114,7 +117,7 @@ export function editProject(p,op) {
       // The still sits between the two halves of the clip, or before/after it at its edges.
       const a=q.assets.find(x=>x.id===c.assetId),hold=op.duration;
       if(a.kind==='image'||!finite(hold)||hold<.1||hold>10||!finite(op.time)||op.time<c.in-1e-6||op.time>c.out+1e-6)fail('Não foi possível congelar o quadro: escolha um instante do vídeo e de 0,1 a 10 segundos.');
-      const at=Math.max(0,Math.min(op.time,a.duration-.04)),still={id:id(),assetId:c.assetId,in:at,out:at+.04,volume:c.volume,crop:clone(c.crop),freeze:hold};
+      const at=Math.max(0,Math.min(op.time,a.duration-.04)),still={id:id(),assetId:c.assetId,in:at,out:at+.04,volume:c.volume,crop:clone(cropAt(c,(at-c.in)/clipSpeed(c))),freeze:hold};
       for(const k of ['adjustments','background','backgroundColor'])if(c[k]!==undefined)still[k]=clone(c[k]);
       const z=zoomAt(c,(op.time-c.in)/clipSpeed(c));if(z>1)still.zoom={from:z,to:z};
       if(op.time-c.in<.02)q.clips.splice(index,0,still);
@@ -129,7 +132,7 @@ export function editProject(p,op) {
     case 'trim': Object.assign(c,sliceClip(c,op.in,op.out));break;
     case 'delete': q.clips.splice(index,1);break;
     case 'move': if(!Number.isInteger(op.index) || op.index<0 || op.index>=q.clips.length) fail('Posição inválida.');q.clips.splice(index,1);q.clips.splice(op.index,0,c);break;
-    case 'update': if('adjustments' in op)planFields(op.adjustments,Object.keys(DEFAULT_ADJUSTMENTS));if(('fadeIn' in op||'fadeOut' in op)&&c.fadeWindow)delete c.fadeWindow;if('speed' in op&&c.fadeWindow&&finite(op.speed)&&op.speed>0)c.fadeWindow.scale*=op.speed/clipSpeed(c);for(const key of ['volume','crop','background','backgroundColor','fadeIn','fadeOut','adjustments','speed','zoom','freeze','audioEQ']) if(key in op){if(key==='audioEQ'){const value=patchAudioEQ(c.audioEQ,op.audioEQ);if(value)c.audioEQ=value;else delete c.audioEQ;}else if(key==='zoom'&&(op.zoom===null||op.zoom.from===1&&op.zoom.to===1))delete c.zoom;else c[key]=key==='adjustments'?{brightness:0,contrast:1,saturation:1,...c.adjustments,...clone(op[key])}:clone(op[key]);}break;
+    case 'update': if('crop' in op)delete c.cropTrack;if('adjustments' in op)planFields(op.adjustments,Object.keys(DEFAULT_ADJUSTMENTS));if(('fadeIn' in op||'fadeOut' in op)&&c.fadeWindow)delete c.fadeWindow;if('speed' in op&&c.fadeWindow&&finite(op.speed)&&op.speed>0)c.fadeWindow.scale*=op.speed/clipSpeed(c);for(const key of ['volume','crop','background','backgroundColor','fadeIn','fadeOut','adjustments','speed','zoom','freeze','audioEQ']) if(key in op){if(key==='audioEQ'){const value=patchAudioEQ(c.audioEQ,op.audioEQ);if(value)c.audioEQ=value;else delete c.audioEQ;}else if(key==='zoom'&&(op.zoom===null||op.zoom.from===1&&op.zoom.to===1))delete c.zoom;else c[key]=key==='adjustments'?{brightness:0,contrast:1,saturation:1,...c.adjustments,...clone(op[key])}:clone(op[key]);}break;
     default: fail('Operação ainda não suportada.');
   }
   return validateProject(reconcileTransitions(q));
@@ -158,7 +161,7 @@ export class History {
     const h=new History(data.entries[0].state);h.entries=clone(data.entries);h.cursor=data.cursor;return h;
   }
 }
-const keys={add_blur:['layer'],set_export_ranges:['ranges'],edit_caption_style:['style'],generate_captions:['source','style','transcripts','language'],adjust_audio_range:['audioId','start','end','volume'],adjust_audio_eq_range:['audioId','start','end','audioEQ'],adjust_timeline:['clipId','start','end','patch'],insert_clip:['index','clip'],move_range:['clipId','sourceStart','sourceEnd','index'],add_audio:['track'],split:['clipId','time'],trim:['clipId','in','out'],delete:['clipId'],move:['clipId','index'],update:['clipId','volume','crop','speed','background','backgroundColor','adjustments','fadeIn','fadeOut','zoom','freeze','audioEQ'],set_aspect:['aspect'],remove_ranges:['clipId','ranges'],keep_ranges:['clipId','ranges'],freeze_frame:['clipId','time','duration'],adjust_ranges:['clipId','ranges','patch'],set_transition:['leftId','rightId','effect','duration'],set_transition_at:['index','effect','duration','makeRoom'],edit_audio:['audioId','patch'],add_text:['layer'],add_image:['layer'],add_video:['layer'],add_shape:['layer'],edit_component:['layerId','patch'],remove_component:['layerId'],move_component:['layerId','direction'],set_keyframe:['layerId','time','pose'],remove_keyframe:['layerId','time'],set_motion:['layerId','enter','exit']};
+const keys={assemble_visual:['shots'],add_blur:['layer'],set_export_ranges:['ranges'],edit_caption_style:['style'],generate_captions:['source','style','transcripts','language'],adjust_audio_range:['audioId','start','end','volume'],adjust_audio_eq_range:['audioId','start','end','audioEQ'],adjust_timeline:['clipId','start','end','patch'],insert_clip:['index','clip'],move_range:['clipId','sourceStart','sourceEnd','index'],add_audio:['track'],split:['clipId','time'],trim:['clipId','in','out'],delete:['clipId'],move:['clipId','index'],update:['clipId','volume','crop','speed','background','backgroundColor','adjustments','fadeIn','fadeOut','zoom','freeze','audioEQ'],set_aspect:['aspect'],remove_ranges:['clipId','ranges'],keep_ranges:['clipId','ranges'],freeze_frame:['clipId','time','duration'],adjust_ranges:['clipId','ranges','patch'],set_transition:['leftId','rightId','effect','duration'],set_transition_at:['index','effect','duration','makeRoom','insideSelection'],edit_audio:['audioId','patch'],add_text:['layer'],add_image:['layer'],add_video:['layer'],add_shape:['layer'],edit_component:['layerId','patch'],remove_component:['layerId'],move_component:['layerId','direction'],set_keyframe:['layerId','time','pose'],remove_keyframe:['layerId','time'],set_motion:['layerId','enter','exit']};
 const visualPlanFields=['start','end','x','y','width','rotation','opacity'];
 const textPlanFields=['text','start','end','style'];
 const stylePlanFields=['font','size','color','position','preset','positionX','positionY','width','accent','strokeColor','strokeWidth','shadow','shadowColor','spacing','boxColor','boxOpacity','bold','italic','uppercase','hollow','accentLast','glowColor','glow','enter','exit'];
@@ -186,10 +189,11 @@ function applyPlanOperation(p,op){
  if(op.type==='set_transition_at'){
   if(!Number.isInteger(op.index)||op.index<0||op.index>=p.clips.length-1)fail('Posição de transição inválida.');
   if(op.makeRoom!==undefined&&typeof op.makeRoom!=='boolean')fail('Preparação de transição inválida.');
+  if((op.insideSelection!==undefined&&typeof op.insideSelection!=='boolean')||(op.insideSelection&&!op.makeRoom))fail('Preparação de margem interna inválida.');
   const left=p.clips[op.index],right=p.clips[op.index+1];
   if(op.makeRoom&&op.effect!=='none'){
    if(!TRANSITION_TYPES.includes(op.effect)||!finite(op.duration)||op.duration<.1||op.duration>3||left.freeze||right.freeze)fail('Tipo, duração ou trechos de transição inválidos.');
-   const prepared=transitionRoom(p,left.id,right.id,op.duration);
+   const prepared=transitionRoom(p,left.id,right.id,op.duration,{insideSelection:op.insideSelection===true});
    return applyPlanOperation(prepared,{type:'set_transition',leftId:left.id,rightId:right.id,effect:op.effect,duration:op.duration});
   }
   return applyPlanOperation(p,{type:'set_transition',leftId:left.id,rightId:right.id,effect:op.effect,duration:op.duration});
@@ -223,10 +227,12 @@ export function validatePlan(p,plan) {
   if(!plan || Object.keys(plan).some(k=>!['summary','operations','questions','unsupported'].includes(k)) || typeof plan.summary!=='string' || plan.summary.length>4000 || !Array.isArray(plan.operations) || plan.operations.length>100 || !Array.isArray(plan.questions) || !Array.isArray(plan.unsupported) || ![...plan.questions,...plan.unsupported].every(s=>typeof s==='string' && s.length<=2000)) fail('Plano da IA inválido.');
   if(plan.questions.length || plan.unsupported.length) fail('O pedido precisa de esclarecimento ou contém recursos ainda não suportados.');
   if(plan.operations.filter(op=>op?.type==='generate_captions').length>1)fail('Escolha uma única voz para gerar legendas nesta proposta.');
+  if(plan.operations.some(o=>o?.type==='assemble_visual')&&(plan.operations.length!==1))fail('A montagem visual deve ser uma proposta independente.');
   const exportAt=plan.operations.findIndex(o=>o?.type==='set_export_ranges');
   if(exportAt>=0&&(plan.operations.filter(o=>o?.type==='set_export_ranges').length>1||plan.operations.slice(exportAt+1).some(o=>['trim','split','delete','move','move_range','insert_clip','keep_ranges','remove_ranges','adjust_ranges','adjust_timeline','freeze_frame'].includes(o?.type)||o?.type==='update'&&'speed' in o||o?.type==='set_transition_at'&&o.makeRoom)))fail('Escolha os recortes depois dos cortes e mudanças de velocidade.');
   for(const op of plan.operations) {
-    const allowed=keys[op?.type];if(!allowed || (op.type==='update'? !('clipId' in op):allowed.some(k=>!['makeRoom','transcripts','language'].includes(k)&&!(k in op))) || Object.keys(op).some(k=>k!=='type' && !allowed.includes(k))) fail('Operação da IA inválida.');
+    const allowed=keys[op?.type];if(!allowed || (op.type==='update'? !('clipId' in op):allowed.some(k=>!['makeRoom','insideSelection','transcripts','language'].includes(k)&&!(k in op))) || Object.keys(op).some(k=>k!=='type' && !allowed.includes(k))) fail('Operação da IA inválida.');
+    if(op.type==='assemble_visual')validateAssembly(p,op.shots);
     const eq=op.type==='update'||op.type==='adjust_audio_eq_range'?op.audioEQ:op.patch?.audioEQ;if(eq!==undefined&&eq!==null)validateAudioEQ(eq,{patch:true});
     if(op.type==='update'&&op.crop)planFields(op.crop,['x','y','w','h']);
     if(op.type==='update' && !keys.update.slice(1).some(k=>k in op)) fail('Ajuste vazio.');
@@ -254,6 +260,7 @@ export function planLineage(p,plan,{allowUnpreparedCaptions=false}={}) {
   const root=new Map(q.clips.map(c=>[c.id,c.id])),family=clipId=>q.clips.filter(c=>root.get(c.id)===clipId&&!c.freeze);
   const audioRoot=new Map((q.music||[]).map(c=>[c.id,c.id]));
   const queue=[...plan.operations];for(let operationIndex=0;operationIndex<queue.length;operationIndex++){
+    if(queue[operationIndex].type==='assemble_visual'){const shots=queue[operationIndex].shots;q=validateProject(assembleVisual(q,shots));q.clips.forEach((c,i)=>root.set(c.id,shots[i].clipId));continue;}
     const op=queue[operationIndex];
     if(op.type==='generate_captions'){q=validateProject(applyCaptionRequest(q,op,{allowUnprepared:allowUnpreparedCaptions}));continue;}
     if(op.type==='edit_audio'&&op.patch&&Object.keys(op.patch).length===1&&'audioEQ'in op.patch){
@@ -449,14 +456,16 @@ function reconcileTransitions(p){
 }
 // Transitions overlap the clips, as in CapCut/Edits: when the media has no spare frames past
 // the cut, trim half the duration from each side so the window fits and no frame is frozen.
-export function transitionRoom(p,leftId,rightId,seconds){
+export function transitionRoom(p,leftId,rightId,seconds,{insideSelection=false}={}){
  const i=p.clips.findIndex(c=>c.id===leftId),left=p.clips[i],right=p.clips[i+1];
  if(!left||right?.id!==rightId)fail('Selecione a junção de dois trechos vizinhos.');
  const a=p.assets.find(a=>a.id===left.assetId),b=p.assets.find(a=>a.id===right.assetId),half=seconds/2;
  let q=p;
- const leftNeed=a.kind==='image'?0:half*clipSpeed(left)-(a.duration-left.out);
+ // Explicitly internal handles may never borrow frames from an omitted interval,
+ // even when those frames still exist in the original media file.
+ const leftNeed=a.kind==='image'?0:half*clipSpeed(left)-(insideSelection?0:a.duration-left.out);
  if(leftNeed>1e-6)q=editProject(q,{type:'trim',clipId:left.id,in:left.in,out:Math.max(left.in+.02,left.out-leftNeed)});
- const rightNeed=b.kind==='image'?0:half*clipSpeed(right)-right.in;
+ const rightNeed=b.kind==='image'?0:half*clipSpeed(right)-(insideSelection?0:right.in);
  if(rightNeed>1e-6)q=editProject(q,{type:'trim',clipId:right.id,in:Math.min(right.out-.02,right.in+rightNeed),out:right.out});
  return q;
 }

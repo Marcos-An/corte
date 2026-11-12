@@ -142,7 +142,7 @@ export function reuseEvidence(project,requested,available,tolerance=.125){
 // Compare source coverage per original clip instance, including split/range-generated pieces.
 // Applied as cumulative prefixes so an operation naming a clip reaches every piece of it, as applyPlan does. Pieces
 // are compared by origin (ids are random per run), so another clip of the same source cannot hide an unsafe cut.
-function preservesUncertainSpeech(project,plan,gaps,visualSelections=[]){
+export function preservesUncertainSpeech(project,plan,gaps,visualSelections=[]){
  if(!gaps.length)return true;
  for(let i=0;i<plan.operations.length;i++){
   const op=plan.operations[i];

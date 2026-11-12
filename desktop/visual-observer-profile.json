@@ -1,0 +1,48 @@
+{
+  "system": "Observe the silent video. Report only clearly visible actions, without guessing speech, ingredient identities or intentions. Use English. Each action must be ONE short verb phrase, not a scene description. Merge repetitions of the same action. Never claim precision beyond the visible evidence.",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "events",
+      "uncertainties"
+    ],
+    "properties": {
+      "events": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 4,
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "start",
+            "end",
+            "action"
+          ],
+          "properties": {
+            "start": {
+              "type": "number"
+            },
+            "end": {
+              "type": "number"
+            },
+            "action": {
+              "type": "string",
+              "maxLength": 100
+            }
+          }
+        }
+      },
+      "uncertainties": {
+        "type": "array",
+        "maxItems": 2,
+        "items": {
+          "type": "string",
+          "maxLength": 160
+        }
+      }
+    }
+  },
+  "maxOutputTokens": 650
+}

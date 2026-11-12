@@ -1,8 +1,8 @@
 import {shapeAss} from '../src/shapes.mjs';import {animated,assFrameInterval} from '../src/keyframes.mjs';import {blurRadius} from '../src/blur.mjs';
-export function blurMaskAss(t,width,height,window=null){
+export function blurMaskAss(t,width,height,window=null,fps=30){
  const shape={...t,type:t.blurShape==='ellipse'?'circle':'rectangle',fill:'#ffffff',stroke:null,strokeWidth:0};
- if(animated(t))return shapeAss(shape,width,height,window);
- const interval=assFrameInterval(Math.max(t.start,window?.start??t.start),Math.min(t.end,window?.end??t.end));
+ if(animated(t))return shapeAss(shape,width,height,window,fps);
+ const interval=assFrameInterval(Math.max(t.start,window?.start??t.start),Math.min(t.end,window?.end??t.end),fps);
  return interval?shapeAss({...shape,...interval},width,height):shapeAss(shape,width,height).split('Dialogue:')[0];
 }
 export function blurFilterGraph(t,previous,next,width,maskPath,fonts,escape){

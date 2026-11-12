@@ -1,3 +1,4 @@
+import {validateExportSettings} from '../src/export-output.mjs';
 import path from 'node:path';import {constants} from 'node:fs';import {realpath,stat,mkdtemp,link,copyFile,rm} from 'node:fs/promises';
 import {validateProject} from '../src/project.mjs';import {validateExportJobs,safeExportStem} from '../src/export-batch.mjs';import {renderProject,dimensions} from './media.mjs';
 // Hard links publish a finished file atomically. Removable/network drives can use exclusive copying instead.
@@ -7,8 +8,8 @@ export async function publishExportFile(source,directory,name,{linker=link,copie
   try{try{await linker(source,target);}catch(error){if(!['EPERM','ENOTSUP','EOPNOTSUPP','EXDEV'].includes(error.code))throw error;await copier(source,target,constants.COPYFILE_EXCL);}return target;}catch(error){if(error.code!=='EEXIST')throw error;}
  }throw Error('Não foi possível encontrar um nome livre para o vídeo.');
 }
-export async function runExportBatch({project,registry,directory,jobs,height=720,signal,runId=crypto.randomUUID(),onProgress=()=>{},onError=()=>{}},{render=renderProject,publish=publishExportFile}={}){
- validateProject(project);jobs=validateExportJobs(project,jobs);dimensions(project.aspect,height);if(!path.isAbsolute(directory))throw Error('Escolha uma pasta de exportação válida.');
+export async function runExportBatch({project,registry,directory,jobs,height=720,fps=30,quality='standard',signal,runId=crypto.randomUUID(),onProgress=()=>{},onError=()=>{}},{render=renderProject,publish=publishExportFile}={}){
+ validateExportSettings({height,fps,quality});validateProject(project);jobs=validateExportJobs(project,jobs);dimensions(project.aspect,height);if(!path.isAbsolute(directory))throw Error('Escolha uma pasta de exportação válida.');
  const result={runId,completed:[],pending:jobs.map(j=>j.id),failed:null,canceled:false,error:null};let work,current;
  const emit=event=>{try{onProgress({stage:'export-batch',runId,total:jobs.length,completed:result.completed.length,...event});}catch{}};
  try{
@@ -17,7 +18,7 @@ export async function runExportBatch({project,registry,directory,jobs,height=720
   for(const [index,job]of jobs.entries()){
    signal?.throwIfAborted();current=job;emit({phase:'rendering',id:job.id,index});const staged=path.join(work,`${index}.mp4`);
    const variant=job.exportOptions?.aspect?{...project,aspect:job.exportOptions.aspect}:project;
-   await render(variant,registry,staged,{height:job.exportOptions?.height??height,range:{start:job.start,end:job.end},signal,onProgress:progress=>emit({phase:'rendering',id:job.id,index,renderStage:progress.stage,partCompleted:progress.completed,partTotal:progress.total})});
+   await render(variant,registry,staged,{height:job.exportOptions?.height??height,fps:job.exportOptions?.fps??fps,quality:job.exportOptions?.quality??quality,range:{start:job.start,end:job.end},signal,onProgress:progress=>emit({phase:'rendering',id:job.id,index,renderStage:progress.stage,partCompleted:progress.completed,partTotal:progress.total})});
    signal?.throwIfAborted();const output=await publish(staged,directory,job.name);result.completed.push({id:job.id,path:output});result.pending=result.pending.filter(id=>id!==job.id);current=null;emit({phase:'completed',id:job.id,index});
    await rm(staged,{force:true});
   }

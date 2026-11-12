@@ -24,9 +24,14 @@ if(primary)app.whenReady().then(async()=>{
  const {saveRecording,microphoneAllowed}=await import('./recording.mjs');let microphoneArmedUntil=0;
  const core=await import('../src/project.mjs'),media=await import('./media.mjs'),ai=await import('./ai.mjs'),storage=await import('./storage.mjs'),stream=await import('./stream.mjs');
  const cache=path.join(app.getPath('userData'),'cache'),home=path.join(app.getPath('userData'),'chatgpt');await fs.mkdir(cache,{recursive:true});
+ const visualRuntime=await import('./visual-runtime.mjs');let visualInstalling=false;
+ app.on('before-quit',()=>{abort?.abort();void visualRuntime.stopVisualRuntime();});
+ handler('visual-model',async()=>({...await visualRuntime.visualRuntimeStatus(app.getPath('userData')),installing:visualInstalling}));
+ handler('visual-model-install',async()=>mediaOperation(async signal=>{visualInstalling=true;try{return await visualRuntime.installVisualRuntime(app.getPath('userData'),{signal,onProgress:notify});}finally{visualInstalling=false;}}));
  const {keyStore}=await import('./credentials.mjs'),{captionEstimate,transcribeCloud}=await import('./cloud-captions.mjs');
  const keys=keyStore(path.join(app.getPath('userData'),'openai-key.enc'),safeStorage);
  const subtitleFiles=await import('../src/subtitle-files.mjs');
+ handler('track-region',async(p,layerId)=>mediaOperation(async signal=>{authorized(p);const {trackRegion}=await import('./tracking.mjs');return trackRegion(p,registry,layerId,{signal,onProgress:notify});}));
  handler('subtitle-import',async()=>{
   const picked=await dialog.showOpenDialog(window,{title:'Importar legendas',properties:['openFile'],filters:[{name:'Legendas SRT / WebVTT',extensions:['srt','vtt']}]});
   if(picked.canceled)return null;
@@ -134,20 +139,22 @@ if(primary)app.whenReady().then(async()=>{
  handler('diagnostic-error',error=>{sessionLog.record({event:'renderer-error',stage:'renderer',...diagnosticError(error)});return true;});
  handler('diagnostic-export',async()=>{const picked=await dialog.showSaveDialog(window,{title:'Exportar diagnóstico local',defaultPath:`Corte-diagnostico-${new Date().toISOString().slice(0,10)}.json`,filters:[{name:'Diagnóstico JSON',extensions:['json']}]});if(picked.canceled)return false;const file=/\.json$/i.test(picked.filePath)?picked.filePath:picked.filePath+'.json';await fs.writeFile(file,sessionLog.export(),{mode:0o600});return true;});
  handler('performance-diagnostics',async()=>{const text=await diagnostics.read();clipboard.writeText(`Corte ${app.getVersion()} · ${process.platform}\n${text||'Sem medições disponíveis.'}`);return true;});
- handler('export',async(p,height,range=null)=>{
+ handler('export',async(p,height,range=null,settings={})=>{
+   const {validateExportSettings}=await import('../src/export-output.mjs');const {fps,quality}=validateExportSettings({...settings,height});
    authorized(p);if(abort)throw new Error('Já há uma operação em andamento.');
    const {validateExportRange}=await import('../src/export-range.mjs');validateExportRange(p,range);media.dimensions(p.aspect,height);
    const picked=await dialog.showSaveDialog(window,{title:'Exportar vídeo',defaultPath:`${p.name.replace(/[<>:"/\\|?*]/g,'_')}${range?'-trecho':''}.mp4`,filters:[{name:'Vídeo MP4',extensions:['mp4']}]});if(picked.canceled)return null;
    if(!/\.mp4$/i.test(picked.filePath))throw new Error('Use a extensão .mp4.');
-   abort=new AbortController();try{return await media.renderProject(p,registry,picked.filePath,{height,range,signal:abort.signal,onProgress:notify});}finally{abort=null;}
+   abort=new AbortController();try{return await media.renderProject(p,registry,picked.filePath,{height,fps,quality,range,signal:abort.signal,onProgress:notify});}finally{abort=null;}
  });
  const exportedFiles=new Set();
- handler('export-batch',async(p,height,jobs,runId)=>{
+ handler('export-batch',async(p,height,jobs,runId,settings={})=>{
+  const {validateExportSettings}=await import('../src/export-output.mjs');const {fps,quality}=validateExportSettings({...settings,height});
   authorized(p);if(abort)throw Error('Já há uma operação em andamento.');
   const {validateExportJobs}=await import('../src/export-batch.mjs');jobs=validateExportJobs(p,jobs);media.dimensions(p.aspect,height);if(typeof runId!=='string'||!/^[-A-Za-z0-9_]{1,64}$/.test(runId))throw Error('Fila inválida.');
   const controller=new AbortController(),sources=new Map(registry);abort=controller;
   try{const picked=await dialog.showOpenDialog(window,{title:'Pasta para os vídeos',properties:['openDirectory','createDirectory']});if(picked.canceled)return null;
-   const {runExportBatch}=await import('./export-batch.mjs'),report=await runExportBatch({project:p,registry:sources,directory:picked.filePaths[0],jobs,height,runId,signal:controller.signal,onProgress:notify,onError:error=>sessionLog.failure(error)});
+   const {runExportBatch}=await import('./export-batch.mjs'),report=await runExportBatch({project:p,registry:sources,directory:picked.filePaths[0],jobs,height,fps,quality,runId,signal:controller.signal,onProgress:notify,onError:error=>sessionLog.failure(error)});
    for(const file of report.completed)exportedFiles.add(path.resolve(file.path));while(exportedFiles.size>1000)exportedFiles.delete(exportedFiles.values().next().value);return report;
   }finally{if(abort===controller)abort=null;}
  });
@@ -173,10 +180,10 @@ if(primary)app.whenReady().then(async()=>{
  handler('login',async()=>{if(loginRunning)throw new Error('O login já está aberto no navegador.');loginRunning=true;try{await ai.startLogin(home);return ai.loginStatus(home);}finally{loginRunning=false;}});
  handler('analyze',async(p,prompt,step,clipId=null,engine='chatgpt',shareEvidence=false,stage=null)=>{
   if(stage!==null&&(engine!=='hybrid'||![1,2,3].includes(stage)))throw Error('Etapa de edição inválida.');
-  core.validateProject(p);const {scopeProject,validateScopedPlan}=await import('../src/editor-experience.mjs');const scoped=scopeProject(p,clipId);authorized(scoped);if(!['hybrid','chatgpt'].includes(engine))throw Error('Motor de IA inválido.');if(engine==='hybrid'&&shareEvidence!==true)throw Error('Autorize o envio das evidências para esta análise.');if(abort)throw Error('Já há uma operação em andamento.');abort=new AbortController();
+  core.validateProject(p);const {scopeProject,validateScopedPlan}=await import('../src/editor-experience.mjs');const scoped=scopeProject(p,clipId);authorized(scoped);if(!['hybrid','chatgpt','visual'].includes(engine))throw Error('Motor de IA inválido.');if(engine!=='chatgpt'&&shareEvidence!==true)throw Error('Autorize o envio das evidências para esta análise.');if(abort)throw Error('Já há uma operação em andamento.');abort=new AbortController();
   const diagnosticOperation=sessionLog.begin();const diagnosticTimer=setInterval(()=>sessionLog.heartbeat(),5000);diagnosticTimer.unref();let outcome='ok';
-  try{await ensureModels();const options={home,cache,project:scoped,scopeClipId:clipId,prompt,step,registry,signal:abort.signal,onProgress:p=>{sessionLog.progress(p,diagnosticOperation);notify(p);},shareEvidence,stage};
-   const result=engine==='hybrid'?await (await import('./edit-router.mjs')).requestEditingPlan(options):await (await import('./intent.mjs')).requestPromptPlan(options);validateScopedPlan(p,result.plan,clipId);return await (await import('./caption-proposal.mjs')).prepareCaptionProposal(options,result);
+  try{await ensureModels();const options={home,cache,userData:app.getPath('userData'),project:scoped,scopeClipId:clipId,prompt,step,registry,signal:abort.signal,onProgress:p=>{sessionLog.progress(p,diagnosticOperation);notify(p);},shareEvidence,stage};
+   const result=engine==='visual'?await (await import('./visual-edit.mjs')).requestVisualEdit(options):engine==='hybrid'?await (await import('./edit-router.mjs')).requestEditingPlan(options):await (await import('./intent.mjs')).requestPromptPlan(options);validateScopedPlan(p,result.plan,clipId);return await (await import('./caption-proposal.mjs')).prepareCaptionProposal(options,result);
   }catch(error){outcome=abort?.signal.aborted?'canceled':'error';sessionLog.failure(error);throw error;}finally{clearInterval(diagnosticTimer);sessionLog.end(outcome);abort=null;}
  });
  handler('api-status',async()=>({configured:!!await keys.read()}));

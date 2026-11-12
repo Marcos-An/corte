@@ -42,6 +42,12 @@ credentials/
 # Keep test code and reviewed text fixtures, not recordings or generated media.
 /tests/*
 !/tests/*.mjs
+!/tests/visual-autonomy/
+/tests/visual-autonomy/*
+!/tests/visual-autonomy/core.mjs
+!/tests/visual-autonomy/model.mjs
+!/tests/visual-autonomy/prepare.mjs
+!/tests/visual-autonomy/observer-profile.json
 !/tests/fixtures-legacy-text-ass.json
 # Synthetic TTS speech with known word times (regenerate: scripts/make-speech-fixture.mjs).
 !/tests/fixtures/

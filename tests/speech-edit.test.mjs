@@ -79,3 +79,11 @@ test('a short burst of speech in a quiet window still yields its pauses',()=>{
  const samples=Float32Array.from([...noise(14,.002),...tone(1,.3),...noise(15,.002)]),found=detectPauses(samples,rate);
  assert.equal(found.length,2);assert.ok(near(found[0].end,14)&&near(found[1].start,15));
 });
+test('removing the final phrase consumes a short clip-edge tail without swallowing following b-roll',()=>{
+ const p=addClip(addAsset(createProject(),{id:'a',name:'Speech',duration:37.615,width:320,height:180,hasAudio:true}),'a','c');
+ const transcripts=[{assetId:'a',words:[{text:'Agora',start:34.26,end:34.52},{text:'gostoso',start:37.06,end:37.36}],pauses:[]}];
+ const op={type:'remove_words',clipId:'c',ranges:[[0,1]]},resolve=project=>resolveSpeechOperations(project,result([op],[cov('cut','planned',[0])]),transcripts).plan.operations[0].ranges[0];
+ assert.equal(resolve(p)[1],37.615,'do not leave the 0.1275s tail seen in the live control');
+ const longer=structuredClone(p);longer.assets[0].duration=45;longer.clips[0].out=45;
+ assert.ok(near(resolve(longer)[1],37.66,.000001),'only 0.3s after the recognized word may be consumed; keep later b-roll');
+});

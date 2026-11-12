@@ -1,6 +1,9 @@
 const {contextBridge,ipcRenderer}=require('electron');
 const invoke=async(channel,...args)=>{const r=await ipcRenderer.invoke(channel,...args);if(!r.ok)throw new Error(r.error);return r.value;};
 contextBridge.exposeInMainWorld('editor',{
+  visualModel:()=>invoke('editor:visual-model'),
+  installVisualModel:()=>invoke('editor:visual-model-install'),
+  trackRegion:(project,layerId)=>invoke('editor:track-region',project,layerId),
   musicAdopt:id=>invoke('editor:music-adopt',id),
   musicCancel:()=>invoke('editor:music-cancel'),
   musicSearch:(query,kind)=>invoke('editor:music-search',query,kind),
@@ -33,8 +36,8 @@ contextBridge.exposeInMainWorld('editor',{
   copyPerformanceDiagnostics:()=>invoke('editor:performance-diagnostics'),
   onMediaState:listener=>{const handler=(_event,state)=>listener(state);ipcRenderer.on('editor:media-state',handler);return ()=>ipcRenderer.removeListener('editor:media-state',handler);},
   onOpenProject:listener=>{const handler=(_event,token)=>listener(token);ipcRenderer.on('editor:open-project',handler);return ()=>ipcRenderer.removeListener('editor:open-project',handler);},
-  exportProject:(project,height,range=null)=>invoke('editor:export',project,height,range),
-  exportBatch:(project,height,jobs,runId)=>invoke('editor:export-batch',project,height,jobs,runId),
+  exportProject:(project,height,range=null,settings={})=>invoke('editor:export',project,height,range,settings),
+  exportBatch:(project,height,jobs,runId,settings={})=>invoke('editor:export-batch',project,height,jobs,runId,settings),
   revealExport:file=>invoke('editor:reveal-export',file),
   status:()=>invoke('editor:status'),
   speechModel:()=>invoke('editor:speech-model'),

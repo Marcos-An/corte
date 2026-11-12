@@ -86,7 +86,7 @@ export function keyframeExpression(t,field,clock='t'){
   return delta?`+(${delta})*${curve}`:'';
  }).join('');
 }
-export function* keyframeSamples(t,extraRanges=[],window=null){
+export function* keyframeSamples(t,extraRanges=[],window=null,fps=30){
  const points=pointsOf(t),ranges=[...extraRanges,...points.slice(1).flatMap((p,i)=>KEYFRAME_FIELDS.some(k=>p[k]!==points[i][k])?[[t.start+points[i].time,t.start+p.time]]:[])];
  const start=Math.max(t.start,window?.start??t.start),end=Math.min(t.end,window?.end??t.end);if(end<=start)return;
  const boundaries=[...new Set([start,end,...ranges.flat().filter(time=>time>start&&time<end)])].sort((a,b)=>a-b);
@@ -94,16 +94,16 @@ export function* keyframeSamples(t,extraRanges=[],window=null){
   const start=boundaries[i],end=boundaries[i+1],middle=(start+end)/2;
   if(!ranges.some(([a,b])=>middle>=a&&middle<b)){yield {start,end,time:middle};continue;}
   let cursor=start;
-  for(let frame=Math.ceil(start*30-1e-7);frame/30<end-1e-9;frame++){
-   const next=Math.min(end,(frame+1)/30);yield {start:cursor,end:next,time:frame/30};cursor=next;
+  for(let frame=Math.ceil(start*fps-1e-7);frame/fps<end-1e-9;frame++){
+   const next=Math.min(end,(frame+1)/fps);yield {start:cursor,end:next,time:frame/fps};cursor=next;
   }
  }
 }
-// ASS has centisecond timestamps. Put each boundary between its two 30fps frames, slightly
+// ASS has centisecond timestamps. Put each boundary between its two output frames, slightly
 // before the target frame, so millisecond truncation cannot delay a pose or paint it twice.
-export function assFrameInterval(start,end){
- const first=Math.ceil(start*30-1e-7),next=Math.ceil(end*30-1e-7);if(next<=first)return null;
- const boundary=frame=>Math.max(0,(Math.ceil(frame*100/30-1e-7)-1)/100);
+export function assFrameInterval(start,end,fps=30){
+ const first=Math.ceil(start*fps-1e-7),next=Math.ceil(end*fps-1e-7);if(next<=first)return null;
+ const boundary=frame=>Math.max(0,(Math.ceil(frame*100/fps-1e-7)-1)/100);
  return {start:boundary(first),end:boundary(next)};
 }
 export function retimeKeyframes(t,original){

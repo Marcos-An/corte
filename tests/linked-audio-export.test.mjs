@@ -1,0 +1,15 @@
+import test from 'node:test';import assert from 'node:assert/strict';import path from 'node:path';import {mkdtemp,readFile,writeFile} from 'node:fs/promises';import {run,binaries,probe,renderProject} from '../desktop/media.mjs';import * as m from '../src/project.mjs';
+for(const fps of [30,60])for(const thirdOut of [3.4,3.45])test(`source sound follows reordered trims without accumulated encoder delay (${fps}fps, ${thirdOut===3.4?'frame-aligned':'fractional'} cuts)`,async t=>{
+ const dir=await mkdtemp(path.resolve('validation/linked-audio-')),source=path.join(dir,'source.mp4'),rate=8000;
+ await run(binaries().ffmpeg,['-v','error','-y','-f','lavfi','-i','color=red:s=160x160:r=30:d=6','-f','lavfi','-i','anoisesrc=color=white:seed=42:sample_rate=48000:duration=6:amplitude=0.1','-vf',"drawbox=color=lime:t=fill:enable='gte(t,2)*lt(t,4)',drawbox=color=blue:t=fill:enable='gte(t,4)'",'-c:v','libx264','-c:a','aac',source]);
+ let project=m.addAsset(m.createProject('Linked audio'),{id:'v',name:'source',...await probe(source)});project.aspect='1:1';
+ const ranges=[[4.2,5.5,2],[.4,1.6,0],[2.1,thirdOut,1],[.6,1.6,0]];for(const [i,[start,end]]of ranges.entries()){project=m.addClip(project,'v','c'+i);project=m.editProject(project,{type:'trim',clipId:'c'+i,in:start,out:end});}
+ project=m.setTransition(project,'c0','c1','dissolve',.2);const output=path.join(dir,'output.mp4');await renderProject(project,new Map([['v',{path:source}]]),output,{fps});
+ async function pcm(file,name){const raw=path.join(dir,name+'.f32');await run(binaries().ffmpeg,['-v','error','-y','-i',file,'-vn','-ac','1','-ar',String(rate),'-f','f32le',raw]);const bytes=await readFile(raw);return Float32Array.from({length:bytes.length/4},(_,i)=>bytes.readFloatLE(i*4));}
+ const original=await pcm(source,'source'),actual=await pcm(output,'output'),measurements=[];let timeline=0;
+ for(const [i,[start,end,color]]of ranges.entries()){const length=end-start,offset=(length-.5)/2,sourceIndex=Math.round((start+offset)*rate),outputIndex=Math.round((timeline+offset)*rate);let best={correlation:-1,offsetMs:0};
+  for(let shift=-1600;shift<=1600;shift++){let xy=0,xx=0,yy=0;for(let k=0;k<4000;k++){const x=original[sourceIndex+k],y=actual[outputIndex+k+shift]||0;xy+=x*y;xx+=x*x;yy+=y*y;}const correlation=xy/Math.sqrt(xx*yy);if(correlation>best.correlation)best={correlation,offsetMs:shift/rate*1000};}
+  const frame=path.join(dir,'frame-'+i+'.rgb');await run(binaries().ffmpeg,['-v','error','-y','-ss',String(timeline+length/2),'-i',output,'-frames:v','1','-vf','scale=1:1','-pix_fmt','rgb24','-f','rawvideo',frame]);const rgb=await readFile(frame);measurements.push({clip:i,...best,correctVideo:rgb[color]>180&&[0,1,2].filter(c=>c!==color).every(c=>rgb[c]<60)});timeline+=length;
+ }
+ await writeFile(path.join(dir,'measurements.json'),JSON.stringify(measurements,null,2));t.diagnostic(JSON.stringify({dir,measurements}));assert.ok(measurements.every(c=>c.correctVideo&&c.correlation>.9&&Math.abs(c.offsetMs)<5),'Original sound and video must share trim/order/timing: '+JSON.stringify(measurements));
+});

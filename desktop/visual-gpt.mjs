@@ -1,0 +1,12 @@
+import path from 'node:path';import {mkdir,writeFile,readFile} from 'node:fs/promises';import {spawn} from 'node:child_process';
+import {codexArgs,codexEnv,codexExecutable,loginStatus,codexFailure} from './ai.mjs';
+export async function askVisual({home,dir,prompt,schema,images=[],signal,onProgress=()=>{},phase='Planejando montagem'}){
+ signal?.throwIfAborted();if(!(await loginStatus(home)).connected)throw Error('Conecte sua conta ChatGPT nas configurações.');await mkdir(dir,{recursive:true});
+ const output=path.join(dir,'response.json'),schemaFile=path.join(dir,'schema.json');await writeFile(schemaFile,JSON.stringify(schema));await writeFile(path.join(dir,'prompt.txt'),prompt);const bin=codexExecutable(),args=codexArgs(schemaFile,output,images);args.splice(1,0,'--model','gpt-6-astra','-c','model_reasoning_effort="medium"');const start=performance.now();
+ const events=await new Promise((resolve,reject)=>{let stdout='',settled=false,timedOut=false;const child=spawn(bin.file,[...bin.prefix,...args],{cwd:dir,env:{...codexEnv(process.env),...bin.env,CODEX_HOME:home},signal,windowsHide:true,shell:false});
+  const timer=setTimeout(()=>{timedOut=true;child.kill();},300000),heartbeat=setInterval(()=>onProgress({stage:'visual-edit',message:phase+' · '+Math.floor((performance.now()-start)/1000)+' s…'}),4000);
+  const finish=error=>{if(settled)return;settled=true;clearTimeout(timer);clearInterval(heartbeat);error?reject(error):resolve(stdout);};child.stderr.resume();child.stdout.on('data',b=>{stdout+=b;if(stdout.length>4e6){child.kill();finish(Error('Resposta da montagem grande demais.'));}});child.stdin.on('error',()=>{});child.stdin.end(prompt);child.on('error',()=>finish(Error(signal?.aborted?'Edição cancelada.':'Não foi possível iniciar o planejamento.')));child.on('close',code=>finish(signal?.aborted?Error('Edição cancelada.'):timedOut?Error('O planejamento excedeu 5 minutos. Tente novamente.'):code?Error(codexFailure(stdout)):null));
+ });signal?.throwIfAborted();
+ const parsed=events.trim().split('\n').map(s=>{try{return JSON.parse(s)}catch{return {}}}),done=parsed.findLast(e=>e.type==='turn.completed');if(!done||parsed.some(e=>e.item?.type&&!['agent_message','reasoning'].includes(e.item.type)))throw Error('Resposta incompleta ou ferramenta não permitida.');
+ const result=JSON.parse(await readFile(output,'utf8')),trace={elapsedMs:Math.round(performance.now()-start),images:images.length,usage:done.usage};await writeFile(path.join(dir,'timing.json'),JSON.stringify(trace));return {result,...trace};
+}

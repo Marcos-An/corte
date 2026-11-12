@@ -4,10 +4,10 @@ Editor desktop de vídeo com Electron, edição não destrutiva e assistência p
 
 ## Download
 
-Windows x64 e macOS Apple Silicon **0.6.13**: [downloads e notas da versão](https://github.com/Marcos-An/corte/releases/tag/v0.6.13).
+Windows x64 e macOS Apple Silicon **0.6.14**: [downloads e notas da versão](https://github.com/Marcos-An/corte/releases/tag/v0.6.14).
 
 - **macOS Apple Silicon (arm64):** arquivo `.dmg` ou `.zip`. Não há pacote Intel nesta versão.
-- **Windows x64:** instalador `Corte.Setup.0.6.13.exe`.
+- **Windows x64:** instalador `Corte.Setup.0.6.14.exe`.
 - Pacotes **sem assinatura digital/notarização**; macOS/Windows podem mostrar avisos de segurança. Não desative a proteção do sistema inteiro.
 
 O aplicativo empacotado foi validado no Mac com mídia sintética, salvar/reabrir e exportação real. A interface Windows foi validada nesta máquina com edição complexa, salvar/reabrir, desfazer, exportação MP4 e atualização; o instalador e o feed passaram por auditoria de integridade. Esta versão é beta, não uma certificação de estabilidade.
@@ -16,7 +16,13 @@ A Release inclui fontes correspondentes das ferramentas GPL e `SHA256SUMS`. O ZI
 
 Em desenvolvimento após 0.6.4: **Componentes → Animação → Personalizar movimento → Curva** oferece Linear, Acelerar, Desacelerar e Suave entre o ponto selecionado e o próximo. Aparar o componente mantém a curva; adicionar um ponto sem mudar a pose preserva o movimento. Funciona em texto, imagem, vídeo e forma, inclusive por prompt, com desfazer e salvar/reabrir. Não muda a velocidade do vídeo.
 
-Em desenvolvimento após 0.6.4: **Exportar → Intervalo** permite informar início/fim em segundos; uma seleção da timeline já preenche os campos. O projeto e seu histórico permanecem intactos. O render processa os clipes próximos, mantém a fase de legendas/animações e usa margem de transição quando necessário. Saída MP4 720p/1080p a 30 fps; intervalos de pelo menos 0,1 s. Em **Vários trechos**, monte uma fila temporária de até 20 vídeos com nome, início e fim. Escolha a pasta ao exportar; nomes existentes recebem um sufixo, sem sobrescrever. Cancelar preserva os concluídos, e **Exportar pendentes** retoma os restantes. **Mostrar** localiza cada arquivo pronto. A fila permanece ao fechar a janela Exportar e é reiniciada ao alterar/reabrir o projeto ou fechar o aplicativo; não modifica o projeto nem seu histórico. O formato e a resolução são comuns à fila.
+Em desenvolvimento após 0.6.4: **Exportar → Intervalo** permite informar início/fim em segundos; uma seleção da timeline já preenche os campos. O projeto e seu histórico permanecem intactos. O render processa os clipes próximos, mantém a fase de legendas/animações e usa margem de transição quando necessário. Saída MP4 de 720p a 4K, com 24/25/30/50/60 fps; intervalos de pelo menos 0,1 s. Em **Vários trechos**, monte uma fila temporária de até 20 vídeos com nome, início e fim. Escolha a pasta ao exportar; nomes existentes recebem um sufixo, sem sobrescrever. Cancelar preserva os concluídos, e **Exportar pendentes** retoma os restantes. **Mostrar** localiza cada arquivo pronto. A fila permanece ao fechar a janela Exportar e é reiniciada ao alterar/reabrir o projeto ou fechar o aplicativo; não modifica o projeto nem seu histórico. O formato e a resolução são comuns à fila.
+
+## Montagem visual experimental
+
+Em **Editar com IA → Motor de edição → Montagem visual**, o Qwen3-VL 8B observa imagens neste computador e o ChatGPT monta e revisa os cortes. A instalação local é opcional (até 6,9 GB); reutiliza a conta ChatGPT conectada e não exige uma nova assinatura. Confira e aplique a proposta; o áudio original acompanha cada corte, mudança de ordem e velocidade. Análises compatíveis ficam em cache. Use inicialmente com a faixa principal sem música ou camadas, até 30 minutos e 60 trechos; a proposta contém até 36 planos. O modo Híbrido continua disponível para ajustes e pedidos de fala.
+
+A versão inclui 4K/60 fps e acompanhamento experimental de uma área marcada para desfoque/reenquadramento. Veja os limites, privacidade e validações nas [notas da versão](docs/release-0.6.14.md).
 
 ## Editor
 
@@ -41,7 +47,7 @@ Para alterar somente a aparência, a IA usa `edit_caption_style`: muda fonte/tam
 - Presets e keyframes de posição, tamanho e opacidade nos componentes, lineares por padrão.
 - Legendas em um bloco na timeline, até duas linhas por página e karaokê quando há tempos por palavra.
 - Menu à esquerda por padrão, alternável para baixo nas configurações.
-- Projetos `.corte` editáveis, relocalização de mídia e MP4 H.264/AAC em 720p/1080p.
+- Projetos `.corte` editáveis, relocalização de mídia e MP4 H.264/AAC de 720p a 4K, até 60 fps.
 
 A partir da versão 0.6.3, **Selecionar trecho** permite informar início/fim em segundos e aplicar volume, brilho, contraste, saturação, temperatura, nitidez, velocidade ou zoom apenas nesse intervalo, inclusive atravessando clipes. Cada aplicação entra no histórico e preserva os demais ajustes. Alterar velocidade muda a duração selecionada. Ajustes sucessivos preservam a posição do zoom e dos fades existentes. Quadros congelados devem ser selecionados inteiros.
 
@@ -228,7 +234,7 @@ Seleções parciais exigem tempos por palavra já existentes; o editor não esti
 
 ## Formato por vídeo — em desenvolvimento após 0.6.6
 
-Em **Exportar → Vários trechos**, cada vídeo tem **Formato** (9:16, 16:9, 1:1 ou 4:5) e **Resolução** (720 ou 1080 no lado menor). **Da montagem** e **Da exportação** preservam os padrões existentes. As escolhas podem ser guardadas com **Salvar trechos**, seguidas de **Salvar projeto**, com desfazer/refazer. Alterar uma escolha de um vídeo pronto o devolve aos pendentes; o arquivo anterior permanece preservado.
+Em **Exportar → Vários trechos**, cada vídeo tem **Formato** (9:16, 16:9, 1:1 ou 4:5) e **Resolução** (720, 1080, 1440 ou 2160 no lado menor), **Quadros/s** (24, 25, 30, 50 ou 60) e **Qualidade**. **Da montagem** e **Da exportação** preservam os padrões existentes. As escolhas podem ser guardadas com **Salvar trechos**, seguidas de **Salvar projeto**, com desfazer/refazer. Alterar uma escolha de um vídeo pronto o devolve aos pendentes; o arquivo anterior permanece preservado.
 
 O formato global, os clipes e os volumes não mudam. Crop, camadas e posições relativas continuam compartilhados entre as versões; não há reenquadramento automático nem composição independente por vídeo. **Ver tempo** localiza o intervalo na montagem original; o formato individual é aplicado ao MP4. Prompts podem incluir `exportOptions:{aspect,height}` em cada item de `set_export_ranges` ou `select_export_ranges`, com `null` para herdar. A proposta mostra essas escolhas antes de aplicar. Este recurso ainda não está no download público 0.6.6.
 
@@ -253,3 +259,14 @@ Em **Editar com IA → Falas do vídeo**, **Preparar falas** usa o reconheciment
 **Tempo incerto** identifica lacunas do reconhecimento e unidades cortadas pela borda de um clipe. Esses blocos não recebem tempos por palavra inventados; o botão de tempo apenas marca a região para revisão manual. Uma unidade do reconhecedor com várias palavras continua indivisível. As falas acompanham cortes, velocidade, repetição de mídias e desfazer; quadros congelados ficam fora da revisão de voz.
 
 O idioma é o mesmo configurado em **Legendas → Idioma do áudio**. Alterá-lo exige atualizar as falas. Cancelar preserva a revisão anterior; abrir outro projeto limpa o painel. A transcrição não entra no arquivo do projeto nem altera histórico ou legendas; o cache local pode ser reutilizado ao preparar novamente. O botão **Corrigir** permite ouvir, ajustar texto/início/fim e confirmar a fala. As correções são salvas no projeto, com desfazer/refazer e remoção, e reutilizadas na análise híbrida após conferir a identidade da mídia. Uma frase corrigida é uma unidade inteira: não são inventados tempos internos. Isso não altera áudio nem legendas e não conclui cortes automaticamente. Recurso ainda fora do download público 0.6.6.
+
+
+### Exportação ampliada e acompanhamento local (em desenvolvimento)
+
+Exportação H.264/AAC com 720p, 1080p, 1440p ou 4K (3840×2160 horizontal / 2160×3840 vertical), 24/25/30/50/60 fps e três níveis de qualidade. Montagem, intervalo e fila usam as mesmas opções; cada item da fila pode sobrescrevê-las. Projetos antigos mantêm 30 fps e qualidade equilibrada. Exportar uma fonte de 30 fps em 60 fps repete imagens; não gera quadros intermediários nem detalhes ausentes na fonte.
+
+Em **Componentes → Desfoque**, marque a área no início do intervalo e use **Acompanhar desfoque**. A análise é local, sem LLM, serviço novo ou download de modelo. A trajetória vira keyframes editáveis e aceita desfazer/refazer e salvar/reabrir. **Usar área para reenquadrar** reaproveita a marcação para seguir o alvo com um recorte de tamanho fixo, limitado às bordas da imagem; remove a área de desfoque usada como guia. O recorte cobre aproximadamente duas vezes a região marcada, respeitando o formato do projeto. Cortar, reordenar ou acelerar esse clipe mantém a trajetória em coordenadas da fonte. Um novo enquadramento manual substitui a trajetória.
+
+**Limites experimentais:** escolha manual do alvo; até 30 s por execução; um único clipe, fora de transições e sem vídeos sobrepostos. Não identifica pessoas, não encontra todos os rostos nem recupera o alvo após uma oclusão. Poucos detalhes, áreas parecidas, movimentos rápidos ou mudança de aparência podem interromper a análise; nesse caso nenhuma trajetória é aplicada. Revise o vídeo inteiro, especialmente para privacidade e após alterar cortes/tempo de um desfoque. A conclusão do rastreador não certifica que um rosto ficou oculto. Para reenquadrar, remova antes o zoom animado. O acompanhamento é acionado por esses botões; o planejador por prompt ainda não o executa sozinho.
+
+Validação: `node --test tests/export-settings.test.mjs tests/tracking.test.mjs` gera e mede vídeos reais; `node tests/tracking-export.e2e.mjs` exercita IPC, trabalhador isolado, interface, histórico, persistência e exportação 4K60. Os testes locais com Japão Fest e seus tempos ficam em `validation/tracking-export-2026-11-12/real-results.json`.

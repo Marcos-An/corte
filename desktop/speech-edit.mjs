@@ -46,7 +46,9 @@ function wordRanges(op,clip,t){
   const before=prev&&pauses.filter(p=>p.start>=prev.start&&p.end<=first.start+.05).at(-1);
   const after=next&&pauses.find(p=>p.start>=last.start&&p.start<next.start);
   const start=before?Math.min((before.start+Math.min(before.end,first.start))/2,before.start+BREATH):Math.max(((prev?prev.end:clip.in)+first.start)/2,first.start-REACH);
-  const end=after?Math.max((after.start+Math.min(after.end,next.start))/2,Math.min(after.end,next.start)-BREATH):Math.min((last.end+(next?next.start:clip.out))/2,last.end+REACH);
+  // With no following word, a midpoint against the clip edge leaves half of a
+  // short audible tail behind. Keep the same bounded reach used beside b-roll.
+  const end=after?Math.max((after.start+Math.min(after.end,next.start))/2,Math.min(after.end,next.start)-BREATH):Math.min(next?(last.end+next.start)/2:clip.out,last.end+REACH);
   return [Math.max(clip.in,start),Math.min(clip.out,end)];
  });
 }

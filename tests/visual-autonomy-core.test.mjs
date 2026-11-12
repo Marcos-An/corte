@@ -1,0 +1,25 @@
+import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs/promises';import path from 'node:path';import {execFile} from 'node:child_process';import {promisify} from 'node:util';import {validate,reviewWindows,extractWindow} from '../desktop/visual-edit-plan.mjs';
+const sources=[{id:'opaque-z',sourceOrder:0,clipIn:10,clipOut:70},{id:'opaque-a',sourceOrder:1,clipIn:0,clipOut:50}],spec={maxSeconds:30,transitionPolicy:'soft',speeds:[1,1.25,1.5]};
+const plan=()=>({stages:[{id:'s'}],shots:[{id:'x',sourceId:'opaque-z',in:12,out:18,speed:1,stageId:'s',role:'action',transitionAfter:'dissolve'},{id:'y',sourceId:'opaque-a',in:2,out:7,speed:1,stageId:'s',role:'result',transitionAfter:'cut'}],inspectionRequests:[]});
+test('valid edit respects opaque source order, while reversed order and overlap are rejected',()=>{assert.ok(validate(plan(),sources,spec).every(c=>c.passed));const p=plan();p.shots.reverse();assert.equal(validate(p,sources,spec)[0].passed,false);const q=plan();q.shots[1]={...q.shots[1],sourceId:'opaque-z',in:17,out:20};assert.equal(validate(q,sources,spec)[0].passed,false);});
+test('a prompt can reorder sources without changing or sorting the proposed shots',()=>{const p=plan();p.ordering={mode:'prompt',reason:'Start with the result, then show the action'};p.shots.reverse();p.shots[0].transitionAfter='dissolve';p.shots[1].transitionAfter='cut';const before=JSON.stringify(p);assert.ok(validate(p,sources,spec).every(c=>c.passed));assert.equal(JSON.stringify(p),before);});
+test('reordering allows a disjoint return but still rejects repeated footage across other shots',()=>{const p=plan();p.ordering={mode:'prompt',reason:'Action, result, then an earlier action'};p.shots.push({...p.shots[0],id:'z',in:10,out:12,transitionAfter:'cut'});assert.ok(validate(p,sources,spec).every(c=>c.passed));p.shots[2].in=16;p.shots[2].out=20;assert.equal(validate(p,sources,spec)[0].passed,false);});
+test('different source aliases do not permit reuse of the same media interval',()=>{const aliases=sources.map(s=>({...s,assetId:'same-asset'})),p=plan();p.ordering={mode:'prompt',reason:'Reorder'};p.shots[1].in=14;p.shots[1].out=20;assert.equal(validate(p,aliases,spec)[0].passed,false);});
+test('an explicit replay references an earlier shot exactly without disabling accidental-overlap checks',()=>{
+ const p=plan();p.ordering={mode:'prompt',reason:'Replay requested'};p.shots.push({...p.shots[0],id:'replay',replayOf:'x',transitionAfter:'cut'});
+ assert.ok(validate(p,sources,spec).every(c=>c.passed));
+ for(const patch of [{replayOf:null},{replayOf:'missing'},{in:13},{out:19},{speed:1.25},{sourceId:'opaque-a'}]){
+  const invalid=structuredClone(p);Object.assign(invalid.shots[2],patch);assert.equal(validate(invalid,sources,spec)[0].passed,false,JSON.stringify(patch));
+ }
+ const future=structuredClone(p);future.shots[0].replayOf='replay';assert.equal(validate(future,sources,spec)[0].passed,false);
+});
+test('transition margins cannot turn a 1.5 second source selection into a shorter flash',()=>{const p=plan();p.shots[0].out=13.5;assert.equal(validate(p,sources,spec)[0].passed,false);});
+test('cuts-only request and detail speed are enforced independently',()=>{const p=plan();assert.equal(validate(p,sources,{...spec,transitionPolicy:'cuts'}).find(c=>c.name==='transitionRequest').passed,false);p.shots[1].speed=1.5;assert.equal(validate(p,sources,spec).find(c=>c.name==='normalDetails').passed,false);});
+test('automatic review samples omitted regions and clamped boundaries without a reference edit',()=>{const p=plan(),windows=reviewWindows(p,sources);assert.equal(windows.filter(w=>w.kind==='selected-boundary').length,2);assert.ok(windows.some(w=>w.kind==='omitted-interval'&&w.sourceId==='opaque-z'&&w.range[0]===18&&w.range[1]===70));for(const w of windows){const source=sources.find(s=>s.id===w.sourceId);assert.ok(w.times.every(t=>t>=source.clipIn&&t<source.clipOut));}});
+test('a plan exceeding the budget is rejected without silently truncating it',()=>{const p=plan();p.shots[0].out=55;const before=JSON.stringify(p);assert.equal(validate(p,sources,spec).find(c=>c.name==='durationLimit').passed,false);assert.equal(JSON.stringify(p),before);});
+test('inspection windows use existing video timestamps when audio outlasts the image',async t=>{
+ const ffmpeg=path.resolve('vendor/windows/ffmpeg.exe');if(!await fs.access(ffmpeg).then(()=>true,()=>false)){t.skip('Bundled Windows FFmpeg required for real decode regression');return;}
+ const dir=await fs.mkdtemp(path.resolve('validation/autonomy-window-')),file=path.join(dir,'short-video-long-audio.mp4');
+ await promisify(execFile)(ffmpeg,['-v','error','-y','-f','lavfi','-i','testsrc2=s=160x90:r=30:d=1','-f','lavfi','-i','sine=frequency=440:sample_rate=48000:duration=2','-c:v','libx264','-c:a','aac',file],{windowsHide:true,timeout:20000});
+ const frames=await extractWindow(file,.4,1.9,path.join(dir,'frames'));assert.equal(frames.length,2);assert.ok(Math.abs(frames[0].time-.4)<1/30);assert.ok(Math.abs(frames[1].time-.9)<1/30);assert.ok(frames.every(f=>f.time<1));for(const frame of frames)await fs.access(frame.path);
+});

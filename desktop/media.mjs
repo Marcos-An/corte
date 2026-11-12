@@ -1,3 +1,5 @@
+import {cropExpression} from '../src/tracked-crop.mjs';
+import {EXPORT_HEIGHTS,validateExportSettings,exportCrf,exportAudioBitrate} from '../src/export-output.mjs';
 import {blurMaskAss,blurFilterGraph} from './blur-render.mjs';
 import {audioEQFilter} from '../src/audio-eq.mjs';
 import {prepareExportWindow} from '../src/export-range.mjs';
@@ -5,7 +7,7 @@ import {sliceClip} from '../src/clip-slicing.mjs';
 import {clipSpeed,clipDuration,zoomAt} from '../src/clip-time.mjs';
 import {adjustmentFilter} from '../src/color-adjustments.mjs';
 // Smooth zoom: zoompan keeps the framed size and recentres every frame (a per-frame scale + crop drifted to a corner).
-function zoomFilter(c,a){if(!c.zoom)return '';const {from,to}=c.zoom,d=clipDuration(c),r=c.crop,even=v=>Math.max(2,Math.round(v/2)*2);return `zoompan=z='${from}+${Number((to-from).toFixed(6))}*min(1,it/${Number(d.toFixed(6))})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${even(a.width*r.w)}x${even(a.height*r.h)}:fps=30,`;}
+function zoomFilter(c,a,fps=30){if(!c.zoom)return '';const {from,to}=c.zoom,d=clipDuration(c),r=c.crop,even=v=>Math.max(2,Math.round(v/2)*2);return `fps=${fps},zoompan=z='${from}+${Number((to-from).toFixed(6))}*min(1,it/${Number(d.toFixed(6))})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${even(a.width*r.w)}x${even(a.height*r.h)}:fps=${fps},`;}
 import {audioFadeFilter} from '../src/audio-envelope.mjs';
 import {shapeAss} from '../src/shapes.mjs';
 import {keyframeExpression,pointsOf,animated} from '../src/keyframes.mjs';
@@ -68,7 +70,7 @@ export async function frame(file,time,out,signal,options={}) {
   }catch(error){await rm(out,{force:true});throw error;}finally{if(jpeg)await rm(decoded,{force:true});}
 }
 export function dimensions(aspect,height=720) {
-  if(!ASPECTS.includes(aspect) || ![720,1080].includes(height))throw new Error('Formato ou resolução inválidos.');
+  if(!ASPECTS.includes(aspect) || !EXPORT_HEIGHTS.includes(height))throw new Error('Formato ou resolução inválidos.');
   const [w,h]=aspect.split(':').map(Number);return w>=h?{width:Math.round(height*w/h/2)*2,height}:{width:height,height:Math.round(height*h/w/2)*2};
 }
 function tempoFilter(speed){const filters=[];while(speed<.5){filters.push('atempo=0.5');speed/=.5;}while(speed>2){filters.push('atempo=2');speed/=2;}if(speed!==1)filters.push('atempo='+speed);return filters.length?filters.join(',')+',':'';}
@@ -78,26 +80,28 @@ export function transitionSegment(c,start,end){
  // Only these frames are composited. Audio stays on the main montage, including its original fades.
  delete segment.fadeWindow;delete segment.fadeIn;delete segment.fadeOut;return segment;
 }
-export function buildSegmentArgs(c,a,input,out,aspect,height=720) {
+export function buildSegmentArgs(c,a,input,out,aspect,height=720,{losslessAudio=false,fps=30,quality='standard'}={}) {
+  validateExportSettings({height,fps,quality});
   validateProject({version:1,name:'Render',aspect,assets:[a],clips:[c]});
   // A frozen frame loops its first decoded frame for the hold; its sound is silence.
-  const speed=clipSpeed(c),timing=c.freeze?'trim=end_frame=1,loop=loop=-1:size=1:start=0,setpts=N/30/TB,':speed===1?'':`trim=duration=${c.out-c.in},setpts=(PTS-STARTPTS)/${speed},`,audioTiming=speed===1?'asetpts=PTS-STARTPTS,':`atrim=duration=${c.out-c.in},asetpts=PTS-STARTPTS,${tempoFilter(speed)}`;
+  const speed=clipSpeed(c),timing=c.freeze?`trim=end_frame=1,loop=loop=-1:size=1:start=0,setpts=N/${fps}/TB,`:speed===1?'':`trim=duration=${c.out-c.in},setpts=(PTS-STARTPTS)/${speed},`,audioTiming=speed===1?'asetpts=PTS-STARTPTS,':`atrim=duration=${c.out-c.in},asetpts=PTS-STARTPTS,${tempoFilter(speed)}`;
   const size=dimensions(aspect,height),r=c.crop,bg=c.background==='color'?c.backgroundColor.replace('#','0x'):'black';
-  const filter=`${timing}${adjustmentFilter(c.adjustments)}crop=iw*${r.w}:ih*${r.h}:iw*${r.x}:ih*${r.y},${zoomFilter(c,a)}scale=${size.width}:${size.height}:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=${size.width}:${size.height}:(ow-iw)/2:(oh-ih)/2:${bg},setsar=1,fps=30,format=yuv420p`;
+  const filter=`${timing}${adjustmentFilter(c.adjustments)}crop=iw*${r.w}:ih*${r.h}:'iw*(${cropExpression(c,'x')})':'ih*(${cropExpression(c,'y')})',${zoomFilter(c,a,fps)}scale=${size.width}:${size.height}:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=${size.width}:${size.height}:(ow-iw)/2:(oh-ih)/2:${bg},setsar=1,fps=${fps},format=yuv420p`;
   const args=['-hide_banner','-loglevel','error','-y',...(a.kind==='image'?['-loop','1']:['-ss',String(c.in)]),'-i',input];
   const silent=!a.hasAudio||!!c.freeze;
   if(silent)args.push('-f','lavfi','-i','anullsrc=channel_layout=stereo:sample_rate=48000');
-  let vf=c.background==='blur'?['-filter_complex',`[0:v]${timing}${adjustmentFilter(c.adjustments)}crop=iw*${r.w}:ih*${r.h}:iw*${r.x}:ih*${r.y},${zoomFilter(c,a)}split=2[bg][fg];[bg]scale=${size.width}:${size.height}:force_original_aspect_ratio=increase,crop=${size.width}:${size.height},gblur=sigma=${size.width*.015}[blur];[fg]scale=${size.width}:${size.height}:force_original_aspect_ratio=decrease:force_divisible_by=2[front];[blur][front]overlay=(W-w)/2:(H-h)/2,setsar=1,fps=30,format=yuv420p[v]`]:['-vf',filter];
+  let vf=c.background==='blur'?['-filter_complex',`[0:v]${timing}${adjustmentFilter(c.adjustments)}crop=iw*${r.w}:ih*${r.h}:'iw*(${cropExpression(c,'x')})':'ih*(${cropExpression(c,'y')})',${zoomFilter(c,a,fps)}split=2[bg][fg];[bg]scale=${size.width}:${size.height}:force_original_aspect_ratio=increase,crop=${size.width}:${size.height},gblur=sigma=${size.width*.015}[blur];[fg]scale=${size.width}:${size.height}:force_original_aspect_ratio=decrease:force_divisible_by=2[front];[blur][front]overlay=(W-w)/2:(H-h)/2,setsar=1,fps=${fps},format=yuv420p[v]`]:['-vf',filter];
   if(a.kind==='image'){
-    const source=`[0:v]${timing}format=rgba,${adjustmentFilter(c.adjustments,true)}crop=iw*${r.w}:ih*${r.h}:iw*${r.x}:ih*${r.y}${c.zoom?','+zoomFilter(c,a).slice(0,-1):''}`,front=`scale=${size.width}:${size.height}:force_original_aspect_ratio=decrease:force_divisible_by=2[front]`,canvas=`color=c=${bg}:s=${size.width}x${size.height}:r=30,format=rgba[base]`;
+    const source=`[0:v]${timing}format=rgba,${adjustmentFilter(c.adjustments,true)}crop=iw*${r.w}:ih*${r.h}:'iw*(${cropExpression(c,'x')})':'ih*(${cropExpression(c,'y')})'${c.zoom?','+zoomFilter(c,a,fps).slice(0,-1):''}`,front=`scale=${size.width}:${size.height}:force_original_aspect_ratio=decrease:force_divisible_by=2[front]`,canvas=`color=c=${bg}:s=${size.width}x${size.height}:r=${fps},format=rgba[base]`;
     const layers=c.background==='blur'?`${source},split=2[bg][fg];[bg]scale=${size.width}:${size.height}:force_original_aspect_ratio=increase,crop=${size.width}:${size.height},gblur=sigma=${size.width*.015}[blur];${canvas};[base][blur]overlay=format=auto[canvas];[fg]${front}`:`${source},${front};${canvas};[base]null[canvas]`;
-    vf=['-filter_complex',`${layers};[canvas][front]overlay=(W-w)/2:(H-h)/2:format=auto,setsar=1,fps=30,format=yuv420p[v]`];
+    vf=['-filter_complex',`${layers};[canvas][front]overlay=(W-w)/2:(H-h)/2:format=auto,setsar=1,fps=${fps},format=yuv420p[v]`];
   }
-  args.push('-t',String(clipDuration(c)),'-map',a.kind==='image'||c.background==='blur'?'[v]':'0:v:0','-map',silent?'1:a:0':'0:a:0',...vf,'-af',`${audioTiming}aformat=channel_layouts=stereo,${audioEQFilter(c)}volume=${c.volume}${audioFadeFilter(c,clipDuration(c))},aformat=channel_layouts=stereo,aresample=48000,apad`,'-c:v','libx264','-preset','fast','-crf','20','-c:a','aac','-ar','48000','-ac','2','-movflags','+faststart',out);
+  args.push('-t',String(clipDuration(c)),'-map',a.kind==='image'||c.background==='blur'?'[v]':'0:v:0','-map',silent?'1:a:0':'0:a:0',...vf,'-af',`${audioTiming}aformat=channel_layouts=stereo,${audioEQFilter(c)}volume=${c.volume}${audioFadeFilter(c,clipDuration(c))},aformat=channel_layouts=stereo,aresample=48000,apad`,'-c:v','libx264','-preset','fast','-crf',String(exportCrf(quality)),'-c:a',losslessAudio?'pcm_s16le':'aac',...(losslessAudio?[]:['-b:a',exportAudioBitrate(quality)]),'-ar','48000','-ac','2','-movflags','+faststart',out);
   return args;
 }
-export async function renderProject(project,registry,destination,{height=720,signal,onProgress=()=>{},range=null}={}) {
-  const window=prepareExportWindow(project,range),scene=window.scene;if(!project.clips.length)throw new Error('A timeline está vazia.');
+export async function renderProject(project,registry,destination,{height=720,fps=30,quality='standard',signal,onProgress=()=>{},range=null}={}) {
+  validateExportSettings({height,fps,quality});
+  const window=prepareExportWindow(project,range,fps),scene=window.scene;if(!project.clips.length)throw new Error('A timeline está vazia.');
   for(const c of [...project.clips,...(project.music||[]),...(project.imageLayers||[]),...(project.videoLayers||[])])if(!registry.get(c.assetId)?.path)throw new Error('Mídia ausente. Importe ou relocalize o arquivo.');
   if([...registry.values()].some(a=>path.resolve(a.path)===path.resolve(destination)))throw new Error('A exportação não pode substituir uma mídia original.');
   dimensions(project.aspect,height);
@@ -106,13 +110,14 @@ export async function renderProject(project,registry,destination,{height=720,sig
   try {
     for(let i=0;i<project.clips.length;i++) {
       const c=project.clips[i],a=project.assets.find(a=>a.id===c.assetId);
-      await run(binaries().ffmpeg,buildSegmentArgs(c,a,registry.get(c.assetId).path,path.join(temp,`${i}.mp4`),project.aspect,height),{signal,timeout:1800000});
+      // Encode audio only once, after assembly. Per-clip AAC padding otherwise accumulates at cuts.
+      await run(binaries().ffmpeg,buildSegmentArgs(c,a,registry.get(c.assetId).path,path.join(temp,`${i}.mov`),project.aspect,height,{losslessAudio:true,fps,quality}),{signal,timeout:1800000});
       onProgress({stage:'render',completed:i+1,total:project.clips.length});
     }
-    const preciseClock=project.clips.some(c=>Math.abs(clipDuration(c)*30-Math.round(clipDuration(c)*30))>1e-7);
-    await writeFile(path.join(temp,'concat.txt'),project.clips.map((c,i)=>`file '${i}.mp4'${preciseClock?'\nduration '+clipDuration(c):''}`).join('\n'));
+    const preciseClock=project.clips.some(c=>Math.abs(clipDuration(c)*fps-Math.round(clipDuration(c)*fps))>1e-7);
+    await writeFile(path.join(temp,'concat.txt'),project.clips.map((c,i)=>`file '${i}.mov'${preciseClock?'\nduration '+clipDuration(c):''}`).join('\n'));
     // Fractional clips must share a clock: individually rounded MP4 lengths accumulate at every cut.
-    const concatEncoding=preciseClock?['-vf','fps=30:round=up','-af','aresample=48000:async=1:first_pts=0,apad','-t',String(duration(project)),'-c:v','libx264','-preset','fast','-crf','20','-c:a','aac']:['-c','copy'];
+    const concatEncoding=preciseClock?['-vf',`fps=${fps}:round=up`,'-af','aresample=48000:async=1:first_pts=0,apad','-t',String(duration(project)),'-c:v','libx264','-preset','fast','-crf',String(exportCrf(quality)),'-c:a','aac','-b:a',exportAudioBitrate(quality)]:['-c:v','copy','-c:a','aac','-b:a',exportAudioBitrate(quality)];
     await run(binaries().ffmpeg,['-hide_banner','-loglevel','error','-y',...(preciseClock?['-copyts']:[]),'-f','concat','-safe','1','-i',path.join(temp,'concat.txt'),...concatEncoding,'-movflags','+faststart',partial],{signal,timeout:1800000});
     if(project.transitions?.length){
       const overlays=[],fx={dissolve:'fade',fade:'fadeblack',slide:'slideleft'};let cut=0;
@@ -121,21 +126,21 @@ export async function renderProject(project,registry,destination,{height=720,sig
         const at=transitionAt(project,cut),files=[];
         for(const [side,c,time] of [['left',left,at.leftTime],['right',right,at.rightTime]]){
           const a=project.assets.find(a=>a.id===c.assetId),out=path.join(temp,`transition-${i}-${side}.mp4`),start=time-t.duration/2*clipSpeed(c);
-          await run(binaries().ffmpeg,buildSegmentArgs(transitionSegment(c,a.kind==='image'?0:start,a.kind==='image'?t.duration*clipSpeed(c):start+t.duration*clipSpeed(c)),a,registry.get(a.id).path,out,project.aspect,height),{signal,timeout:1800000});files.push(out);
+          await run(binaries().ffmpeg,buildSegmentArgs(transitionSegment(c,a.kind==='image'?0:start,a.kind==='image'?t.duration*clipSpeed(c):start+t.duration*clipSpeed(c)),a,registry.get(a.id).path,out,project.aspect,height,{fps,quality}),{signal,timeout:1800000});files.push(out);
         }
         const merged=path.join(temp,`transition-${i}.mp4`),effect=t.type==='fade'?`[a]fade=t=out:st=0:d=${t.duration/2}[blackA];[b]fade=t=in:st=${t.duration/2}:d=${t.duration/2}[blackB];[blackA][blackB]blend=all_expr='if(lt(T,${t.duration/2}),A,B)'[v]`:`[a][b]xfade=transition=${fx[t.type]}:duration=${t.duration}:offset=0[v]`;
-        await run(binaries().ffmpeg,['-hide_banner','-loglevel','error','-y','-i',files[0],'-i',files[1],'-filter_complex',`[0:v]settb=AVTB,setpts=PTS-STARTPTS[a];[1:v]settb=AVTB,setpts=PTS-STARTPTS[b];${effect}`,'-map','[v]','-t',String(t.duration),'-an','-c:v','libx264','-preset','fast','-crf','20','-pix_fmt','yuv420p',merged],{signal,timeout:1800000});
+        await run(binaries().ffmpeg,['-hide_banner','-loglevel','error','-y','-i',files[0],'-i',files[1],'-filter_complex',`[0:v]settb=AVTB,setpts=PTS-STARTPTS[a];[1:v]settb=AVTB,setpts=PTS-STARTPTS[b];${effect}`,'-map','[v]','-t',String(t.duration),'-an','-c:v','libx264','-preset','fast','-crf',String(exportCrf(quality)),'-pix_fmt','yuv420p',merged],{signal,timeout:1800000});
         overlays.push({path:merged,start:at.start,end:at.end});onProgress({stage:'transition',completed:overlays.length,total:project.transitions.length});
       }
       const args=['-hide_banner','-loglevel','error','-y','-i',partial],filters=[];let previous='0:v';
       for(const [i,t] of overlays.entries()){
         args.push('-i',t.path);filters.push(`[${i+1}:v]setpts=PTS-STARTPTS+${t.start}/TB[t${i}]`);filters.push(`[${previous}][t${i}]overlay=enable='gte(t,${t.start})*lt(t,${t.end})':eof_action=pass[j${i}]`);previous=`j${i}`;
       }
-      const transitioned=path.join(temp,'transitioned.mp4');args.push('-filter_complex',filters.join(';'),'-map',`[${previous}]`,'-map','0:a','-c:v','libx264','-preset','fast','-crf','20','-pix_fmt','yuv420p','-c:a','copy',transitioned);
+      const transitioned=path.join(temp,'transitioned.mp4');args.push('-filter_complex',filters.join(';'),'-map',`[${previous}]`,'-map','0:a','-c:v','libx264','-preset','fast','-crf',String(exportCrf(quality)),'-pix_fmt','yuv420p','-c:a','copy',transitioned);
       await run(binaries().ffmpeg,args,{signal,timeout:1800000});await rename(transitioned,partial);
     }
     const music=(window.range?window.music:project.music||[]).filter(c=>c.start<duration(project));
-    if(music.length){const mixed=path.join(temp,'mixed.mp4'),args=['-hide_banner','-loglevel','error','-y','-i',partial];for(const c of music)args.push('-ss',String(c.in),'-t',String(c.out-c.in),'-i',registry.get(c.assetId).path);const filters=music.map((c,i)=>`[${i+1}:a]aresample=48000,aformat=channel_layouts=stereo,asetpts=PTS-STARTPTS,${audioEQFilter(c)}volume=${c.volume}${audioFadeFilter(c,c.out-c.in)},adelay=${Math.round(c.start*1000)}:all=1[m${i}]`);filters.push(`[0:a]${music.map((_,i)=>`[m${i}]`).join('')}amix=inputs=${music.length+1}:duration=first:normalize=0,alimiter=limit=0.95:latency=1[a]`);args.push('-filter_complex',filters.join(';'),'-map','0:v:0','-map','[a]','-c:v','copy','-c:a','aac','-movflags','+faststart',mixed);await run(binaries().ffmpeg,args,{signal,timeout:1800000});await rename(mixed,partial);}
+    if(music.length){const mixed=path.join(temp,'mixed.mp4'),args=['-hide_banner','-loglevel','error','-y','-i',partial];for(const c of music)args.push('-ss',String(c.in),'-t',String(c.out-c.in),'-i',registry.get(c.assetId).path);const filters=music.map((c,i)=>`[${i+1}:a]aresample=48000,aformat=channel_layouts=stereo,asetpts=PTS-STARTPTS,${audioEQFilter(c)}volume=${c.volume}${audioFadeFilter(c,c.out-c.in)},adelay=${Math.round(c.start*1000)}:all=1[m${i}]`);filters.push(`[0:a]${music.map((_,i)=>`[m${i}]`).join('')}amix=inputs=${music.length+1}:duration=first:normalize=0,alimiter=limit=0.95:latency=1[a]`);args.push('-filter_complex',filters.join(';'),'-map','0:v:0','-map','[a]','-c:v','copy','-c:a','aac','-b:a',exportAudioBitrate(quality),'-movflags','+faststart',mixed);await run(binaries().ffmpeg,args,{signal,timeout:1800000});await rename(mixed,partial);}
     const captions=projectCaptions(scene).filter(c=>!sceneWindow||c.end>sceneWindow.start&&c.start<sceneWindow.end),size=dimensions(project.aspect,height),output=path.join(temp,'composition.mp4');
     const packed=process.resourcesPath&&path.join(process.resourcesPath,'fonts'),fonts=packed&&existsSync(packed)?packed:path.resolve(import.meta.dirname,'../vendor/fonts');
     const escape=v=>v.replace(/\\/g,'/').replace(/:/g,'\\:').replace(/'/g,"\\'");
@@ -148,25 +153,25 @@ export async function renderProject(project,registry,destination,{height=720,sig
       const text=scene.textLayers?.find(t=>t.id===id),words=id==='@captions'?captions:text?[text]:null;
       const shape=scene.shapeLayers?.find(t=>t.id===id);
       if(shape?.type==='blur'){
-        const mask=path.join(temp,`blur-${filters.length}.ass`),next=`layer${filters.length}`;await writeFile(mask,blurMaskAss(shape,size.width,size.height,sceneWindow));filters.push(...blurFilterGraph(shape,previous,next,size.width,mask,fonts,escape));previous=next;
+        const mask=path.join(temp,`blur-${filters.length}.ass`),next=`layer${filters.length}`;await writeFile(mask,blurMaskAss(shape,size.width,size.height,sceneWindow,fps));filters.push(...blurFilterGraph(shape,previous,next,size.width,mask,fonts,escape));previous=next;
       }else if(words||shape){
         if(words&&!words.length)continue;
         const ass=path.join(temp,`text-${filters.length}.ass`),next=`layer${filters.length}`;
-        await writeFile(ass,shape?shapeAss(shape,size.width,size.height,sceneWindow):toAss(words,size.width,size.height,scene.captionStyle,sceneWindow));
+        await writeFile(ass,shape?shapeAss(shape,size.width,size.height,sceneWindow,fps):toAss(words,size.width,size.height,scene.captionStyle,sceneWindow,fps));
         filters.push(`[${previous}]ass='${escape(ass)}':fontsdir='${escape(fonts)}'[${next}]`);previous=next;
       }else{
         const t=[...(scene.imageLayers||[]),...(scene.videoLayers||[])].find(t=>t.id===id),a=project.assets.find(a=>a.id===t.assetId);
         const w=Math.max(2,Math.round(size.width*t.width/100/2)*2),h=Math.max(2,Math.round(w*a.height/a.width/2)*2),next=`layer${filters.length}`;
         const visibleStart=sceneWindow?Math.max(t.start,sceneWindow.start):t.start,visibleEnd=sceneWindow?Math.min(t.end,sceneWindow.end):t.end;
-        args.push(...(a.kind==='image'?['-loop','1',...(animated(t)?['-framerate','30']:[])]:['-ss',String(t.in+(t.freeze?0:visibleStart-t.start)),'-t',String(t.freeze?.1:visibleEnd-visibleStart)]),'-i',registry.get(t.assetId).path);input++;
+        args.push(...(a.kind==='image'?['-loop','1',...(animated(t)?['-framerate',String(fps)]:[])]:['-ss',String(t.in+(t.freeze?0:visibleStart-t.start)),'-t',String(t.freeze?.1:visibleEnd-visibleStart)]),'-i',registry.get(t.assetId).path);input++;
         const imageClock=a.kind==='image'&&sceneWindow?`setpts=PTS-STARTPTS+${window.offset}/TB,`:'';
-        const hold=t.freeze?'trim=end_frame=1,loop=loop=-1:size=1:start=0,setpts=N/30/TB,':'';
+        const hold=t.freeze?`trim=end_frame=1,loop=loop=-1:size=1:start=0,setpts=N/${fps}/TB,`:'';
         if(animated(t)){
           const maxSize=Math.max(...pointsOf(t).map(p=>p.size)),sizeExpr=keyframeExpression(t,'size','T'),opacity=keyframeExpression(t,'opacity','T'),x=keyframeExpression(t,'x'),y=keyframeExpression(t,'y');
           const maxW=Math.max(2,Math.round(size.width*maxSize/100/2)*2),maxH=Math.max(2,Math.round(maxW*a.height/a.width/2)*2),diagonal=Math.ceil(Math.hypot(maxW,maxH))+4;
           // Keep one fixed frame size: rotate/geq cache input geometry, so a variable scale upstream can freeze the rendered size.
           const sx=`(X-${diagonal}/2)*${maxSize}/(${sizeExpr})+${diagonal}/2`,sy=`(Y-${diagonal}/2)*${maxSize}/(${sizeExpr})+${diagonal}/2`;
-          filters.push(`[${input}:v]${hold}fps=30,${a.kind==='image'?imageClock:`setpts=PTS-STARTPTS+${visibleStart}/TB,`}scale=${maxW}:${maxH},format=rgba,pad=${diagonal}:${diagonal}:(ow-iw)/2:(oh-ih)/2:color=0x00000000,geq=r='r(${sx},${sy})':g='g(${sx},${sy})':b='b(${sx},${sy})':a='alpha(${sx},${sy})*(${opacity})/100',rotate=${t.rotation}*PI/180:ow=${diagonal}:oh=${diagonal}:c=none[img${input}]`);
+          filters.push(`[${input}:v]${hold}fps=${fps},${a.kind==='image'?imageClock:`setpts=PTS-STARTPTS+${visibleStart}/TB,`}scale=${maxW}:${maxH},format=rgba,pad=${diagonal}:${diagonal}:(ow-iw)/2:(oh-ih)/2:color=0x00000000,geq=r='r(${sx},${sy})':g='g(${sx},${sy})':b='b(${sx},${sy})':a='alpha(${sx},${sy})*(${opacity})/100',rotate=${t.rotation}*PI/180:ow=${diagonal}:oh=${diagonal}:c=none[img${input}]`);
           filters.push(`[${previous}][img${input}]overlay=x='${size.width}*(${x})/100-w/2':y='${size.height}*(${y})/100-h/2':enable='gte(t,${t.start})*lt(t,${t.end})':eof_action=pass[${next}]`);
         }else{
           filters.push(`[${input}:v]${hold}${a.kind==='image'?imageClock:`setpts=PTS-STARTPTS+${visibleStart}/TB,`}scale=${w}:${h},format=rgba,colorchannelmixer=aa=${t.opacity/100},rotate=${t.rotation}*PI/180:ow=rotw(${t.rotation}*PI/180):oh=roth(${t.rotation}*PI/180):c=none[img${input}]`);
@@ -176,7 +181,7 @@ export async function renderProject(project,registry,destination,{height=720,sig
     }
     if(window.range){filters.push(`[${previous}]trim=start=${window.range.start}:end=${window.range.end},setpts=PTS-STARTPTS[ranged]`);previous='ranged';filters.push(`[0:a]atrim=start=${window.range.start-window.offset}:end=${window.range.end-window.offset},asetpts=PTS-STARTPTS[rangeAudio]`);}
     if(filters.length){
-      args.push('-filter_complex',filters.join(';'),'-map',`[${previous}]`,'-map',window.range?'[rangeAudio]':'0:a','-t',String(renderLength),'-c:v','libx264','-preset','fast','-crf','20','-pix_fmt','yuv420p','-c:a',window.range?'aac':'copy','-movflags','+faststart',output);
+      args.push('-filter_complex',filters.join(';'),'-map',`[${previous}]`,'-map',window.range?'[rangeAudio]':'0:a','-t',String(renderLength),'-c:v','libx264','-preset','fast','-crf',String(exportCrf(quality)),'-pix_fmt','yuv420p','-c:a',window.range?'aac':'copy',...(window.range?['-b:a',exportAudioBitrate(quality)]:[]),'-movflags','+faststart',output);
       await run(binaries().ffmpeg,args,{signal,timeout:1800000});await rename(output,partial);
     }
     if(signal?.aborted)throw new Error('Operação cancelada.');
