@@ -1,3 +1,4 @@
+import {replaceRenderStage} from './render-stage.mjs';
 import {cropExpression} from '../src/tracked-crop.mjs';
 import {EXPORT_HEIGHTS,validateExportSettings,exportCrf,exportAudioBitrate} from '../src/export-output.mjs';
 import {blurMaskAss,blurFilterGraph} from './blur-render.mjs';
@@ -137,10 +138,10 @@ export async function renderProject(project,registry,destination,{height=720,fps
         args.push('-i',t.path);filters.push(`[${i+1}:v]setpts=PTS-STARTPTS+${t.start}/TB[t${i}]`);filters.push(`[${previous}][t${i}]overlay=enable='gte(t,${t.start})*lt(t,${t.end})':eof_action=pass[j${i}]`);previous=`j${i}`;
       }
       const transitioned=path.join(temp,'transitioned.mp4');args.push('-filter_complex',filters.join(';'),'-map',`[${previous}]`,'-map','0:a','-c:v','libx264','-preset','fast','-crf',String(exportCrf(quality)),'-pix_fmt','yuv420p','-c:a','copy',transitioned);
-      await run(binaries().ffmpeg,args,{signal,timeout:1800000});await rename(transitioned,partial);
+      await run(binaries().ffmpeg,args,{signal,timeout:1800000});await replaceRenderStage(transitioned,partial,{signal});
     }
     const music=(window.range?window.music:project.music||[]).filter(c=>c.start<duration(project));
-    if(music.length){const mixed=path.join(temp,'mixed.mp4'),args=['-hide_banner','-loglevel','error','-y','-i',partial];for(const c of music)args.push('-ss',String(c.in),'-t',String(c.out-c.in),'-i',registry.get(c.assetId).path);const filters=music.map((c,i)=>`[${i+1}:a]aresample=48000,aformat=channel_layouts=stereo,asetpts=PTS-STARTPTS,${audioEQFilter(c)}volume=${c.volume}${audioFadeFilter(c,c.out-c.in)},adelay=${Math.round(c.start*1000)}:all=1[m${i}]`);filters.push(`[0:a]${music.map((_,i)=>`[m${i}]`).join('')}amix=inputs=${music.length+1}:duration=first:normalize=0,alimiter=limit=0.95:latency=1[a]`);args.push('-filter_complex',filters.join(';'),'-map','0:v:0','-map','[a]','-c:v','copy','-c:a','aac','-b:a',exportAudioBitrate(quality),'-movflags','+faststart',mixed);await run(binaries().ffmpeg,args,{signal,timeout:1800000});await rename(mixed,partial);}
+    if(music.length){const mixed=path.join(temp,'mixed.mp4'),args=['-hide_banner','-loglevel','error','-y','-i',partial];for(const c of music)args.push('-ss',String(c.in),'-t',String(c.out-c.in),'-i',registry.get(c.assetId).path);const filters=music.map((c,i)=>`[${i+1}:a]aresample=48000,aformat=channel_layouts=stereo,asetpts=PTS-STARTPTS,${audioEQFilter(c)}volume=${c.volume}${audioFadeFilter(c,c.out-c.in)},adelay=${Math.round(c.start*1000)}:all=1[m${i}]`);filters.push(`[0:a]${music.map((_,i)=>`[m${i}]`).join('')}amix=inputs=${music.length+1}:duration=first:normalize=0,alimiter=limit=0.95:latency=1[a]`);args.push('-filter_complex',filters.join(';'),'-map','0:v:0','-map','[a]','-c:v','copy','-c:a','aac','-b:a',exportAudioBitrate(quality),'-movflags','+faststart',mixed);await run(binaries().ffmpeg,args,{signal,timeout:1800000});await replaceRenderStage(mixed,partial,{signal});}
     const captions=projectCaptions(scene).filter(c=>!sceneWindow||c.end>sceneWindow.start&&c.start<sceneWindow.end),size=dimensions(project.aspect,height),output=path.join(temp,'composition.mp4');
     const packed=process.resourcesPath&&path.join(process.resourcesPath,'fonts'),fonts=packed&&existsSync(packed)?packed:path.resolve(import.meta.dirname,'../vendor/fonts');
     const escape=v=>v.replace(/\\/g,'/').replace(/:/g,'\\:').replace(/'/g,"\\'");
@@ -182,7 +183,7 @@ export async function renderProject(project,registry,destination,{height=720,fps
     if(window.range){filters.push(`[${previous}]trim=start=${window.range.start}:end=${window.range.end},setpts=PTS-STARTPTS[ranged]`);previous='ranged';filters.push(`[0:a]atrim=start=${window.range.start-window.offset}:end=${window.range.end-window.offset},asetpts=PTS-STARTPTS[rangeAudio]`);}
     if(filters.length){
       args.push('-filter_complex',filters.join(';'),'-map',`[${previous}]`,'-map',window.range?'[rangeAudio]':'0:a','-t',String(renderLength),'-c:v','libx264','-preset','fast','-crf',String(exportCrf(quality)),'-pix_fmt','yuv420p','-c:a',window.range?'aac':'copy',...(window.range?['-b:a',exportAudioBitrate(quality)]:[]),'-movflags','+faststart',output);
-      await run(binaries().ffmpeg,args,{signal,timeout:1800000});await rename(output,partial);
+      await run(binaries().ffmpeg,args,{signal,timeout:1800000});await replaceRenderStage(output,partial,{signal});
     }
     if(signal?.aborted)throw new Error('Operação cancelada.');
     await rename(partial,destination);return {path:destination};
