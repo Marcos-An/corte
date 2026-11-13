@@ -5,10 +5,11 @@ app.setName('Corte');
 protocol.registerSchemesAsPrivileged([{scheme:'corte-media',privileges:{standard:true,secure:true,supportFetchAPI:true,stream:true,corsEnabled:true}}]);
 let window,registry=new Map(),abort=null,dirty=false,loginRunning=false;
 let updates=null,updateTimer=null,activeOperations=0,rendererBusy=false;
-let pendingProject=null,projectReady=false,activeProjectFile=null,savingProject=false,sourcePaths=new Map();
+let pendingProject=null,pendingOpenDialog=false,projectReady=false,activeProjectFile=null,savingProject=false,sourcePaths=new Map();
 function projectArgument(argv){return argv.slice(1).find(file=>path.isAbsolute(file)&&file.toLowerCase().endsWith('.corte'));}
-function deliverProject(){if(projectReady&&pendingProject&&window&&!window.isDestroyed()){window.show();window.focus();window.webContents.send('editor:open-project',pendingProject.token);}}
-function requestProject(file){if(typeof file!=='string'||!path.isAbsolute(file)||!file.toLowerCase().endsWith('.corte'))return;pendingProject={file,token:crypto.randomUUID()};deliverProject();}
+function deliverProject(){if(projectReady&&(pendingProject||pendingOpenDialog)&&window&&!window.isDestroyed()){window.show();window.focus();if(pendingOpenDialog){pendingOpenDialog=false;window.webContents.send('editor:open-project');}else window.webContents.send('editor:open-project',pendingProject.token);}}
+function requestProject(file){if(typeof file!=='string'||!path.isAbsolute(file)||!file.toLowerCase().endsWith('.corte'))return;pendingOpenDialog=false;pendingProject={file,token:crypto.randomUUID()};deliverProject();}
+function requestOpenDialog(){pendingProject=null;pendingOpenDialog=true;deliverProject();}
 const primary=app.requestSingleInstanceLock();
 if(!primary)app.quit();
 app.on('second-instance',(_event,argv)=>requestProject(projectArgument(argv)));
@@ -212,9 +213,10 @@ if(primary)app.whenReady().then(async()=>{
  const workArea=screen.getPrimaryDisplay().workArea;
  window=new BrowserWindow({width:Math.min(1400,workArea.width),height:Math.min(960,workArea.height),minWidth:Math.min(960,workArea.width),minHeight:Math.min(680,workArea.height),backgroundColor:'#101113',title:'Corte — Editor de vídeo',show:false,autoHideMenuBar:true,webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
  window.webContents.on('render-process-gone',(_event,details)=>sessionLog.record({event:'process-gone',stage:'renderer',processType:'renderer',reason:details.reason,exitCode:details.exitCode}));
+ window.webContents.on('did-start-navigation',(_event,_url,inPlace,mainFrame)=>{if(mainFrame&&!inPlace)projectReady=false;});
  const menu=Menu.getApplicationMenu(),fileMenu=menu?.items.find(item=>item.role==='filemenu');
- if(fileMenu){fileMenu.submenu.insert(0,new MenuItem({id:'open-project',label:'Abrir projeto…',accelerator:'CmdOrCtrl+O',click:()=>window.webContents.send('editor:open-project')}));for(const [index,label,mode] of [[1,'Salvar','save'],[2,'Salvar como…','as'],[3,'Salvar cópia portátil…','portable']])fileMenu.submenu.insert(index,new MenuItem({label,click:()=>window.webContents.send('editor:save-project',mode)}));fileMenu.submenu.insert(4,new MenuItem({type:'separator'}));Menu.setApplicationMenu(menu);}
- window.webContents.on('before-input-event',(event,input)=>{if(input.type==='keyDown'&&(input.control||input.meta)&&input.key.toLowerCase()==='o'){event.preventDefault();window.webContents.send('editor:open-project');}});
+ if(fileMenu){fileMenu.submenu.insert(0,new MenuItem({id:'open-project',label:'Abrir projeto…',accelerator:'CmdOrCtrl+O',click:requestOpenDialog}));for(const [index,label,mode] of [[1,'Salvar','save'],[2,'Salvar como…','as'],[3,'Salvar cópia portátil…','portable']])fileMenu.submenu.insert(index,new MenuItem({label,click:()=>window.webContents.send('editor:save-project',mode)}));fileMenu.submenu.insert(4,new MenuItem({type:'separator'}));Menu.setApplicationMenu(menu);}
+ window.webContents.on('before-input-event',(event,input)=>{if(input.type==='keyDown'&&(input.control||input.meta)&&input.key.toLowerCase()==='o'){event.preventDefault();requestOpenDialog();}});
  window.webContents.setWindowOpenHandler(()=>({action:'deny'}));window.webContents.on('will-navigate',event=>event.preventDefault());
  window.webContents.session.setPermissionRequestHandler((contents,permission,cb,details)=>{
   const allowed=contents===window.webContents&&microphoneAllowed(permission,details,Date.now()<microphoneArmedUntil);cb(allowed);

@@ -146,6 +146,8 @@ jobs:
         run: npm version "$VERSION" --no-git-tag-version --ignore-scripts
       - run: npm test
       - run: npm run check
+      - name: Verify native Open before renderer readiness
+        run: node tests/project-open-ready.e2e.mjs
       - name: Build native installer without publishing
         run: npm run dist:${{ matrix.platform }} -- --publish never
       - name: Audit packaged files, licenses, sources and hashes

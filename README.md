@@ -4,10 +4,10 @@ Editor desktop de vídeo com Electron, edição não destrutiva e assistência p
 
 ## Download
 
-Windows x64 e macOS Apple Silicon **0.6.15**: [downloads e notas da versão](https://github.com/Marcos-An/corte/releases/tag/v0.6.15).
+Windows x64 e macOS Apple Silicon **0.6.16**: [downloads e notas da versão](https://github.com/Marcos-An/corte/releases/tag/v0.6.16).
 
 - **macOS Apple Silicon (arm64):** arquivo `.dmg` ou `.zip`. Não há pacote Intel nesta versão.
-- **Windows x64:** instalador `Corte.Setup.0.6.15.exe`.
+- **Windows x64:** instalador `Corte.Setup.0.6.16.exe`.
 - Pacotes **sem assinatura digital/notarização**; macOS/Windows podem mostrar avisos de segurança. Não desative a proteção do sistema inteiro.
 
 O aplicativo empacotado foi validado no Mac com mídia sintética, salvar/reabrir e exportação real. A interface Windows foi validada nesta máquina com edição complexa, salvar/reabrir, desfazer, exportação MP4 e atualização; o instalador e o feed passaram por auditoria de integridade. Esta versão é beta, não uma certificação de estabilidade.
@@ -22,7 +22,7 @@ Em desenvolvimento após 0.6.4: **Exportar → Intervalo** permite informar iní
 
 Em **Editar com IA → Motor de edição → Montagem visual**, o Qwen3-VL 8B observa imagens neste computador e o ChatGPT monta e revisa os cortes. A instalação local é opcional (até 6,9 GB); reutiliza a conta ChatGPT conectada e não exige uma nova assinatura. Confira e aplique a proposta; o áudio original acompanha cada corte, mudança de ordem e velocidade. Análises compatíveis ficam em cache. Use inicialmente com a faixa principal sem música ou camadas, até 30 minutos e 60 trechos; a proposta contém até 36 planos. O modo Híbrido continua disponível para ajustes e pedidos de fala.
 
-A versão inclui 4K/60 fps e acompanhamento experimental de uma área marcada para desfoque/reenquadramento. Veja os limites, privacidade e validações nas [notas da versão](docs/release-0.6.15.md).
+A versão inclui 4K/60 fps e acompanhamento experimental de uma área marcada para desfoque/reenquadramento. Veja os limites, privacidade e validações nas [notas da versão](docs/release-0.6.16.md).
 
 ## Editor
 
